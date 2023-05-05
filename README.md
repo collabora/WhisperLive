@@ -38,11 +38,6 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
      python client.py
     ```
 
-- Connect to our whisper live server
-```bash
- python client.py --host "transcription.kurg.org" --port 5901
-```
-
 ## Citations
 ```bibtex
 @article{Whisper
