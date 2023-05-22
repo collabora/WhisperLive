@@ -82,6 +82,7 @@ class WhisperModel:
         cpu_threads: int = 0,
         num_workers: int = 1,
         download_root: Optional[str] = None,
+        local_files_only: bool = True,
     ):
         """Initializes the Whisper model.
 
@@ -111,7 +112,11 @@ class WhisperModel:
         if os.path.isdir(model_size_or_path):
             model_path = model_size_or_path
         else:
-            model_path = download_model(model_size_or_path, download_root)
+            model_path = download_model(
+                model_size_or_path,
+                local_files_only=local_files_only,
+                cache_dir=download_root,
+            )
 
         self.model = ctranslate2.models.Whisper(
             model_path,
