@@ -5,7 +5,10 @@ import threading
 import os
 import wave
 import textwrap
+
 import logging
+logging.basicConfig(level = logging.INFO)
+
 from collections import deque
 from dataclasses import dataclass
 
@@ -16,24 +19,14 @@ from websockets.sync.server import serve
 from transcriber import WhisperModel
 
 
-@dataclass(frozen=True)
-class Constants:
-    AUDIO_OVER = b"audio_data_over"
-    ACK = b"acknowledged"
-    SENDING_FILE = b"sending_audio_file"
-    FILE_SENT = b"audio_file_sent"
-
-
-RATE = 16000
 clients = {}
-client_ids = {}
-
 
 def recv_audio(websocket):
     """
     Receive audio chunks from client in an infinite loop.
     """
-    client = ServeClient(websocket=websocket)
+    global clients
+    client = ServeClient(websocket)
     clients[websocket] = client
     while True:
         try:
@@ -45,17 +38,20 @@ def recv_audio(websocket):
             clients[websocket].add_frames(frame_np)
             
         except websockets.ConnectionClosedOK:
+            clients[websocket].cleanup()
+            clients.pop(websocket)
+            print(clients)
             logging.info("Connection Closed.")
             break
 
 
 class ServeClient:
     RATE = 16000
-    def __init__(self, websocket=None, topic=None, device=None, verbose=True):
+    def __init__(self, websocket, topic=None, device=None):
         self.payload_size = struct.calcsize("Q")
         self.data = b""
         self.frames = b""
-        self.transcriber = WhisperModel("small.en", compute_type="float16")
+        self.transcriber = WhisperModel("small.en", compute_type="float16", local_files_only=False)
         self.timestamp_offset = 0.0
         self.frames_np = None
         self.frames_offset = 0.0
@@ -63,7 +59,6 @@ class ServeClient:
         self.current_out = ''
         self.prev_out = ''
         self.t_start=None
-        self.verbose = verbose
         self.exit = False
         self.same_output_threshold = 0
         self.show_prev_out_thresh = 5   # if pause(no output from whisper) show previous output for 5 seconds
@@ -82,14 +77,6 @@ class ServeClient:
         self.websocket = websocket
         self.trans_thread = threading.Thread(target=self.speech_to_text)
         self.trans_thread.start()
-    
-    def send_response_to_client(self, message):
-        """
-        Send serialized response to client.
-        """
-        a = pickle.dumps(message)
-        message = struct.pack("Q",len(a))+a
-        self.client_socket.sendall(message)
     
     def fill_output(self, output):
         """
@@ -114,9 +101,9 @@ class ServeClient:
         return wrapped
     
     def add_frames(self, frame_np):
-        if self.frames_np is not None and self.frames_np.shape[0] > 45*RATE:
+        if self.frames_np is not None and self.frames_np.shape[0] > 45*self.RATE:
             self.frames_offset += 45.0
-            self.frames_np = self.frames_np[int(30*RATE):]
+            self.frames_np = self.frames_np[int(30*self.RATE):]
         if self.frames_np is None:
             self.frames_np = frame_np.copy()
         else:
@@ -127,15 +114,12 @@ class ServeClient:
         Process audio stream in an infinite loop.
         """
         while True:
-            if self.exit: 
-                self.transcriber.destroy()
+            if self.exit:
+                logging.info("Exiting speech to text thread")
                 break
-            if self.frames_np is None: 
-                logging.info("No frames to process.")
-                continue
             
-            if self.websocket is None:
-                logging.info("Websocket is None.")
+            if self.frames_np is None: 
+                continue
 
             # clip audio if the current chunk exceeds 30 seconds, this basically implies that
             # no valid segment for the last 30 seconds from whisper
@@ -171,8 +155,10 @@ class ServeClient:
                         'text': output,
                         'segments': segments
                     }
-
-                    self.websocket.send(str(out_dict))
+                    try:
+                        self.websocket.send(str(out_dict))
+                    except Exception as e:
+                        logging.info(f"[ERROR]: {e}")
                 else:
                     # show previous output if there is pause i.e. no output from whisper
                     output = ''
@@ -194,9 +180,12 @@ class ServeClient:
                         'segments': segments
                     }
 
-                    self.websocket.send(str(out_dict))
+                    try:
+                        self.websocket.send(str(out_dict))
+                    except Exception as e:
+                        logging.info(f"[INFO]: {e}")
             except Exception as e:
-                if self.verbose: logging.error(f"[ERROR]: {e}")
+                logging.info(f"[INFO]: {e}")
                 time.sleep(0.01)
     
     def update_segments(self, segments, duration):
@@ -268,6 +257,12 @@ class ServeClient:
         # format and return output
         output = self.current_out
         return self.fill_output(output), last_segment
+    
+    def cleanup(self):
+        logging.info("Cleaning up.")
+        self.exit = True
+        self.transcriber.destroy()
+
     
 
 if __name__ == "__main__":
