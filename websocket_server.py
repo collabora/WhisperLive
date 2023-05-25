@@ -40,7 +40,6 @@ def recv_audio(websocket):
         except websockets.ConnectionClosedOK:
             clients[websocket].cleanup()
             clients.pop(websocket)
-            print(clients)
             logging.info("Connection Closed.")
             break
 
