@@ -143,44 +143,35 @@ class ServeClient:
                 result = self.transcriber.transcribe(input_sample, initial_prompt=initial_prompt)
                 if len(result):
                     self.t_start = None
-                    output, last_segment = self.update_segments(result, duration)
+                    last_segment = self.update_segments(result, duration)
                     if len(self.transcript) < self.send_last_n_segments:
                         segments = self.transcript
                     else:
                         segments = self.transcript[-self.send_last_n_segments:]
                     if last_segment is not None:
                         segments = segments + [last_segment]
-                    out_dict = {
-                        'text': output,
-                        'segments': segments
-                    }
+                    
                     try:
-                        self.websocket.send(json.dumps(out_dict))
+                        self.websocket.send(json.dumps(segments))
                     except Exception as e:
                         logging.info(f"[ERROR]: {e}")
                 else:
                     # show previous output if there is pause i.e. no output from whisper
-                    output = ''
+                    segments = []
                     if self.t_start is None: self.t_start = time.time()
                     if time.time() - self.t_start < self.show_prev_out_thresh:
-                        output = self.fill_output('')
+                        if len(self.transcript) < self.send_last_n_segments:
+                            segments = self.transcript
+                        else:
+                            segments = self.transcript[-self.send_last_n_segments:]
                     
                     # add a blank if there is no speech for 3 seconds
                     if len(self.text) and self.text[-1] != '':
                         if time.time() - self.t_start > self.add_pause_thresh:
                             self.text.append('')
-                    if len(self.transcript) < self.send_last_n_segments:
-                        segments = self.transcript
-                    else:
-                        segments = self.transcript[-self.send_last_n_segments:]
-                    # publish outputs
-                    out_dict = {
-                        'text': output,
-                        'segments': segments
-                    }
 
                     try:
-                        self.websocket.send(json.dumps(out_dict))
+                        self.websocket.send(json.dumps(segments))
                     except Exception as e:
                         logging.info(f"[INFO]: {e}")
             except Exception as e:
@@ -253,9 +244,7 @@ class ServeClient:
         if offset is not None:
             self.timestamp_offset += offset
 
-        # format and return output
-        output = self.current_out
-        return self.fill_output(output), last_segment
+        return last_segment
     
     def cleanup(self):
         logging.info("Cleaning up.")
