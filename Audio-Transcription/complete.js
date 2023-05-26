@@ -49,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   review.onclick = () => {
-    chrome.tabs.create({url: "https://chrome.google.com/webstore/detail/chrome-audio-capture/kfokdmfpdnokpmpbjhjbcabgligoelgp/reviews"});
+    chrome.tabs.create({url: "https://github.com/collabora/whisper-live"});
   }
 
 
