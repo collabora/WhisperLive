@@ -1,0 +1,43 @@
+{
+  "manifest_version": 2,
+
+  "name": "Audio Transcription",
+  "description": "This extension captures the audio on the current tab and saves the output file on your computer when the capture is complete",
+  "version": "1.1.1",
+  "icons": {
+    "128":"collabora.png"
+    },
+
+  "browser_action": {
+    "default_icon": "collabora.png",
+    "default_popup": "popup.html",
+    "default_title": "Open Audio Transcription interface"
+  },
+  "options_page": "options.html",
+  "background": {
+    "page" : "background.html",
+    "persistent": true
+  },
+  "content_security_policy": "script-src 'self' https://cdn.jsdelivr.net 'wasm-eval'; object-src 'self'",
+  "permissions": [
+    "tabCapture",
+    "downloads",
+    "storage"
+  ],
+  "commands": {
+    "start": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+U"
+      },
+      "description": "Start Capture"
+    },
+    "stop": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+X",
+        "mac": "MacCtrl+Shift+X"
+      },
+      "description": "Stop Capture"
+    }
+  }
+}

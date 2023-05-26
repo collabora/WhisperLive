@@ -1,0 +1,23 @@
+.header {
+  display: flex;
+  align-items: center;
+  padding-bottom: 15px;
+  border-bottom: 2px solid darkred;
+}
+
+h1 {
+  font-size: 36px;
+}
+
+img {
+  height: 64px;
+  margin: 0 20px 0 0;
+}
+
+h2 {
+  font-size: 26px;
+}
+
+.inner {
+  text-align: center;
+}

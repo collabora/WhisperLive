@@ -1,0 +1,89 @@
+body, h2 {
+  font-family: Ubuntu, sans-serif;
+}
+
+body {
+  margin: 10px 15px 5px 15px;
+}
+
+#status, #timeRem {
+  margin: 10px auto;
+  text-align: center;
+  font-size: 20px;
+  white-space: nowrap;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  padding-bottom: 15px;
+  border-bottom: 2px solid darkred;
+  white-space: nowrap;
+}
+
+.header img {
+  height: 64px;
+  margin: 0 20px 0 0;
+}
+
+ul {
+  font-size: 16px;
+  font-weight: bold;
+  list-style: none;
+  padding: 0;
+}
+
+li {
+  font-size: 14px;
+  font-weight: normal;
+  white-space: nowrap;
+  margin: 0 0 0 5px;
+}
+
+.extra {
+  font-family: sans-serif;
+  white-space: nowrap;
+  font-style: italic;
+  margin: 3px;
+}
+
+.links {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: sans-serif;
+}
+
+.links p {
+  color: blue;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.buttonContainer {
+  display: flex;
+  justify-content: space-around;
+}
+
+.button {
+  display: none;
+  text-align: center;
+  padding: 10px;
+  border: 2px solid darkred;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  background-color: lavenderblush;
+  border-radius: 5px;
+}
+
+.button:hover {
+  color: red;
+  background-color: darkred;
+}
+
+.notes {
+  padding: 10px;
+  font-size: 12px;
+  white-space: pre;
+}

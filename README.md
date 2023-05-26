@@ -38,6 +38,21 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
      python client.py
     ```
 
+
+## Transcribe audio from browser
+- Run the websocket-server
+```bash
+ python websocket_server.py
+```
+This would start the websocket server on port ```9090```.
+
+- Head over to ```Audio-Transcription``` module to unpack and load a chrome extension to capture any audio in the browser(only Chrome for now) and send it to the websocket server to transcribe the audio in the current tab.
+
+## Future Work
+- [ ] Update Documentation.
+- [ ] Keep only a single server implementation i.e. websockets and get rid of the socket implementation in ```server.py```. Also, update ```client.py``` to websockets-client implemenation.
+- [ ] Add translation to other languages on top of transcription.
+
 ## Citations
 ```bibtex
 @article{Whisper

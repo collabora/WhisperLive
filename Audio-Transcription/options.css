@@ -1,0 +1,94 @@
+.header {
+  display: flex;
+  align-items: center;
+  padding-bottom: 15px;
+  padding-left: 20px;
+  border-bottom: 2px solid darkred;
+}
+
+.header-title {
+  padding: 0 5px;
+}
+
+h1 {
+  font-size: 36px;
+}
+
+img {
+  height: 64px;
+  margin: 0 20px 0 0;
+}
+
+h2 {
+  font-size: 26px;
+}
+
+label {
+  font-size: 16px;
+}
+
+.inner {
+  margin-left: 40px;
+}
+
+.options-list {
+  padding: 0;
+  list-style: none;
+}
+
+.options-list li {
+  padding: 10px;
+}
+
+.time {
+  font-size: 16px;
+}
+
+.limit {
+  display: inline-block;
+  margin: 0;
+  font-size: 12px;
+}
+
+.radioChoice {
+  margin-left: 15px;
+}
+
+.button {
+  padding: 10px;
+  border: 2px solid darkred;
+  font-size: 16px;
+  background-color: lavenderblush;
+  font-weight: bold;
+  margin: 10px 20px;
+  cursor: pointer;
+  white-space: nowrap;
+  width: 110px;
+  border-radius: 5px;
+}
+
+.button:hover {
+  color: red;
+  background-color: darkred;
+}
+
+#save {
+  font-size: 16px;
+  margin-left: 50px;
+}
+
+#status {
+  color: red;
+  margin-top: 8px;
+  margin-left: 50px;
+  font-size: 14px;
+}
+
+#qualityLi {
+  display: none;
+}
+
+#maxTime {
+  width: 30px;
+  text-align: center;
+}
