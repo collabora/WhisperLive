@@ -22,8 +22,18 @@
   "permissions": [
     "tabCapture",
     "downloads",
-    "storage"
+    "storage",
+    "activeTab",
+    "tabs",
+    "*://*/*"
   ],
+  "externally_connectable": {
+    "matches": ["<all_urls>"]
+  },
+  "content_scripts": [{
+    "js": ["content.js"],
+    "matches": ["<all_urls>"]
+  }],
   "commands": {
     "start": {
       "suggested_key": {
