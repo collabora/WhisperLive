@@ -2,7 +2,7 @@
 import websockets
 import pickle, struct, time, pyaudio
 import threading
-import os
+import os, json
 import wave
 import textwrap
 
@@ -63,7 +63,7 @@ class ServeClient:
         self.show_prev_out_thresh = 5   # if pause(no output from whisper) show previous output for 5 seconds
         self.add_pause_thresh = 3       # add a blank to segment list as a pause(no speech) for 3 seconds
         self.transcript = []
-        self.send_last_n_segments = 2
+        self.send_last_n_segments = 10
 
         # text formatting
         self.wrapper = textwrap.TextWrapper(width=50)
@@ -155,7 +155,7 @@ class ServeClient:
                         'segments': segments
                     }
                     try:
-                        self.websocket.send(str(out_dict))
+                        self.websocket.send(json.dumps(out_dict))
                     except Exception as e:
                         logging.info(f"[ERROR]: {e}")
                 else:
@@ -180,7 +180,7 @@ class ServeClient:
                     }
 
                     try:
-                        self.websocket.send(str(out_dict))
+                        self.websocket.send(json.dumps(out_dict))
                     except Exception as e:
                         logging.info(f"[INFO]: {e}")
             except Exception as e:
