@@ -178,6 +178,11 @@ class Recorder {
     this.worker.onmessage = function(event) {
       let data = event.data;
       switch (data.command) {
+        case "transcription":
+          chrome.tabs.getSelected(null, function(tab) {
+            chrome.tabs.sendMessage(tab.id, { message: data.text });
+          });
+          break;
         case "loaded":
           _this.onEncoderLoaded(_this, _this.encoding);
           break;

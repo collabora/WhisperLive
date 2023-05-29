@@ -35,7 +35,7 @@ function start(bufferSize) {
     socket.send("handshake");
   };
   socket.onmessage = (event) => {
-    console.log(event.data);
+    self.postMessage({ command: "transcription", text: event.data});
   };
   
   if (options.encodeAfterRecord)
