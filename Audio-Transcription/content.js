@@ -1,3 +1,5 @@
+
+
 var elem_container = null;
 var elem_text = null;
 
@@ -111,17 +113,33 @@ function get_lines(elem, line_height) {
 
 }
 
-chrome.runtime.onMessage.addListener(function(request, sender) {
+function remove_element() {
+    var elem = document.getElementById('transcription')
+    for (var i = 0; i < 4; i++) {
+        document.getElementById("t" + i).remove();
+    }
+    elem.remove()
+}
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    const { type, data } = request;
+    
+    if (type === "STOP") {
+        remove_element();
+        sendResponse({data: "STOPPED"});
+        return;
+    }
+
     init_element();
 
-    message = JSON.parse(request.message);
+    message = JSON.parse(data);
 
     var text = '';
-    for (var i = 0; i < message.segments.length; i++) {
-        text += message.segments[i].text + ' ';
+    for (var i = 0; i < message.length; i++) {
+        text += message[i].text + ' ';
     }
     text = text.replace(/(\r\n|\n|\r)/gm, "");
-
+    
     var elem = document.getElementById('t3');
     elem.innerHTML = text;
 
@@ -132,6 +150,7 @@ chrome.runtime.onMessage.addListener(function(request, sender) {
 
     text_segments = [];
     text_segments = get_lines(elem, line_height);
+    
     elem.innerHTML = '';
 
     if (text_segments.length > 2) {
@@ -160,4 +179,6 @@ chrome.runtime.onMessage.addListener(function(request, sender) {
         var elem = document.getElementById('t' + i);
         elem.style.top = parent_elem.offsetHeight + parent_elem.offsetTop + 'px';
     }
+
+    sendResponse({});
 });
