@@ -170,7 +170,8 @@ async function stopCapture() {
 
   if (optionTabId) {
     res = await sendMessageToTab(currentTabId, {
-      type: "STOP"
+      type: "STOP",
+      data: { currentTabId: currentTabId },
     });
     await removeChromeTab(optionTabId);
   }
@@ -186,5 +187,17 @@ chrome.runtime.onMessage.addListener((message) => {
     startCapture(message.tabId);
   } else if (message.action === "stopCapture") {
     stopCapture();
+  }
+});
+
+
+/**
+ * Listens for if the tab is reloaded.
+ * @param {Object} message - The message received from the runtime.
+ */
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete') {
+    await executeScriptInTab(tabId, "content.js");
+    await delayExecution(500);
   }
 });

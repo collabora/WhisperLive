@@ -38,11 +38,42 @@ function sendMessageToTab(tabId, data) {
  */
 async function startRecord(option) {
   const stream = await captureTabAudio();
+  var doVad = true;
   if (stream) {
     // call when the stream inactive
     stream.oninactive = () => {
       window.close();
     };
+
+    // create onnx model
+    // initialize onnx model
+    const session = await ort.InferenceSession.create('./silero_vad.onnx');
+    var h = new Array(128);
+    for (let i = 0; i < h.length; i++) {
+      h[i] = 0;
+    }
+    var c = new Array(128);
+    for (let i = 0; i < h.length; i++) {
+      c[i] = 0;
+    }
+    
+    const sr = new BigInt64Array(1)
+    sr[0] = BigInt(16000);
+    const srate = new ort.Tensor('int64', sr, [1]);
+    let speech_prob = undefined;
+    const vad_infer = async (feed_dict) => {
+      // feed inputs and run
+      try{
+        const results = await session.run(feed_dict);
+
+        // update states
+        h = results.hn.data
+        c = results.cn.data
+        speech_prob = results.output.data
+      } catch(e) {
+        console.log(e)
+      }
+    }
 
     const socket = new WebSocket("ws://localhost:9090/");
     socket.onopen = function(e) { 
@@ -51,7 +82,8 @@ async function startRecord(option) {
 
     socket.onmessage = async (event) => {
       // console.log(event.data);
-      await sendMessageToTab(option.currentTabId, {
+      res = await sendMessageToTab(option.currentTabId, {
+        type: "transcript",
         data: event.data,
       });
     };
@@ -67,7 +99,22 @@ async function startRecord(option) {
       const inputData = event.inputBuffer.getChannelData(0);
 
       audioDataCache.push(inputData);
-      socket.send(inputData);
+
+      // voice activity detection inference
+      const audioBuffer = new ort.Tensor('float32', inputData, [1, inputData.length]);
+      const hh = new ort.Tensor('float32', h, [2, 1, 64]);
+      const hc = new ort.Tensor('float32', c, [2, 1, 64]);
+      const feeds = { input: audioBuffer, sr: srate, h: hh, c: hc};
+      
+      // feed inputs and run
+      if (doVad) {
+        vad_infer(feeds)
+        if (speech_prob > 0.4) {
+          socket.send(inputData);
+        }
+        else
+          console.log("no speech found: " + speech_prob)
+      }
     };
 
     // Prevent page mute
