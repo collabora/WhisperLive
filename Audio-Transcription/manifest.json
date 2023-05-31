@@ -18,10 +18,10 @@
         "scripting"
     ],
     "icons": {
-        "128":"collabora.png"
+        "128":"icon128.png"
         },
     "action": {
         "default_popup": "popup.html",
-        "default_icon": "collabora.png"
+        "default_icon": "icon128.png"
     }
 }
