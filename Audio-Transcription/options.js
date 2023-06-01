@@ -33,6 +33,41 @@ function sendMessageToTab(tabId, data) {
 
 
 /**
+ * Resamples the audio data to a target sample rate of 16kHz.
+ * @param {Array|ArrayBuffer|TypedArray} audioData - The input audio data.
+ * @param {number} [origSampleRate=44100] - The original sample rate of the audio data.
+ * @returns {Float32Array} The resampled audio data at 16kHz.
+ */
+function resampleTo16kHZ(audioData, origSampleRate = 44100) {
+  // Convert the audio data to a Float32Array
+  const data = new Float32Array(audioData);
+
+  // Calculate the desired length of the resampled data
+  const targetLength = Math.round(data.length * (16000 / origSampleRate));
+
+  // Create a new Float32Array for the resampled data
+  const resampledData = new Float32Array(targetLength);
+
+  // Calculate the spring factor and initialize the first and last values
+  const springFactor = (data.length - 1) / (targetLength - 1);
+  resampledData[0] = data[0];
+  resampledData[targetLength - 1] = data[data.length - 1];
+
+  // Resample the audio data
+  for (let i = 1; i < targetLength - 1; i++) {
+    const index = i * springFactor;
+    const leftIndex = Math.floor(index).toFixed();
+    const rightIndex = Math.ceil(index).toFixed();
+    const fraction = index - leftIndex;
+    resampledData[i] = data[leftIndex] + (data[rightIndex] - data[leftIndex]) * fraction;
+  }
+
+  // Return the resampled data
+  return resampledData;
+}
+
+
+/**
  * Starts recording audio from the captured tab.
  * @param {Object} option - The options object containing the currentTabId.
  */
@@ -89,7 +124,7 @@ async function startRecord(option) {
     };
 
     const audioDataCache = [];
-    const context = new AudioContext({sampleRate: 16000});
+    const context = new AudioContext();
     const mediaStream = context.createMediaStreamSource(stream);
     const recorder = context.createScriptProcessor(4096, 1, 1);
 
@@ -97,11 +132,12 @@ async function startRecord(option) {
       if (!context) return;
 
       const inputData = event.inputBuffer.getChannelData(0);
+      const audioData16kHz = resampleTo16kHZ(inputData, context.sampleRate);
 
       audioDataCache.push(inputData);
 
       // voice activity detection inference
-      const audioBuffer = new ort.Tensor('float32', inputData, [1, inputData.length]);
+      const audioBuffer = new ort.Tensor('float32', audioData16kHz, [1, audioData16kHz.length]);
       const hh = new ort.Tensor('float32', h, [2, 1, 64]);
       const hc = new ort.Tensor('float32', c, [2, 1, 64]);
       const feeds = { input: audioBuffer, sr: srate, h: hh, c: hc};
@@ -110,7 +146,7 @@ async function startRecord(option) {
       if (doVad) {
         vad_infer(feeds)
         if (speech_prob > 0.4) {
-          socket.send(inputData);
+          socket.send(audioData16kHz);
         }
         else
           console.log("no speech found: " + speech_prob)
