@@ -1,4 +1,3 @@
-import io
 import os
 import argparse
 import wave
@@ -6,12 +5,10 @@ import wave
 import numpy as np
 import scipy
 import ffmpeg
-import torch
 import pyaudio
 import threading
 import textwrap
 import json
-import torchaudio
 import websocket
 
 
@@ -81,14 +78,6 @@ class Client:
         self.ws_thread.setDaemon(True)
         self.ws_thread.start()
 
-        # voice activity detection model
-        self.vad_model, _ = torch.hub.load(repo_or_dir='snakers4/silero-vad',
-                              model='silero_vad',
-                              force_reload=True,
-                              onnx=True)
-        self.window_size = 1024
-        self.vad_threshold = 0.4
-
         self.frames = b""
         print("* recording")
 
@@ -99,14 +88,11 @@ class Client:
             print(e)
 
     @staticmethod
-    def bytes_to_audio_tensor(audio_bytes):
-        bytes_io = io.BytesIO()
+    def bytes_to_float_array(audio_bytes):
         raw_data = np.frombuffer(
             buffer=audio_bytes, dtype=np.int16
         )
-        scipy.io.wavfile.write(bytes_io, RATE, raw_data)
-        audio, _ = torchaudio.load(bytes_io)
-        return audio.squeeze(0), raw_data.astype(np.float32) / 32768.0
+        return raw_data.astype(np.float32) / 32768.0
     
     def play_file(self, filename):
         # read audio and create pyaudio stream
@@ -122,14 +108,8 @@ class Client:
                 data = self.wf.readframes(CHUNK)
                 if data==b'': break
 
-                # voice activity detection
-                chunk_tensor, audio_array = Client.bytes_to_audio_tensor(data)
-                try:
-                    speech_prob = self.vad_model(chunk_tensor, RATE).item()
-                except ValueError:
-                    break   # input audio chunk is too short
-                if speech_prob > self.vad_threshold:
-                    self.send_packet_to_server(audio_array.tobytes())
+                audio_array = Client.bytes_to_float_array(data)
+                self.send_packet_to_server(audio_array.tobytes())
                 self.stream.write(data)
 
             self.wf.close()
@@ -160,12 +140,9 @@ class Client:
                 data = self.stream.read(CHUNK)
                 self.frames += data
 
-                # voice activity detection
-                chunk_tensor , audio_array = Client.bytes_to_audio_tensor(data)
+                audio_array = Client.bytes_to_float_array(data)
                 
-                speech_prob = self.vad_model(chunk_tensor, RATE).item()
-                if speech_prob > self.vad_threshold:
-                    self.send_packet_to_server(audio_array.tobytes())
+                self.send_packet_to_server(audio_array.tobytes())
 
                 # save frames if more than a minute
                 if len(self.frames) > 60*RATE:
