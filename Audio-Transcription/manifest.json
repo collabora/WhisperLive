@@ -4,9 +4,7 @@
     "name": "Audio Transcription",
     "version": "1.0.0",
     "description": "This extension captures the audio on the current tab, sends it to a server for transcription and shows the transcription in Real-time.",
-    "content_security_policy": {
-        "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
-    },
+    
     "options_page": "options.html",
     "background": {
         "service_worker": "background.js"

@@ -30,23 +30,25 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
 - On the client side
     - To transcribe an audio file:
     ```bash
-     python client.py --audio "audio.wav"
+     python client.py --audio "audio.wav" --host "localhost" --port "9090"
     ```
 
     - To transcribe from microphone:
     ```bash
-     python client.py
+     python client.py --host "localhost" --port "9090"
     ```
 
 
 ## Transcribe audio from browser
-- Run the websocket-server
+- Run the server
 ```bash
- python websocket_server.py
+ python server.py
 ```
 This would start the websocket server on port ```9090```.
 
+
 - Head over to ```Audio-Transcription``` module to unpack and load a chrome extension to capture any audio in the browser(only Chrome for now) and send it to the websocket server to transcribe the audio in the current tab.
+
 
 ## Future Work
 - [ ] Update Documentation.

@@ -1,4 +1,3 @@
-# import asyncio
 import websockets
 import pickle, struct, time, pyaudio
 import threading
@@ -12,6 +11,7 @@ logging.basicConfig(level = logging.INFO)
 from collections import deque
 from dataclasses import dataclass
 
+import torch
 import numpy as np
 from websockets.sync import server
 from websockets.sync.server import serve
@@ -33,8 +33,7 @@ def recv_audio(websocket):
             if isinstance(frame_data, str):
                 logging.info(frame_data)
                 continue
-            else:
-                frame_np = np.frombuffer(frame_data, np.float32)
+            frame_np = np.frombuffer(frame_data, np.float32)
             clients[websocket].add_frames(frame_np)
             
         except Exception as e:
@@ -51,6 +50,15 @@ class ServeClient:
         self.data = b""
         self.frames = b""
         self.transcriber = WhisperModel("small.en", compute_type="float16", local_files_only=False)
+        
+        # voice activity detection model
+        self.vad_model, _ = torch.hub.load(repo_or_dir='snakers4/silero-vad',
+                                           model='silero_vad',
+                                           force_reload=True,
+                                           onnx=True
+                                           )
+        self.vad_threshold = 0.4
+        
         self.timestamp_offset = 0.0
         self.frames_np = None
         self.frames_offset = 0.0
@@ -100,6 +108,15 @@ class ServeClient:
         return wrapped
     
     def add_frames(self, frame_np):
+        try:
+            speech_prob = self.vad_model(torch.from_numpy(frame_np), self.RATE).item()
+            if speech_prob < self.vad_threshold:
+                return
+            
+        except Exception as e:
+            logging.error(e)
+            return
+        
         if self.frames_np is not None and self.frames_np.shape[0] > 45*self.RATE:
             self.frames_offset += 45.0
             self.frames_np = self.frames_np[int(30*self.RATE):]

@@ -73,42 +73,12 @@ function resampleTo16kHZ(audioData, origSampleRate = 44100) {
  */
 async function startRecord(option) {
   const stream = await captureTabAudio();
-  var doVad = true;
+
   if (stream) {
     // call when the stream inactive
     stream.oninactive = () => {
       window.close();
     };
-
-    // create onnx model
-    // initialize onnx model
-    const session = await ort.InferenceSession.create('./silero_vad.onnx');
-    var h = new Array(128);
-    for (let i = 0; i < h.length; i++) {
-      h[i] = 0;
-    }
-    var c = new Array(128);
-    for (let i = 0; i < h.length; i++) {
-      c[i] = 0;
-    }
-    
-    const sr = new BigInt64Array(1)
-    sr[0] = BigInt(16000);
-    const srate = new ort.Tensor('int64', sr, [1]);
-    let speech_prob = undefined;
-    const vad_infer = async (feed_dict) => {
-      // feed inputs and run
-      try{
-        const results = await session.run(feed_dict);
-
-        // update states
-        h = results.hn.data
-        c = results.cn.data
-        speech_prob = results.output.data
-      } catch(e) {
-        console.log(e)
-      }
-    }
 
     const socket = new WebSocket("ws://localhost:9090/");
     socket.onopen = function(e) { 
@@ -136,21 +106,8 @@ async function startRecord(option) {
 
       audioDataCache.push(inputData);
 
-      // voice activity detection inference
-      const audioBuffer = new ort.Tensor('float32', audioData16kHz, [1, audioData16kHz.length]);
-      const hh = new ort.Tensor('float32', h, [2, 1, 64]);
-      const hc = new ort.Tensor('float32', c, [2, 1, 64]);
-      const feeds = { input: audioBuffer, sr: srate, h: hh, c: hc};
-      
       // feed inputs and run
-      if (doVad) {
-        vad_infer(feeds)
-        if (speech_prob > 0.4) {
-          socket.send(audioData16kHz);
-        }
-        else
-          console.log("no speech found: " + speech_prob)
-      }
+      socket.send(audioData16kHz);
     };
 
     // Prevent page mute
