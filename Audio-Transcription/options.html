@@ -1,33 +1,17 @@
-<html>
-  <head>
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
     <title>Audio Transcription Options</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css" type="text/css">
+</head>
+
+<body>
+    <script src="ort.min.js"></script>
     <script src="options.js"></script>
-    <link rel="stylesheet" href="options.css" type="text/css">
-  </head>
-  <body>
-    <div class="header"><img src="./collabora.png"/> <h1>Audio Transcription</h1></div>
-    <div class="inner">
-      <h2>Options</h2>
-      <ul class="options-list">
-        <li><input type="checkbox" id="mute"><label for="mute">Mute tabs that are being captured</label></li>
-        <li class="time"><label for="maxTime">Maximum capture time <p class="limit">(enter value from 1 - 20)</p>: </label><input type="text" id="maxTime"> min(s)</li>
-        <li><input type="checkbox" id="removeLimit"><label for="removeLimit">Remove capture time limit (not recommended)</label></li>
-        <li id="outputType"><label for="outputType">Output file format:</label>
-          <input class="radioChoice" id="mp3" type="radio" name="format" value="mp3"> <label for="mp3">.mp3</label>
-          <input class="radioChoice" id="wav" type="radio" name="format" value="wav"> <label for="wav">.wav</label>
-        </li>
-        <li id="qualityLi">
-          <label for="quality">MP3 Quality: </label>
-          <select id="quality">
-            <option value="96">Low</option>
-            <option value="192">Medium</option>
-            <option value="320">High</option>
-          </select>
-        </li>
-        <li><input type="checkbox" id="doVad"><label for="doVad">Enable Voice Activity detection.</label></li>
-      </ul>
-    </div>
-    <div class="button" id="save">Save Settings</div>
-    <div id="status"></div>
-  </body>
+</body>
+
 </html>

@@ -1,53 +1,27 @@
-{
-  "manifest_version": 2,
+  {
+    "manifest_version": 3,
 
-  "name": "Audio Transcription",
-  "description": "This extension captures the audio on the current tab and saves the output file on your computer when the capture is complete",
-  "version": "1.1.1",
-  "icons": {
-    "128":"collabora.png"
+    "name": "Audio Transcription",
+    "version": "1.0.0",
+    "description": "This extension captures the audio on the current tab, sends it to a server for transcription and shows the transcription in Real-time.",
+    "content_security_policy": {
+        "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
     },
-
-  "browser_action": {
-    "default_icon": "collabora.png",
-    "default_popup": "popup.html",
-    "default_title": "Open Audio Transcription interface"
-  },
-  "options_page": "options.html",
-  "background": {
-    "page" : "background.html",
-    "persistent": true
-  },
-  "content_security_policy": "script-src 'self' https://cdn.jsdelivr.net 'wasm-eval'; object-src 'self'",
-  "permissions": [
-    "tabCapture",
-    "downloads",
-    "storage",
-    "activeTab",
-    "tabs",
-    "*://*/*"
-  ],
-  "externally_connectable": {
-    "matches": ["<all_urls>"]
-  },
-  "content_scripts": [{
-    "js": ["content.js"],
-    "matches": ["<all_urls>"]
-  }],
-  "commands": {
-    "start": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+S",
-        "mac": "Command+Shift+U"
-      },
-      "description": "Start Capture"
+    "options_page": "options.html",
+    "background": {
+        "service_worker": "background.js"
     },
-    "stop": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+X",
-        "mac": "MacCtrl+Shift+X"
-      },
-      "description": "Stop Capture"
+    "permissions": [
+        "storage",
+        "activeTab",
+        "tabCapture",
+        "scripting"
+    ],
+    "icons": {
+        "128":"icon128.png"
+        },
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": "icon128.png"
     }
-  }
 }
