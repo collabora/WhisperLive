@@ -202,7 +202,6 @@ function remove_element() {
     elem.remove()
 }
 
-
 browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const { action, data } = request;
   if (action === "startCapture") {
@@ -223,7 +222,6 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
         recorder = null;
     }
 
-    
     remove_element();
 
   } else if (action === "show_transcript"){
@@ -279,5 +277,3 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
   sendResponse({});
 });
-
-

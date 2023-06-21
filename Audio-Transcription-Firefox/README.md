@@ -1,4 +1,4 @@
-# Audio Transcription Fox
+# Audio Transcription Firefox
 
 Audio Transcription is a Firefox extension that allows users to capture any audio playing on the current tab and transcribe it using OpenAI-whisper in real time. Users will have the option to do voice activity detection as well to not send audio to server when there is no speech.
 

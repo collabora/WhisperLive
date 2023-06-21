@@ -1,8 +1,8 @@
 {
     "manifest_version": 2,
-    "name": "Audio Recorder",
+    "name": "Audio Transcription",
     "version": "1.0",
-    "description": "Record audio from any webpage.",
+    "description": "Transcribe audio from any webpage.",
     "permissions": [
       "activeTab",
       "<all_urls>"
