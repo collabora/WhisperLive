@@ -109,7 +109,7 @@ class ServeClient:
     
     def add_frames(self, frame_np):
         try:
-            speech_prob = self.vad_model(torch.from_numpy(frame_np), self.RATE).item()
+            speech_prob = self.vad_model(torch.from_numpy(frame_np.copy()), self.RATE).item()
             if speech_prob < self.vad_threshold:
                 return
             
