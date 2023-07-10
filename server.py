@@ -19,6 +19,7 @@ from transcriber import WhisperModel
 
 
 clients = {}
+SERVER_READY = "SERVER_READY"
 
 def recv_audio(websocket):
     """
@@ -49,7 +50,12 @@ class ServeClient:
         self.payload_size = struct.calcsize("Q")
         self.data = b""
         self.frames = b""
-        self.transcriber = WhisperModel("small.en", compute_type="float16", local_files_only=False)
+        self.transcriber = WhisperModel(
+            "small.en", 
+            device="cuda",
+            compute_type="float16", 
+            local_files_only=False
+        )
         
         # voice activity detection model
         self.vad_model, _ = torch.hub.load(repo_or_dir='snakers4/silero-vad',
@@ -84,6 +90,7 @@ class ServeClient:
         self.websocket = websocket
         self.trans_thread = threading.Thread(target=self.speech_to_text)
         self.trans_thread.start()
+        self.websocket.send(json.dumps(SERVER_READY))
     
     def fill_output(self, output):
         """
@@ -267,7 +274,6 @@ class ServeClient:
         logging.info("Cleaning up.")
         self.exit = True
         self.transcriber.destroy()
-
     
 
 if __name__ == "__main__":
