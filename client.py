@@ -17,11 +17,15 @@ FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
 RECORD_SECONDS = 60000
-
+START_RECORDING = False
 
 
 def on_message(ws, message):
+    global START_RECORDING
     message = json.loads(message)
+    if message == "SERVER_READY":
+        START_RECORDING = True
+        return
     text = []
     if len(message):
         for seg in message:
@@ -35,7 +39,10 @@ def on_message(ws, message):
     wrapper = textwrap.TextWrapper(width=60)
     word_list = wrapper.wrap(text="".join(text))
     # Print each line.
-    os.system('clear')
+    if os.name=='nt':
+        os.system('cls')
+    else:
+        os.system('clear')
     for element in word_list:
         print(element)
 
@@ -221,6 +228,15 @@ if __name__=="__main__":
     parser.add_argument('--port', default=None, type=str, help='websocket server port to connect to')
     opt = parser.parse_args()
     c = Client(host=opt.host, port=opt.port)
+
+    # while loop to wait for server to be ready
+    print("Waiting for server ready ...")
+    while not START_RECORDING:
+        pass
+    if os.name=='nt':
+        os.system('cls')
+    else:
+        os.system('clear')
 
     if opt.audio is not None:
         resampled_file = resample(opt.audio)
