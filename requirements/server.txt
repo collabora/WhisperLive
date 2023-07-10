@@ -1,5 +1,5 @@
 PyAudio
-faster-whisper
+faster-whisper==0.6.0
 paho-mqtt
 --extra-index-url https://download.pytorch.org/whl/cu113
 torch==1.12.1
