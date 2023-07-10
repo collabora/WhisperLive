@@ -81,25 +81,32 @@ async function startRecord(option) {
     };
 
     const socket = new WebSocket("ws://localhost:9090/");
+    let isServerReady = false;
     socket.onopen = function(e) { 
       socket.send("handshake");
     };
 
     socket.onmessage = async (event) => {
-      // console.log(event.data);
+      console.log(event.data);
+      if (isServerReady === false){
+        isServerReady = true;
+        return;
+      }
+      
       res = await sendMessageToTab(option.currentTabId, {
         type: "transcript",
         data: event.data,
       });
     };
 
+    
     const audioDataCache = [];
     const context = new AudioContext();
     const mediaStream = context.createMediaStreamSource(stream);
     const recorder = context.createScriptProcessor(4096, 1, 1);
 
     recorder.onaudioprocess = async (event) => {
-      if (!context) return;
+      if (!context || !isServerReady) return;
 
       const inputData = event.inputBuffer.getChannelData(0);
       const audioData16kHz = resampleTo16kHZ(inputData, context.sampleRate);
@@ -114,6 +121,7 @@ async function startRecord(option) {
     mediaStream.connect(recorder);
     recorder.connect(context.destination);
     mediaStream.connect(context.destination);
+    // }
   } else {
     window.close();
   }

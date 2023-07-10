@@ -45,8 +45,12 @@ function startRecording() {
       socket.send("handshake");
     };
 
+    let isServerReady = false;
     socket.onmessage = (event) => {
-      // console.log(event.data);
+      if (!isServerReady){
+        isServerReady = true;
+        return;
+      }
       const data = event.data;
       browser.runtime.sendMessage({ action: "transcript", data })
           .catch(function(error) {
@@ -64,7 +68,7 @@ function startRecording() {
       recorder = audioContext.createScriptProcessor(4096, 1, 1);
 
       recorder.onaudioprocess = async (event) => {
-        if (!audioContext || !isCapturing) return;
+        if (!audioContext || !isCapturing || !isServerReady) return;
 
         const inputData = event.inputBuffer.getChannelData(0);
         const audioData16kHz = resampleTo16kHZ(inputData, audioContext.sampleRate);
