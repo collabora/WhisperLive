@@ -277,5 +277,5 @@ class ServeClient:
     
 
 if __name__ == "__main__":
-    with serve(recv_audio, "127.0.0.1", 9090) as server:
+    with serve(recv_audio, "0.0.0.0", 9090) as server:
         server.serve_forever()
