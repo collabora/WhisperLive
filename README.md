@@ -46,13 +46,28 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
 ```
 This would start the websocket server on port ```9090```.
 
+### Chrome Extension
+- Head over to ```Audio-Transcription``` module to unpack and load a chrome extension to capture any audio in the browser and send it to the websocket server to transcribe the audio in the current tab.
 
-- Head over to ```Audio-Transcription``` module to unpack and load a chrome extension to capture any audio in the browser(only Chrome for now) and send it to the websocket server to transcribe the audio in the current tab.
+### Firefox Extension
+- Refer to [Audio-Transcription-Firefox](https://github.com/collabora/whisper-live/tree/main/Audio-Transcription-Firefox#readme) to use mozilla firefox extension.
+
+
+## Whisper Live Server in Docker
+- Build docker container
+```bash
+ docker build . -t whisper-live
+```
+
+- Run docker container
+```bash
+ docker run -it --gpus all -p 9090:9090 whisper-live:latest
+```
 
 
 ## Future Work
 - [ ] Update Documentation.
-- [ ] Keep only a single server implementation i.e. websockets and get rid of the socket implementation in ```server.py```. Also, update ```client.py``` to websockets-client implemenation.
+- [x] Keep only a single server implementation i.e. websockets and get rid of the socket implementation in ```server.py```. Also, update ```client.py``` to websockets-client implemenation.
 - [ ] Add translation to other languages on top of transcription.
 
 ## Citations
