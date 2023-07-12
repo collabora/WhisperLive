@@ -38,7 +38,6 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
      python client.py --host "localhost" --port "9090"
     ```
 
-
 ## Transcribe audio from browser
 - Run the server
 ```bash
@@ -47,11 +46,10 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
 This would start the websocket server on port ```9090```.
 
 ### Chrome Extension
-- Head over to ```Audio-Transcription``` module to unpack and load a chrome extension to capture any audio in the browser and send it to the websocket server to transcribe the audio in the current tab.
+- Refer to [Audio-Transcription-Chrome](https://github.com/collabora/whisper-live/tree/main/Audio-Transcription-Chrome#readme) to use Chrome extension.
 
 ### Firefox Extension
-- Refer to [Audio-Transcription-Firefox](https://github.com/collabora/whisper-live/tree/main/Audio-Transcription-Firefox#readme) to use mozilla firefox extension.
-
+- Refer to [Audio-Transcription-Firefox](https://github.com/collabora/whisper-live/tree/main/Audio-Transcription-Firefox#readme) to use Mozilla Firefox extension.
 
 ## Whisper Live Server in Docker
 - Build docker container
@@ -64,7 +62,6 @@ This would start the websocket server on port ```9090```.
  docker run -it --gpus all -p 9090:9090 whisper-live:latest
 ```
 
-
 ## Future Work
 - [ ] Update Documentation.
 - [x] Keep only a single server implementation i.e. websockets and get rid of the socket implementation in ```server.py```. Also, update ```client.py``` to websockets-client implemenation.
@@ -76,7 +73,7 @@ This would start the websocket server on port ```9090```.
   title = {Robust Speech Recognition via Large-Scale Weak Supervision},
   url = {https://arxiv.org/abs/2212.04356},
   author = {Radford, Alec and Kim, Jong Wook and Xu, Tao and Brockman, Greg and McLeavey, Christine and Sutskever, Ilya},
-  publisher = {arXiv},  
+  publisher = {arXiv},
   year = {2022},
 }
 ```
