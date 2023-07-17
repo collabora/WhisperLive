@@ -4,6 +4,11 @@ document.addEventListener("DOMContentLoaded", function () {
   const stopButton = document.getElementById("stopCapture");
 
   const useServerCheckbox = document.getElementById("useServerCheckbox");
+  const useMultilingualCheckbox = document.getElementById('useMultilingualCheckbox');
+  const languageDropdown = document.getElementById('languageDropdown');
+  const taskDropdown = document.getElementById('taskDropdown');
+  let selectedLanguage = undefined;
+  let selectedTask = taskDropdown.value;
 
   // Add click event listeners to the buttons
   startButton.addEventListener("click", startCapture);
@@ -22,6 +27,28 @@ document.addEventListener("DOMContentLoaded", function () {
   chrome.storage.local.get("useServerState", ({ useServerState }) => {
     if (useServerState !== undefined) {
       useServerCheckbox.checked = useServerState;
+    }
+  });
+
+  chrome.storage.local.get("useMultilingualModelState", ({ useMultilingualModelState }) => {
+    if (useMultilingualModelState !== undefined) {
+      useMultilingualCheckbox.checked = useMultilingualModelState;
+      languageDropdown.disabled = !useMultilingualModelState;
+      taskDropdown.disabled = !useMultilingualModelState;
+    }
+  });
+
+  chrome.storage.local.get("selectedLanguage", ({ selectedLanguage: storedLanguage }) => {
+    if (storedLanguage !== undefined) {
+      languageDropdown.value = storedLanguage;
+      selectedLanguage = storedLanguage;
+    }
+  });
+
+  chrome.storage.local.get("selectedTask", ({ selectedTask: storedTask }) => {
+    if (storedTask !== undefined) {
+      taskDropdown.value = storedTask;
+      selectedTask = storedTask;
     }
   });
 
@@ -49,12 +76,17 @@ document.addEventListener("DOMContentLoaded", function () {
         action: "startCapture", 
         tabId: currentTab.id,
         host: host,
-        port: port }, () => {
-      // Update capturing state in storage and toggle the buttons
-      chrome.storage.local.set({ capturingState: { isCapturing: true } }, () => {
-        toggleCaptureButtons(true);
-      });
-    });
+        port: port,
+        useMultilingual: useMultilingualCheckbox.checked,
+        language: selectedLanguage,
+        task: selectedTask
+      }, () => {
+        // Update capturing state in storage and toggle the buttons
+        chrome.storage.local.set({ capturingState: { isCapturing: true } }, () => {
+          toggleCaptureButtons(true);
+        });
+      }
+    );
   }
 
   // Function to handle the stop capture button click event
@@ -95,5 +127,27 @@ document.addEventListener("DOMContentLoaded", function () {
   useServerCheckbox.addEventListener("change", () => {
     const useServerState = useServerCheckbox.checked;
     chrome.storage.local.set({ useServerState });
+  });
+
+  useMultilingualCheckbox.addEventListener('change', function() {
+    const useMultilingualModelState = useMultilingualCheckbox.checked;
+    if (useMultilingualModelState) {
+      languageDropdown.disabled = false;
+      taskDropdown.disabled = false;
+    } else {
+      languageDropdown.disabled = true;
+      taskDropdown.disabled = true;
+    }
+    chrome.storage.local.set({ useMultilingualModelState });
+  });
+
+  languageDropdown.addEventListener('change', function() {
+    selectedLanguage = languageDropdown.value;
+    chrome.storage.local.set({ selectedLanguage });
+  });
+
+  taskDropdown.addEventListener('change', function() {
+    selectedTask = taskDropdown.value;
+    chrome.storage.local.set({ selectedTask });
   });
 });
