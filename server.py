@@ -26,14 +26,20 @@ def recv_audio(websocket):
     Receive audio chunks from client in an infinite loop.
     """
     global clients
-    client = ServeClient(websocket)
+    options = websocket.recv()
+    options = json.loads(options)
+    client = ServeClient(
+        websocket, 
+        multilingual=options["multilingual"],
+        language=options["language"],
+        task=options["task"]
+    )
+
     clients[websocket] = client
+    
     while True:
         try:
             frame_data = websocket.recv()
-            if isinstance(frame_data, str):
-                logging.info(frame_data)
-                continue
             frame_np = np.frombuffer(frame_data, np.float32)
             clients[websocket].add_frames(frame_np)
             
@@ -46,15 +52,16 @@ def recv_audio(websocket):
 
 class ServeClient:
     RATE = 16000
-    def __init__(self, websocket, topic=None, device=None):
-        self.payload_size = struct.calcsize("Q")
+    def __init__(self, websocket, task="transcribe", device=None, multilingual=False, language=None):
         self.data = b""
         self.frames = b""
+        self.language = language
+        self.task = task
         self.transcriber = WhisperModel(
-            "small.en", 
-            device="cuda",
+            "small" if multilingual else "small.en", 
+            device=device if device else "cuda",
             compute_type="float16", 
-            local_files_only=False
+            local_files_only=False,
         )
         
         # voice activity detection model
@@ -82,9 +89,6 @@ class ServeClient:
         # text formatting
         self.wrapper = textwrap.TextWrapper(width=50)
         self.pick_previous_segments = 2
-
-        # setup mqtt
-        self.topic = topic
 
         # threading
         self.websocket = websocket
@@ -164,7 +168,13 @@ class ServeClient:
                     initial_prompt = None
                 
                 # whisper transcribe with prompt
-                result = self.transcriber.transcribe(input_sample, initial_prompt=initial_prompt)
+                result = self.transcriber.transcribe(
+                    input_sample, 
+                    initial_prompt=initial_prompt,
+                    language=self.language,
+                    task=self.task
+                )
+
                 if len(result):
                     self.t_start = None
                     last_segment = self.update_segments(result, duration)

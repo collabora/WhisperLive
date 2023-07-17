@@ -1,11 +1,17 @@
 document.addEventListener("DOMContentLoaded", function() {
-  var startButton = document.getElementById("startCapture");
-  var stopButton = document.getElementById("stopCapture");
+  const startButton = document.getElementById("startCapture");
+  const stopButton = document.getElementById("stopCapture");
 
   const useServerCheckbox = document.getElementById("useServerCheckbox");
+  const useMultilingualCheckbox = document.getElementById('useMultilingualCheckbox');
+  const languageDropdown = document.getElementById('languageDropdown');
+  const taskDropdown = document.getElementById('taskDropdown');
+  let selectedLanguage = undefined;
+  let selectedTask = taskDropdown.value;
+
   browser.storage.local.get("capturingState")
     .then(function(result) {
-      var capturingState = result.capturingState;
+      const capturingState = result.capturingState;
       if (capturingState && capturingState.isCapturing) {
         toggleCaptureButtons(true);
       } else {
@@ -26,6 +32,28 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
+  browser.storage.local.get("useMultilingualModelState", ({ useMultilingualModelState }) => {
+    if (useMultilingualModelState !== undefined) {
+      useMultilingualCheckbox.checked = useMultilingualModelState;
+      languageDropdown.disabled = !useMultilingualModelState;
+      taskDropdown.disabled = !useMultilingualModelState;
+    }
+  });
+
+  browser.storage.local.get("selectedLanguage", ({ selectedLanguage: storedLanguage }) => {
+    if (storedLanguage !== undefined) {
+      languageDropdown.value = storedLanguage;
+      selectedLanguage = storedLanguage;
+    }
+  });
+
+  browser.storage.local.get("selectedTask", ({ selectedTask: storedTask }) => {
+    if (storedTask !== undefined) {
+      taskDropdown.value = storedTask;
+      selectedTask = storedTask;
+    }
+  });
+
   startButton.addEventListener("click", function() {
     let host = "localhost";
     let port = "9090";
@@ -39,7 +67,17 @@ document.addEventListener("DOMContentLoaded", function() {
     browser.tabs.query({ active: true, currentWindow: true })
       .then(function(tabs) {
         browser.tabs.sendMessage(
-          tabs[0].id, { action: "startCapture", data: {host, port} });
+          tabs[0].id, 
+          { 
+            action: "startCapture", 
+            data: {
+              host: host,
+              port: port,
+              useMultilingual: useMultilingualCheckbox.checked,
+              language: selectedLanguage,
+              task: selectedTask
+            } 
+          });
         toggleCaptureButtons(true);
         browser.storage.local.set({ capturingState: { isCapturing: true } })
           .catch(function(error) {
@@ -84,5 +122,27 @@ document.addEventListener("DOMContentLoaded", function() {
   useServerCheckbox.addEventListener("change", () => {
     const useServerState = useServerCheckbox.checked;
     browser.storage.local.set({ useServerState });
+  });
+
+  useMultilingualCheckbox.addEventListener('change', function() {
+    const useMultilingualModelState = useMultilingualCheckbox.checked;
+    if (useMultilingualModelState) {
+      languageDropdown.disabled = false;
+      taskDropdown.disabled = false;
+    } else {
+      languageDropdown.disabled = true;
+      taskDropdown.disabled = true;
+    }
+    browser.storage.local.set({ useMultilingualModelState });
+  });
+
+  languageDropdown.addEventListener('change', function() {
+    selectedLanguage = languageDropdown.value;
+    browser.storage.local.set({ selectedLanguage });
+  });
+
+  taskDropdown.addEventListener('change', function() {
+    selectedTask = taskDropdown.value;
+    browser.storage.local.set({ selectedTask });
   });
 });

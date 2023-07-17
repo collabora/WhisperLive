@@ -38,10 +38,16 @@ function resampleTo16kHZ(audioData, origSampleRate = 44100) {
   return resampledData;
 }
 
-function startRecording(host, port) {
-    socket = new WebSocket(`ws://${host}:${port}/`);
+function startRecording(data) {
+    socket = new WebSocket(`ws://${data.host}:${data.port}/`);
     socket.onopen = function(e) { 
-      socket.send("handshake");
+      socket.send(
+        JSON.stringify({
+            multilingual: data.useMultilingual,
+            language: data.language,
+            task: data.task
+        })
+      );
     };
 
     let isServerReady = false;
@@ -209,7 +215,7 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const { action, data } = request;
   if (action === "startCapture") {
       isCapturing = true;
-      startRecording(data.host, data.port);
+      startRecording(data);
   } else if (action === "stopCapture") {
     
     isCapturing = false;

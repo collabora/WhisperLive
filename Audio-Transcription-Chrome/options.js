@@ -79,11 +79,16 @@ async function startRecord(option) {
     stream.oninactive = () => {
       window.close();
     };
-
     const socket = new WebSocket(`ws://${option.host}:${option.port}/`);
     let isServerReady = false;
     socket.onopen = function(e) { 
-      socket.send("handshake");
+      socket.send(
+        JSON.stringify({
+          multilingual: option.multilingual,
+          language: option.language,
+          task: option.task
+        })
+      );
     };
 
     socket.onmessage = async (event) => {
