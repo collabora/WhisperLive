@@ -129,7 +129,7 @@ class ServeClient:
             return
         
         if self.frames_np is not None and self.frames_np.shape[0] > 45*self.RATE:
-            self.frames_offset += 45.0
+            self.frames_offset += 30.0
             self.frames_np = self.frames_np[int(30*self.RATE):]
         if self.frames_np is None:
             self.frames_np = frame_np.copy()
