@@ -17,11 +17,18 @@ FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
 RECORD_SECONDS = 60000
+START_RECORDING = False
+multilingual = False
+language = None
 
 
 
 def on_message(ws, message):
+    global START_RECORDING
     message = json.loads(message)
+    if message == "SERVER_READY":
+        START_RECORDING = True
+        return
     text = []
     if len(message):
         for seg in message:
@@ -35,7 +42,10 @@ def on_message(ws, message):
     wrapper = textwrap.TextWrapper(width=60)
     word_list = wrapper.wrap(text="".join(text))
     # Print each line.
-    os.system('clear')
+    if os.name=='nt':
+        os.system('cls')
+    else:
+        os.system('clear')
     for element in word_list:
         print(element)
 
@@ -46,7 +56,16 @@ def on_close(ws, close_status_code, close_msg):
     print("### websocket connection closed ###")
 
 def on_open(ws):
+    global multilingual, language, task
+    print(multilingual, language, task)
+
     print("Opened connection")
+    ws.send(json.dumps({
+        'multilingual': multilingual[0],
+        'language': language[0],
+        'task': task
+    }))
+
     
 
 class Client:
@@ -219,8 +238,26 @@ if __name__=="__main__":
     parser.add_argument('--audio', type=str, help='audio file to transcribe')
     parser.add_argument('--host', default=None, type=str, help='websocket server address to connect to')
     parser.add_argument('--port', default=None, type=str, help='websocket server port to connect to')
+    parser.add_argument('--multilingual', action="store_true", help='use multilingual model')
+    parser.add_argument('--language', default=None, type=str, help='languages to use')
+    parser.add_argument(
+        '--task', default="transcribe", type=str, help='task transcribe/translate (translates from any to english)')
     opt = parser.parse_args()
+    print(opt)
+    multilingual=opt.multilingual,
+    language = opt.language,
+    task = opt.task
     c = Client(host=opt.host, port=opt.port)
+
+    # while loop to wait for server to be ready
+    print("Waiting for server ready ...")
+    while not START_RECORDING:
+        pass
+    print("Server Ready!")
+    if os.name=='nt':
+        os.system('cls')
+    else:
+        os.system('clear')
 
     if opt.audio is not None:
         resampled_file = resample(opt.audio)

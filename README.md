@@ -3,7 +3,7 @@ A nearly-live implementation of OpenAI's Whisper.
 
 This project is a real-time transcription application that uses the OpenAI Whisper model to convert speech input into text output. It can be used to transcribe both live audio input from microphone and pre-recorded audio files.
 
-Unlike traditional speech recognition systems that rely on continuous audio streaming, we use [voice activity detection (VAD)](https://github.com/snakers4/silero-vad) to detect the presence of speech and only send the audio data to whisper when speech is detected. This helps to reduce the amount of data sent to the API and improves the accuracy of the transcription output.
+Unlike traditional speech recognition systems that rely on continuous audio streaming, we use [voice activity detection (VAD)](https://github.com/snakers4/silero-vad) to detect the presence of speech and only send the audio data to whisper when speech is detected. This helps to reduce the amount of data sent to the whisper model and improves the accuracy of the transcription output.
 
 ## Installation
 - Install PyAudio and ffmpeg
@@ -30,13 +30,16 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
 - On the client side
     - To transcribe an audio file:
     ```bash
-     python client.py --audio "audio.wav" --host "localhost" --port "9090"
+      python client.py --audio "audio.wav" --host "localhost" --port "9090" --multilingual --language "hi" --task "transcribe"
+                                                                                                                  "translate"
     ```
+    This command transcribes the specified audio file (audio.wav) using the Whisper model. It connects to the server running on localhost at port 9090. It also enables the multilingual feature, allowing transcription in multiple languages. The --language flag specifies the target language for transcription, in this case, Hindi ("hi"). The --task flag is set to "transcribe" to indicate that transcription is the desired task. Also, --task can be set to "translate" to translate source language to English.
 
     - To transcribe from microphone:
     ```bash
-     python client.py --host "localhost" --port "9090"
+     python client.py --host "localhost" --port "9090" --multilingual --language "en" --task "transcribe"
     ```
+    This command captures audio from the microphone and sends it to the server for transcription. It uses the same options as the previous command, enabling the multilingual feature and specifying the target language and task.
 
 
 ## Transcribe audio from browser
@@ -46,13 +49,26 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
 ```
 This would start the websocket server on port ```9090```.
 
+### Chrome Extension
+- Refer to [Audio-Transcription-Chrome](https://github.com/collabora/whisper-live/tree/main/Audio-Transcription-Chrome#readme) to use Chrome extension.
 
-- Head over to ```Audio-Transcription``` module to unpack and load a chrome extension to capture any audio in the browser(only Chrome for now) and send it to the websocket server to transcribe the audio in the current tab.
+### Firefox Extension
+- Refer to [Audio-Transcription-Firefox](https://github.com/collabora/whisper-live/tree/main/Audio-Transcription-Firefox#readme) to use Mozilla Firefox extension.
 
+## Whisper Live Server in Docker
+- Build docker container
+```bash
+ docker build . -t whisper-live
+```
+
+- Run docker container
+```bash
+ docker run -it --gpus all -p 9090:9090 whisper-live:latest
+```
 
 ## Future Work
-- [ ] Update Documentation.
-- [ ] Keep only a single server implementation i.e. websockets and get rid of the socket implementation in ```server.py```. Also, update ```client.py``` to websockets-client implemenation.
+- [x] Update Documentation.
+- [x] Keep only a single server implementation i.e. websockets and get rid of the socket implementation in ```server.py```. Also, update ```client.py``` to websockets-client implemenation.
 - [ ] Add translation to other languages on top of transcription.
 
 ## Citations
@@ -61,7 +77,7 @@ This would start the websocket server on port ```9090```.
   title = {Robust Speech Recognition via Large-Scale Weak Supervision},
   url = {https://arxiv.org/abs/2212.04356},
   author = {Radford, Alec and Kim, Jong Wook and Xu, Tao and Brockman, Greg and McLeavey, Christine and Sutskever, Ilya},
-  publisher = {arXiv},  
+  publisher = {arXiv},
   year = {2022},
 }
 ```

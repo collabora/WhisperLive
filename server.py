@@ -19,20 +19,27 @@ from transcriber import WhisperModel
 
 
 clients = {}
+SERVER_READY = "SERVER_READY"
 
 def recv_audio(websocket):
     """
     Receive audio chunks from client in an infinite loop.
     """
     global clients
-    client = ServeClient(websocket)
+    options = websocket.recv()
+    options = json.loads(options)
+    client = ServeClient(
+        websocket, 
+        multilingual=options["multilingual"],
+        language=options["language"],
+        task=options["task"]
+    )
+
     clients[websocket] = client
+    
     while True:
         try:
             frame_data = websocket.recv()
-            if isinstance(frame_data, str):
-                logging.info(frame_data)
-                continue
             frame_np = np.frombuffer(frame_data, np.float32)
             clients[websocket].add_frames(frame_np)
             
@@ -45,11 +52,17 @@ def recv_audio(websocket):
 
 class ServeClient:
     RATE = 16000
-    def __init__(self, websocket, topic=None, device=None):
-        self.payload_size = struct.calcsize("Q")
+    def __init__(self, websocket, task="transcribe", device=None, multilingual=False, language=None):
         self.data = b""
         self.frames = b""
-        self.transcriber = WhisperModel("small.en", compute_type="float16", local_files_only=False)
+        self.language = language
+        self.task = task
+        self.transcriber = WhisperModel(
+            "small" if multilingual else "small.en", 
+            device=device if device else "cuda",
+            compute_type="float16", 
+            local_files_only=False,
+        )
         
         # voice activity detection model
         self.vad_model, _ = torch.hub.load(repo_or_dir='snakers4/silero-vad',
@@ -77,13 +90,11 @@ class ServeClient:
         self.wrapper = textwrap.TextWrapper(width=50)
         self.pick_previous_segments = 2
 
-        # setup mqtt
-        self.topic = topic
-
         # threading
         self.websocket = websocket
         self.trans_thread = threading.Thread(target=self.speech_to_text)
         self.trans_thread.start()
+        self.websocket.send(json.dumps(SERVER_READY))
     
     def fill_output(self, output):
         """
@@ -109,7 +120,7 @@ class ServeClient:
     
     def add_frames(self, frame_np):
         try:
-            speech_prob = self.vad_model(torch.from_numpy(frame_np), self.RATE).item()
+            speech_prob = self.vad_model(torch.from_numpy(frame_np.copy()), self.RATE).item()
             if speech_prob < self.vad_threshold:
                 return
             
@@ -157,7 +168,13 @@ class ServeClient:
                     initial_prompt = None
                 
                 # whisper transcribe with prompt
-                result = self.transcriber.transcribe(input_sample, initial_prompt=initial_prompt)
+                result = self.transcriber.transcribe(
+                    input_sample, 
+                    initial_prompt=initial_prompt,
+                    language=self.language,
+                    task=self.task
+                )
+
                 if len(result):
                     self.t_start = None
                     last_segment = self.update_segments(result, duration)
@@ -267,9 +284,8 @@ class ServeClient:
         logging.info("Cleaning up.")
         self.exit = True
         self.transcriber.destroy()
-
     
 
 if __name__ == "__main__":
-    with serve(recv_audio, "127.0.0.1", 9090) as server:
+    with serve(recv_audio, "0.0.0.0", 9090) as server:
         server.serve_forever()

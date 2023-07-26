@@ -1,0 +1,28 @@
+{
+    "manifest_version": 2,
+    "name": "Audio Transcription",
+    "version": "1.0",
+    "description": "Transcribe audio from any webpage.",
+    "permissions": [
+      "storage",
+      "activeTab",
+      "<all_urls>"
+    ],
+    "background": {
+      "scripts": ["background.js"],
+      "persistent": false
+    },
+    "browser_action": {
+      "default_popup": "popup.html",
+      "default_icon": "icon128.png"
+    },
+    "icons": {
+        "128":"icon128.png"
+        },
+    "content_scripts": [
+      {
+        "matches": ["<all_urls>"],
+        "js": ["content.js"]
+      }
+    ]
+  }

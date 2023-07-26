@@ -23,6 +23,13 @@ This Chrome extension allows you to send audio from your browser to a server for
 ### Capturing Audio
 To capture the audio in the current tab, we used the chrome `tabCapture` API to obtain a `MediaStream` object of the current tab.
 
+### Options
+When using the Audio Transcription extension, you have the following options:
+ - **Use Collabora Server**: We provide a demo server which runs the whisper small model.
+ - **Use Multilingual Model**: Enable this option to utilize the multilingual capabilities of OpenAI-whisper.
+ - **Language**: Select the target language for transcription or translation. You can choose from a variety of languages supported by OpenAI-whisper.
+ - **Task:** Choose the specific task to perform on the audio. You can select either "transcribe" for transcription or "translate" to translate the audio to English.
+
 ### Getting Started
 - Make sure the transcription server is running properly. To know more about how to start the server, see the [documentation here](https://github.com/collabora/whisper-live).
 - Just click on the Chrome Extension which should show 2 options
@@ -32,4 +39,7 @@ To capture the audio in the current tab, we used the chrome `tabCapture` API to 
 
 ## Limitations
 This extension requires an internet connection to stream audio and receive transcriptions. The accuracy of the transcriptions may vary depending on the audio quality and the performance of the server-side transcription service. The extension may consume additional system resources while running, especially when streaming audio.
+
+## Note
+The extension relies on a properly running transcription server with multilingual support. Please follow the server documentation for setup and configuration.
 
