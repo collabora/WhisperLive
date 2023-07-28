@@ -24,11 +24,18 @@ language = None
 
 
 def on_message(ws, message):
-    global START_RECORDING
+    global START_RECORDING, language
     message = json.loads(message)
     if message == "SERVER_READY":
         START_RECORDING = True
         return
+
+    if isinstance(message, dict):
+        language = message.get("language")
+        lang_prob = message.get("language_prob")
+        print(f"Server detected language {language} with probability {lang_prob}")
+        return
+
     text = []
     if len(message):
         for seg in message:
@@ -66,7 +73,6 @@ def on_open(ws):
         'task': task
     }))
 
-    
 
 class Client:
     def __init__(self, host=None, port=None):
@@ -254,10 +260,6 @@ if __name__=="__main__":
     while not START_RECORDING:
         pass
     print("Server Ready!")
-    if os.name=='nt':
-        os.system('cls')
-    else:
-        os.system('clear')
 
     if opt.audio is not None:
         resampled_file = resample(opt.audio)
