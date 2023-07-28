@@ -2,7 +2,8 @@ let socket = null;
 let isCapturing = false;
 let mediaStream = null;
 let audioContext = null;
-let scriptProcessor = null; 
+let scriptProcessor = null;
+let language = null;
 
 /**
  * Resamples the audio data to a target sample rate of 16kHz.
@@ -40,6 +41,7 @@ function resampleTo16kHZ(audioData, origSampleRate = 44100) {
 
 function startRecording(data) {
     socket = new WebSocket(`ws://${data.host}:${data.port}/`);
+    language = data.language;
     socket.onopen = function(e) { 
       socket.send(
         JSON.stringify({
@@ -56,7 +58,19 @@ function startRecording(data) {
         isServerReady = true;
         return;
       }
-      const data = event.data;
+
+      if (language === null ){
+        const data = JSON.parse(event.data);
+        language = data["language"];
+
+        browser.runtime.sendMessage({ action: "updateSelectedLanguage", data: language })
+          .catch(function(error) {
+            console.error("Error sending message:", error);
+          });
+        return
+      }
+
+      const data = event.data;;
       browser.runtime.sendMessage({ action: "transcript", data })
           .catch(function(error) {
             console.error("Error sending message:", error);

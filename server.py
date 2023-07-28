@@ -140,6 +140,24 @@ class ServeClient:
         """
         Process audio stream in an infinite loop.
         """
+        # detect language
+        if self.language is None:
+            # wait for 30s of audio
+            while self.frames_np is None or self.frames_np.shape[0] < 30*self.RATE:
+                time.sleep(1)
+            input_bytes = self.frames_np[-30*self.RATE:].copy()
+            self.frames_np = None
+            duration = input_bytes.shape[0] / self.RATE
+
+            self.language, lang_prob = self.transcriber.transcribe(
+                    input_bytes, 
+                    initial_prompt=None,
+                    language=self.language,
+                    task=self.task
+                )
+            logging.info(f"Detected language {self.language} with probability {lang_prob}")
+            self.websocket.send(json.dumps({"language": self.language, "language_prob": lang_prob}))
+
         while True:
             if self.exit:
                 logging.info("Exiting speech to text thread")

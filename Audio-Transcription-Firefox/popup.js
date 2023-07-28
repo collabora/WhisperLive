@@ -6,7 +6,7 @@ document.addEventListener("DOMContentLoaded", function() {
   const useMultilingualCheckbox = document.getElementById('useMultilingualCheckbox');
   const languageDropdown = document.getElementById('languageDropdown');
   const taskDropdown = document.getElementById('taskDropdown');
-  let selectedLanguage = undefined;
+  let selectedLanguage = null;
   let selectedTask = taskDropdown.value;
 
   browser.storage.local.get("capturingState")
@@ -137,12 +137,28 @@ document.addEventListener("DOMContentLoaded", function() {
   });
 
   languageDropdown.addEventListener('change', function() {
-    selectedLanguage = languageDropdown.value;
+    if (languageDropdown.value === "") {
+      selectedLanguage = null;
+    } else {
+      selectedLanguage = languageDropdown.value;
+    }
     browser.storage.local.set({ selectedLanguage });
   });
 
   taskDropdown.addEventListener('change', function() {
     selectedTask = taskDropdown.value;
     browser.storage.local.set({ selectedTask });
+  });
+
+  browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === "updateSelectedLanguage") {
+      const detectedLanguage = request.detectedLanguage;
+  
+      if (detectedLanguage) {
+        languageDropdown.value = detectedLanguage;
+        selectedLanguage = detectedLanguage;
+        browser.storage.local.set({ selectedLanguage });
+      }
+    }
   });
 });

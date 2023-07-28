@@ -195,6 +195,12 @@ chrome.runtime.onMessage.addListener((message) => {
     startCapture(message);
   } else if (message.action === "stopCapture") {
     stopCapture();
+  } else if (message.action === "updateSelectedLanguage") {
+    console.log("Selected language");
+    console.log(message.detectedLanguage);
+    const detectedLanguage = message.detectedLanguage;
+    chrome.runtime.sendMessage({ action: "updateSelectedLanguage", detectedLanguage });
+    chrome.storage.local.set({ selectedLanguage: detectedLanguage });
   }
 });
 
