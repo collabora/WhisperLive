@@ -137,7 +137,11 @@ document.addEventListener("DOMContentLoaded", function() {
   });
 
   languageDropdown.addEventListener('change', function() {
-    selectedLanguage = languageDropdown.value;
+    if (languageDropdown.value === "") {
+      selectedLanguage = null;
+    } else {
+      selectedLanguage = languageDropdown.value;
+    }
     browser.storage.local.set({ selectedLanguage });
   });
 
