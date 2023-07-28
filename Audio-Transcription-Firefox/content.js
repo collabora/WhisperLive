@@ -62,6 +62,11 @@ function startRecording(data) {
       if (language === null ){
         const data = JSON.parse(event.data);
         language = data["language"];
+
+        browser.runtime.sendMessage({ action: "updateSelectedLanguage", data: language })
+          .catch(function(error) {
+            console.error("Error sending message:", error);
+          });
         return
       }
 

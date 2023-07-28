@@ -101,6 +101,14 @@ async function startRecord(option) {
       if (language === null) {
         const data = JSON.parse(event.data);
         language = data["language"];
+        
+        // send message to popup.js to update dropdown
+        // console.log(language);
+        chrome.runtime.sendMessage({
+          action: "updateSelectedLanguage",
+          detectedLanguage: language,
+        });
+
         return;
       }
 

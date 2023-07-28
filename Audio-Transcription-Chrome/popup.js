@@ -154,4 +154,16 @@ document.addEventListener("DOMContentLoaded", function () {
     selectedTask = taskDropdown.value;
     chrome.storage.local.set({ selectedTask });
   });
+
+  chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+    if (request.action === "updateSelectedLanguage") {
+      const detectedLanguage = request.detectedLanguage;
+  
+      if (detectedLanguage) {
+        languageDropdown.value = detectedLanguage;
+        chrome.storage.local.set({ selectedLanguage: detectedLanguage });
+      }
+    }
+  });
+  
 });

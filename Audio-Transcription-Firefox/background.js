@@ -10,4 +10,12 @@ browser.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         console.error("Error retrieving active tab:", error);
       });
   }
+  if (action === "updateSelectedLanguage") {
+    const detectedLanguage = data;
+    if (detectedLanguage) {
+      browser.runtime.sendMessage({ action: "updateSelectedLanguage", detectedLanguage });
+      browser.storage.local.set({ selectedLanguage: detectedLanguage });
+    }
+  }
 });
+

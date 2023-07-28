@@ -149,4 +149,16 @@ document.addEventListener("DOMContentLoaded", function() {
     selectedTask = taskDropdown.value;
     browser.storage.local.set({ selectedTask });
   });
+
+  browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === "updateSelectedLanguage") {
+      const detectedLanguage = request.detectedLanguage;
+  
+      if (detectedLanguage) {
+        languageDropdown.value = detectedLanguage;
+        selectedLanguage = detectedLanguage;
+        browser.storage.local.set({ selectedLanguage });
+      }
+    }
+  });
 });
