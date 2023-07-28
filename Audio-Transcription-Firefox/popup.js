@@ -6,7 +6,7 @@ document.addEventListener("DOMContentLoaded", function() {
   const useMultilingualCheckbox = document.getElementById('useMultilingualCheckbox');
   const languageDropdown = document.getElementById('languageDropdown');
   const taskDropdown = document.getElementById('taskDropdown');
-  let selectedLanguage = undefined;
+  let selectedLanguage = null;
   let selectedTask = taskDropdown.value;
 
   browser.storage.local.get("capturingState")

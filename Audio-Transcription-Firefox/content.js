@@ -2,7 +2,8 @@ let socket = null;
 let isCapturing = false;
 let mediaStream = null;
 let audioContext = null;
-let scriptProcessor = null; 
+let scriptProcessor = null;
+let language = null;
 
 /**
  * Resamples the audio data to a target sample rate of 16kHz.
@@ -56,7 +57,14 @@ function startRecording(data) {
         isServerReady = true;
         return;
       }
-      const data = event.data;
+
+      if (language === null ){
+        const data = JSON.parse(event.data);
+        language = data["language"];
+        return
+      }
+
+      const data = event.data;;
       browser.runtime.sendMessage({ action: "transcript", data })
           .catch(function(error) {
             console.error("Error sending message:", error);
