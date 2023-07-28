@@ -7,7 +7,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const useMultilingualCheckbox = document.getElementById('useMultilingualCheckbox');
   const languageDropdown = document.getElementById('languageDropdown');
   const taskDropdown = document.getElementById('taskDropdown');
-  let selectedLanguage = undefined;
+  let selectedLanguage = null;
   let selectedTask = taskDropdown.value;
 
   // Add click event listeners to the buttons
@@ -142,7 +142,11 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   languageDropdown.addEventListener('change', function() {
-    selectedLanguage = languageDropdown.value;
+    if (languageDropdown.value === "") {
+      selectedLanguage = null;
+    } else {
+      selectedLanguage = languageDropdown.value;
+    }
     chrome.storage.local.set({ selectedLanguage });
   });
 

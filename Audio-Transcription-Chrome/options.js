@@ -81,6 +81,7 @@ async function startRecord(option) {
     };
     const socket = new WebSocket(`ws://${option.host}:${option.port}/`);
     let isServerReady = false;
+    let language = option.language;
     socket.onopen = function(e) { 
       socket.send(
         JSON.stringify({
@@ -92,12 +93,17 @@ async function startRecord(option) {
     };
 
     socket.onmessage = async (event) => {
-      console.log(event.data);
       if (isServerReady === false){
         isServerReady = true;
         return;
       }
       
+      if (language === null) {
+        const data = JSON.parse(event.data);
+        language = data["language"];
+        return;
+      }
+
       res = await sendMessageToTab(option.currentTabId, {
         type: "transcript",
         data: event.data,
