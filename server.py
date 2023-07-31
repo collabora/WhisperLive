@@ -28,7 +28,6 @@ def recv_audio(websocket):
     global clients
     options = websocket.recv()
     options = json.loads(options)
-    print(options)
     client = ServeClient(
         websocket, 
         multilingual=options["multilingual"],
