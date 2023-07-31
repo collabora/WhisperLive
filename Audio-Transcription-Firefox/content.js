@@ -42,6 +42,9 @@ function resampleTo16kHZ(audioData, origSampleRate = 44100) {
 function startRecording(data) {
     socket = new WebSocket(`ws://${data.host}:${data.port}/`);
     language = data.language;
+    if (language === null && !data.useMultilingual) {
+      language = 'en';
+    }
     socket.onopen = function(e) { 
       socket.send(
         JSON.stringify({
