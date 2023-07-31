@@ -288,6 +288,7 @@ class WhisperModel:
                     language,
                     language_probability,
                 )
+                return language, language_probability
         else:
             language_probability = 1
 
