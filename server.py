@@ -28,6 +28,7 @@ def recv_audio(websocket):
     global clients
     options = websocket.recv()
     options = json.loads(options)
+    print(options)
     client = ServeClient(
         websocket, 
         multilingual=options["multilingual"],
@@ -55,7 +56,7 @@ class ServeClient:
     def __init__(self, websocket, task="transcribe", device=None, multilingual=False, language=None):
         self.data = b""
         self.frames = b""
-        self.language = language
+        self.language = language if multilingual else "en"
         self.task = task
         self.transcriber = WhisperModel(
             "small" if multilingual else "small.en", 
