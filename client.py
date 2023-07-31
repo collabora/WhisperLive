@@ -251,7 +251,7 @@ if __name__=="__main__":
     opt = parser.parse_args()
     print(opt)
     multilingual=opt.multilingual,
-    language = opt.language,
+    language = opt.language if opt.multilingual else "en",
     task = opt.task
     c = Client(host=opt.host, port=opt.port)
 

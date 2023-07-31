@@ -82,6 +82,9 @@ async function startRecord(option) {
     const socket = new WebSocket(`ws://${option.host}:${option.port}/`);
     let isServerReady = false;
     let language = option.language;
+    if (language === null && !option.multilingual) {
+      language = 'en';
+    }
     socket.onopen = function(e) { 
       socket.send(
         JSON.stringify({
