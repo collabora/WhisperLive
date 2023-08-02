@@ -10,48 +10,70 @@ logging.basicConfig(level = logging.INFO)
 
 from collections import deque
 from dataclasses import dataclass
+from websockets.sync.server import serve
 
 import torch
 import numpy as np
-from websockets.sync import server
-from websockets.sync.server import serve
-from transcriber import WhisperModel
+from whisper_live.transcriber import WhisperModel
 
 
-clients = {}
-SERVER_READY = "SERVER_READY"
-
-def recv_audio(websocket):
+class TranscriptionServer:
     """
-    Receive audio chunks from client in an infinite loop.
-    """
-    global clients
-    options = websocket.recv()
-    options = json.loads(options)
-    client = ServeClient(
-        websocket, 
-        multilingual=options["multilingual"],
-        language=options["language"],
-        task=options["task"]
-    )
+    Represents a transcription server that handles incoming audio from clients.
 
-    clients[websocket] = client
-    
-    while True:
-        try:
-            frame_data = websocket.recv()
-            frame_np = np.frombuffer(frame_data, np.float32)
-            clients[websocket].add_frames(frame_np)
-            
-        except Exception as e:
-            clients[websocket].cleanup()
-            clients.pop(websocket)
-            logging.info("Connection Closed.")
-            break
+    Attributes:
+        clients (dict): A dictionary to store connected clients.
+    """
+
+    def __init__(self):
+        self.clients = {}
+
+    def recv_audio(self, websocket):
+        """
+        Receive audio chunks from a client in an infinite loop.
+
+        Args:
+            websocket (WebSocket): The WebSocket connection for the client.
+        """
+        options = websocket.recv()
+        options = json.loads(options)
+        client = ServeClient(
+            websocket,
+            multilingual=options["multilingual"],
+            language=options["language"],
+            task=options["task"],
+        )
+
+        self.clients[websocket] = client
+
+        while True:
+            try:
+                frame_data = websocket.recv()
+                frame_np = np.frombuffer(frame_data, np.float32)
+                self.clients[websocket].add_frames(frame_np)
+
+            except Exception as e:
+                self.clients[websocket].cleanup()
+                self.clients.pop(websocket)
+                logging.info("Connection Closed.")
+                break
+
+    def run(self, host, port):
+        """
+        Run the transcription server.
+
+        Args:
+            host (str): The host address to bind the server.
+            port (int): The port number to bind the server.
+        """
+        with serve(self.recv_audio, host, port) as server:
+            server.serve_forever()
 
 
 class ServeClient:
     RATE = 16000
+    SERVER_READY = "SERVER_READY"
+
     def __init__(self, websocket, task="transcribe", device=None, multilingual=False, language=None):
         self.data = b""
         self.frames = b""
@@ -94,7 +116,7 @@ class ServeClient:
         self.websocket = websocket
         self.trans_thread = threading.Thread(target=self.speech_to_text)
         self.trans_thread.start()
-        self.websocket.send(json.dumps(SERVER_READY))
+        self.websocket.send(json.dumps(self.SERVER_READY))
     
     def fill_output(self, output):
         """
@@ -302,8 +324,4 @@ class ServeClient:
         logging.info("Cleaning up.")
         self.exit = True
         self.transcriber.destroy()
-    
 
-if __name__ == "__main__":
-    with serve(recv_audio, "0.0.0.0", 9090) as server:
-        server.serve_forever()

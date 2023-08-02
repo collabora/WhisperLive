@@ -39,6 +39,7 @@ COPY requirements/ /app
 RUN bash setup.sh
 RUN pip install -r server.txt
 
-COPY *py /app
+RUN pip install whisper-live
 
-CMD ["python", "server.py"]
+COPY run_server.py /app
+CMD ["python", "run_server.py"]
