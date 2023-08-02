@@ -11,41 +11,43 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
  bash setup.sh
 ```
 
-- To install client requirements
+- Install whisper-live from pip
 ```bash
- pip install -r requirements/client.txt
-```
-
-- To install server requirements
-```bash
- pip install -r requirements/server.txt
+ pip install whisper-live
 ```
 
 ## Getting Started
 - Run the server
-```bash
- python server.py
+```python
+ from whisper_live.server import TranscriptionServer
+ server = TranscriptionServer()
+ server.run("0.0.0.0", 9090)
 ```
 
 - On the client side
     - To transcribe an audio file:
-    ```bash
-      python client.py --audio "audio.wav" --host "localhost" --port "9090" --multilingual --language "hi" --task "transcribe"
-                                                                                                                  "translate"
+    ```python
+      from whisper_live.client import TranscriptionClient
+      client = TranscriptionClient("localhost", 9090, multilingual=True, language="hi", translate=True)
+      client(audio_file_path)
     ```
-    This command transcribes the specified audio file (audio.wav) using the Whisper model. It connects to the server running on localhost at port 9090. It also enables the multilingual feature, allowing transcription in multiple languages. The --language flag specifies the target language for transcription, in this case, Hindi ("hi"). The --task flag is set to "transcribe" to indicate that transcription is the desired task. Also, --task can be set to "translate" to translate source language to English.
+    This command transcribes the specified audio file (audio.wav) using the Whisper model. It connects to the server running on localhost at port 9090. It also enables the multilingual feature, allowing transcription in multiple languages. The language option specifies the target language for transcription, in this case, Hindi ("hi"). The translate option should be set to `True` if we want to translate from the source language to English and `False` if we want to transcribe in the source language.
 
     - To transcribe from microphone:
-    ```bash
-     python client.py --host "localhost" --port "9090" --multilingual --language "en" --task "transcribe"
+    ```python
+      from whisper_live.client import TranscriptionClient
+      client = TranscriptionClient(host, port, multilingual=True, language="hi", translate=True)
+      client()
     ```
     This command captures audio from the microphone and sends it to the server for transcription. It uses the same options as the previous command, enabling the multilingual feature and specifying the target language and task.
 
 
 ## Transcribe audio from browser
 - Run the server
-```bash
- python server.py
+```python
+ from whisper_live.server import TranscriptionServer
+ server = TranscriptionServer()
+ server.run("0.0.0.0", 9090)
 ```
 This would start the websocket server on port ```9090```.
 
@@ -67,9 +69,8 @@ This would start the websocket server on port ```9090```.
 ```
 
 ## Future Work
-- [x] Update Documentation.
-- [x] Keep only a single server implementation i.e. websockets and get rid of the socket implementation in ```server.py```. Also, update ```client.py``` to websockets-client implemenation.
 - [ ] Add translation to other languages on top of transcription.
+- [ ] TensorRT backend for Whisper.
 
 ## Citations
 ```bibtex
