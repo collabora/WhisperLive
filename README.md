@@ -72,6 +72,10 @@ This would start the websocket server on port ```9090```.
 - [ ] Add translation to other languages on top of transcription.
 - [ ] TensorRT backend for Whisper.
 
+## Contact
+
+We are available to help you with both Open Source and proprietary AI projects. You can reach us via the Collabora website or [vineet.suryan@collabora.com](mailto:vineet.suryan@collabora.com) and [marcus.edel@collabora.com](mailto:marcus.edel@collabora.com).
+
 ## Citations
 ```bibtex
 @article{Whisper
