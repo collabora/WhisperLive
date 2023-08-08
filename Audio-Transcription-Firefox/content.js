@@ -5,6 +5,20 @@ let audioContext = null;
 let scriptProcessor = null;
 let language = null;
 
+let isPaused = false;
+
+const mediaElements = document.querySelectorAll('video, audio');
+mediaElements.forEach((mediaElement) => {
+  mediaElement.addEventListener('play', handlePlaybackStateChange);
+  mediaElement.addEventListener('pause', handlePlaybackStateChange);
+});
+
+
+function handlePlaybackStateChange(event) {
+  isPaused = event.target.paused;
+}
+
+
 /**
  * Resamples the audio data to a target sample rate of 16kHz.
  * @param {Array|ArrayBuffer|TypedArray} audioData - The input audio data.
@@ -90,7 +104,7 @@ function startRecording(data) {
       recorder = audioContext.createScriptProcessor(4096, 1, 1);
 
       recorder.onaudioprocess = async (event) => {
-        if (!audioContext || !isCapturing || !isServerReady) return;
+        if (!audioContext || !isCapturing || !isServerReady || isPaused) return;
 
         const inputData = event.inputBuffer.getChannelData(0);
         const audioData16kHz = resampleTo16kHZ(inputData, audioContext.sampleRate);
