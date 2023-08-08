@@ -89,10 +89,7 @@ class TranscriptionServer:
         while True:
             try:
                 frame_data = websocket.recv()
-                data = json.loads(frame_data)
-                base64_audio = data["audio"]
-                binary_audio = base64.b64decode(base64_audio)
-                frame_np = np.frombuffer(binary_audio, dtype=np.float32)
+                frame_np = np.frombuffer(frame_data, dtype=np.float32)
 
                 try:
                     speech_prob = self.vad_model(torch.from_numpy(frame_np.copy()), self.RATE).item()
@@ -117,6 +114,7 @@ class TranscriptionServer:
 
 
             except Exception as e:
+                logging.error(e)
                 self.clients[websocket].cleanup()
                 self.clients.pop(websocket)
                 self.clients_start_time.pop(websocket)
