@@ -39,6 +39,17 @@ class TranscriptionServer:
         self.websockets = {}
         self.clients_start_time = {}
         self.max_clients = 4
+        self.max_connection_time = 600 # in seconds
+    
+    def get_wait_time(self):
+        wait_time = None
+        for k,v in self.clients_start_time.items():
+            current_client_time_remaining = self.max_connection_time - (time.time() - v)
+            if wait_time is None:
+                wait_time = current_client_time_remaining
+            elif current_client_time_remaining < wait_time:
+                wait_time = current_client_time_remaining
+        return wait_time/60
 
     def recv_audio(self, websocket):
         """
@@ -51,9 +62,10 @@ class TranscriptionServer:
         print("New client connected")
         if len(self.clients) >= self.max_clients:
             # Send response to the new client to come back later
+            wait_time = self.get_wait_time()
             response = {
-                "status": "error",
-                "message": "Server is currently full. Please try again later.",
+                "status": "WAIT",
+                "message": wait_time,
             }
             websocket.send(json.dumps(response))
             websocket.close()
