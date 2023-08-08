@@ -58,15 +58,18 @@ This would start the websocket server on port ```9090```.
 - Refer to [Audio-Transcription-Firefox](https://github.com/collabora/whisper-live/tree/main/Audio-Transcription-Firefox#readme) to use Mozilla Firefox extension.
 
 ## Whisper Live Server in Docker
-- Build docker container
+- GPU
 ```bash
- docker build . -t whisper-live
-```
-
-- Run docker container
-```bash
+ docker build . -t whisper-live -f docker/Dockerfile.gpu
  docker run -it --gpus all -p 9090:9090 whisper-live:latest
 ```
+
+- CPU
+```bash
+ docker build . -t whisper-live -f docker/Dockerfile.cpu
+ docker run -it -p 9090:9090 whisper-live:latest
+```
+**Note**: By default we use "small" model size. To build docker image for a different model size, change the size in server.py and then build the docker image.
 
 ## Future Work
 - [ ] Add translation to other languages on top of transcription.
