@@ -66,6 +66,16 @@ function resampleTo16kHZ(audioData, origSampleRate = 44100) {
   return resampledData;
 }
 
+function generateUUID() {
+  let dt = new Date().getTime();
+  const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = (dt + Math.random() * 16) % 16 | 0;
+    dt = Math.floor(dt / 16);
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+  return uuid;
+}
+
 
 /**
  * Starts recording audio from the captured tab.
@@ -73,6 +83,7 @@ function resampleTo16kHZ(audioData, origSampleRate = 44100) {
  */
 async function startRecord(option) {
   const stream = await captureTabAudio();
+  const uuid = generateUUID();
 
   if (stream) {
     // call when the stream inactive
@@ -88,6 +99,7 @@ async function startRecord(option) {
     socket.onopen = function(e) { 
       socket.send(
         JSON.stringify({
+          uid: uuid,
           multilingual: option.multilingual,
           language: option.language,
           task: option.task
@@ -96,13 +108,26 @@ async function startRecord(option) {
     };
 
     socket.onmessage = async (event) => {
+      const data = JSON.parse(event.data);
+      if (data["uid"] !== uuid)
+        return;
+      
+      if (data["status"] === "WAIT"){
+        await sendMessageToTab(option.currentTabId, {
+          type: "showWaitPopup",
+          data: data["message"],
+        });
+        chrome.runtime.sendMessage({ action: "toggleCaptureButtons", data: false }) 
+        chrome.runtime.sendMessage({ action: "stopCapture" })
+        return;
+      }
+        
       if (isServerReady === false){
         isServerReady = true;
         return;
       }
       
       if (language === null) {
-        const data = JSON.parse(event.data);
         language = data["language"];
         
         // send message to popup.js to update dropdown
@@ -112,6 +137,11 @@ async function startRecord(option) {
           detectedLanguage: language,
         });
 
+        return;
+      }
+
+      if (data["message"] === "DISCONNECT"){
+        chrome.runtime.sendMessage({ action: "toggleCaptureButtons", data: false })        
         return;
       }
 
@@ -136,7 +166,13 @@ async function startRecord(option) {
       audioDataCache.push(inputData);
 
       // feed inputs and run
-      socket.send(audioData16kHz);
+      const base64AudioData = btoa(String.fromCharCode.apply(null, new Uint8Array(audioData16kHz.buffer)));
+
+      socket.send(
+        JSON.stringify({
+          "audio": base64AudioData
+        })
+      );
     };
 
     // Prevent page mute

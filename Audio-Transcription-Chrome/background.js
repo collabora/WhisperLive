@@ -190,17 +190,19 @@ async function stopCapture() {
  * Listens for messages from the runtime and performs corresponding actions.
  * @param {Object} message - The message received from the runtime.
  */
-chrome.runtime.onMessage.addListener((message) => {
+chrome.runtime.onMessage.addListener(async (message) => {
   if (message.action === "startCapture") {
     startCapture(message);
   } else if (message.action === "stopCapture") {
     stopCapture();
   } else if (message.action === "updateSelectedLanguage") {
-    console.log("Selected language");
-    console.log(message.detectedLanguage);
     const detectedLanguage = message.detectedLanguage;
     chrome.runtime.sendMessage({ action: "updateSelectedLanguage", detectedLanguage });
     chrome.storage.local.set({ selectedLanguage: detectedLanguage });
+  } else if (message.action === "toggleCaptureButtons") {
+    chrome.runtime.sendMessage({ action: "toggleCaptureButtons", data: false });
+    chrome.storage.local.set({ capturingState: { isCapturing: false } })
+    stopCapture();
   }
 });
 

@@ -6,6 +6,52 @@ var elem_text = null;
 var segments = [];
 var text_segments = [];
 
+function initPopupElement() {
+  if (document.getElementById('popupElement')) {
+    return;
+  }
+
+  const popupContainer = document.createElement('div');
+  popupContainer.id = 'popupElement';
+  popupContainer.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; color: black; padding: 16px; border-radius: 10px; box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5); display: none; text-align: center;';
+
+  const popupText = document.createElement('span');
+  popupText.textContent = 'Default Text';
+  popupText.className = 'popupText';
+  popupText.style.fontSize = '24px';
+  popupContainer.appendChild(popupText);
+
+  const buttonContainer = document.createElement('div');
+  buttonContainer.style.marginTop = '8px';
+  const closePopupButton = document.createElement('button');
+  closePopupButton.textContent = 'Close';
+  closePopupButton.style.backgroundColor = '#65428A';
+  closePopupButton.style.color = 'white';
+  closePopupButton.style.border = 'none';
+  closePopupButton.style.padding = '8px 16px'; // Add padding for better click area
+  closePopupButton.style.cursor = 'pointer';
+  closePopupButton.addEventListener('click', async () => {
+    popupContainer.style.display = 'none';
+    await browser.runtime.sendMessage({ action: 'toggleCaptureButtons', data: false });
+  });
+  buttonContainer.appendChild(closePopupButton);
+  popupContainer.appendChild(buttonContainer);
+
+  document.body.appendChild(popupContainer);
+}
+
+
+function showPopup(customText) {
+  const popup = document.getElementById('popupElement');
+  const popupText = popup.querySelector('.popupText');
+
+  if (popup && popupText) {
+      popupText.textContent = customText || 'Default Text'; // Set default text if custom text is not provided
+      popup.style.display = 'block';
+  }
+}
+
+
 function init_element() {
     if (document.getElementById('transcription')) {
         return;
@@ -128,11 +174,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         remove_element();
         sendResponse({data: "STOPPED"});
         return;
+    } else if (type === "showWaitPopup"){
+        initPopupElement();
+
+        showPopup(`Estimated wait time ~ ${Math.round(data)} minutes`);
+        sendResponse({data: "popup"});
+        return;
     }
 
     init_element();
 
     message = JSON.parse(data);
+    message = message["segments"];
 
     var text = '';
     for (var i = 0; i < message.length; i++) {
