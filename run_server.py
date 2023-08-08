@@ -1,5 +1,3 @@
-
-import asyncio
 from whisper_live.server import TranscriptionServer
 
 if __name__ == "__main__":
