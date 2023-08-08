@@ -38,7 +38,7 @@ class TranscriptionServer:
         self.clients = {}
         self.websockets = {}
         self.clients_start_time = {}
-        self.max_clients = 4
+        self.max_clients = 1
         self.max_connection_time = 600 # in seconds
     
     def get_wait_time(self):
@@ -58,21 +58,23 @@ class TranscriptionServer:
         Args:
             websocket (WebSocket): The WebSocket connection for the client.
         """
-        # Check if the maximum number of clients is reached
-        print("New client connected")
+        logging.info("New client connected")
+        options = websocket.recv()
+        options = json.loads(options)
+
         if len(self.clients) >= self.max_clients:
-            # Send response to the new client to come back later
+            logging.warning("Client Queue Full. Asking client to wait ...")
             wait_time = self.get_wait_time()
             response = {
+                "uid" : options["uid"],
                 "status": "WAIT",
                 "message": wait_time,
             }
             websocket.send(json.dumps(response))
             websocket.close()
+            del websocket
             return
         
-        options = websocket.recv()
-        options = json.loads(options)
         client = ServeClient(
             websocket,
             multilingual=options["multilingual"],
@@ -82,7 +84,6 @@ class TranscriptionServer:
         )
         
         self.clients[websocket] = client
-        # max 10 minutes for each client
         self.clients_start_time[websocket] = time.time() 
 
         while True:
@@ -102,12 +103,11 @@ class TranscriptionServer:
                     logging.error(e)
                     return
                 self.clients[websocket].add_frames(frame_np)
+
                 elapsed_time = time.time() - self.clients_start_time[websocket]
-                if elapsed_time >= 45:  # 10 minutes in seconds
-                    # send a disconnection message
+                if elapsed_time >= self.max_connection_time:
                     self.clients[websocket].disconnect()
-                    print(f"{self.clients[websocket]} Client disconnected due to overtime.")
-                    print()
+                    logging.warning(f"{self.clients[websocket]} Client disconnected due to overtime.")
                     self.clients[websocket].cleanup()
                     self.clients.pop(websocket)
                     self.clients_start_time.pop(websocket)
@@ -120,8 +120,8 @@ class TranscriptionServer:
                 self.clients[websocket].cleanup()
                 self.clients.pop(websocket)
                 self.clients_start_time.pop(websocket)
-                print("Connection Closed.")
-                print(self.clients)
+                logging.info("Connection Closed.")
+                logging.info(self.clients)
 
                 del websocket
                 break
@@ -294,7 +294,7 @@ class ServeClient:
                             })
                         )
                     except Exception as e:
-                        logging.info(f"[ERROR]: {e}")
+                        logging.error(f"[ERROR]: {e}")
                 else:
                     # show previous output if there is pause i.e. no output from whisper
                     segments = []
@@ -318,9 +318,9 @@ class ServeClient:
                             })
                         )
                     except Exception as e:
-                        logging.info(f"[INFO]: {e}")
+                        logging.error(f"[ERROR]: {e}")
             except Exception as e:
-                logging.info(f"[INFO]: {e}")
+                logging.error(f"[ERROR]: {e}")
                 time.sleep(0.01)
     
     def update_segments(self, segments, duration):
