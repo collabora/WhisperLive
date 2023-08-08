@@ -18,6 +18,16 @@ function handlePlaybackStateChange(event) {
   isPaused = event.target.paused;
 }
 
+function generateUUID() {
+  let dt = new Date().getTime();
+  const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = (dt + Math.random() * 16) % 16 | 0;
+    dt = Math.floor(dt / 16);
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+  return uuid;
+}
+
 
 /**
  * Resamples the audio data to a target sample rate of 16kHz.
@@ -59,9 +69,12 @@ function startRecording(data) {
     if (language === null && !data.useMultilingual) {
       language = 'en';
     }
+
+    const uuid = generateUUID();
     socket.onopen = function(e) { 
       socket.send(
         JSON.stringify({
+            uid: uuid,
             multilingual: data.useMultilingual,
             language: data.language,
             task: data.task
@@ -70,25 +83,33 @@ function startRecording(data) {
     };
 
     let isServerReady = false;
-    socket.onmessage = (event) => {
-      if (!isServerReady){
+    socket.onmessage = async (event) => {
+      const data = JSON.parse(event.data);
+      if (data["uid"] !== uuid)
+        return;
+      
+      if (data["status"] === "WAIT"){
+        await browser.runtime.sendMessage({ action: "showPopup", data: data["message"] })
+        return;
+      }
+      
+      if (!isServerReady && data["message"] === "SERVER_READY"){
         isServerReady = true;
         return;
       }
 
       if (language === null ){
-        const data = JSON.parse(event.data);
         language = data["language"];
-
-        browser.runtime.sendMessage({ action: "updateSelectedLanguage", data: language })
-          .catch(function(error) {
-            console.error("Error sending message:", error);
-          });
+        await browser.runtime.sendMessage({ action: "updateSelectedLanguage", data: language })      
         return
       }
 
-      const data = event.data;;
-      browser.runtime.sendMessage({ action: "transcript", data })
+      if (data["message"] === "DISCONNECT"){
+        await browser.runtime.sendMessage({ action: "toggleCaptureButtons", data: false })        
+        return
+      }
+
+      await browser.runtime.sendMessage({ action: "transcript", data: event.data })
           .catch(function(error) {
             console.error("Error sending message:", error);
           });
@@ -110,9 +131,15 @@ function startRecording(data) {
         const audioData16kHz = resampleTo16kHZ(inputData, audioContext.sampleRate);
 
         audioDataCache.push(inputData);
-
+        
         // feed inputs and run
-        socket.send(audioData16kHz);
+        const base64AudioData = btoa(String.fromCharCode.apply(null, new Uint8Array(audioData16kHz.buffer)));
+        
+        socket.send(
+          JSON.stringify({
+            "audio": base64AudioData
+          })
+        );
       };
 
       // Prevent page mute
@@ -126,6 +153,52 @@ var elem_text = null;
 
 var segments = [];
 var text_segments = [];
+
+function initPopupElement() {
+  if (document.getElementById('popupElement')) {
+    return;
+  }
+
+  const popupContainer = document.createElement('div');
+  popupContainer.id = 'popupElement';
+  popupContainer.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; color: black; padding: 16px; border-radius: 10px; box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5); display: none; text-align: center;';
+
+  const popupText = document.createElement('span');
+  popupText.textContent = 'Default Text';
+  popupText.className = 'popupText';
+  popupText.style.fontSize = '24px';
+  popupContainer.appendChild(popupText);
+
+  const buttonContainer = document.createElement('div');
+  buttonContainer.style.marginTop = '8px';
+  const closePopupButton = document.createElement('button');
+  closePopupButton.textContent = 'Close';
+  closePopupButton.style.backgroundColor = '#65428A';
+  closePopupButton.style.color = 'white';
+  closePopupButton.style.border = 'none';
+  closePopupButton.style.padding = '8px 16px'; // Add padding for better click area
+  closePopupButton.style.cursor = 'pointer';
+  closePopupButton.addEventListener('click', async () => {
+    popupContainer.style.display = 'none';
+    await browser.runtime.sendMessage({ action: 'toggleCaptureButtons', data: false });
+  });
+  buttonContainer.appendChild(closePopupButton);
+  popupContainer.appendChild(buttonContainer);
+
+  document.body.appendChild(popupContainer);
+}
+
+
+function showPopup(customText) {
+  const popup = document.getElementById('popupElement');
+  const popupText = popup.querySelector('.popupText');
+
+  if (popup && popupText) {
+      popupText.textContent = customText || 'Default Text'; // Set default text if custom text is not provided
+      popup.style.display = 'block';
+  }
+}
+
 
 function init_element() {
     if (document.getElementById('transcription')) {
@@ -264,10 +337,17 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     remove_element();
 
+  } else if (action === "showWaitPopup") {
+    
+    initPopupElement();
+
+    showPopup(`Estimated wait time ~ ${Math.round(data)} minutes`);
+
   } else if (action === "show_transcript"){
     if (!isCapturing) return;
     init_element();    
     message = JSON.parse(data);
+    message = message["segments"];
     
     var text = '';
     for (var i = 0; i < message.length; i++) {
