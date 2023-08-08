@@ -165,14 +165,7 @@ async function startRecord(option) {
 
       audioDataCache.push(inputData);
 
-      // feed inputs and run
-      const base64AudioData = btoa(String.fromCharCode.apply(null, new Uint8Array(audioData16kHz.buffer)));
-
-      socket.send(
-        JSON.stringify({
-          "audio": base64AudioData
-        })
-      );
+      socket.send(audioData16kHz);
     };
 
     // Prevent page mute
