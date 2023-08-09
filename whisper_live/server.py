@@ -2,11 +2,12 @@ import websockets
 import pickle, struct, time, pyaudio
 import threading
 import os, json
+import base64
 import wave
 import textwrap
 
 import logging
-logging.basicConfig(level = logging.INFO)
+# logging.basicConfig(level = logging.INFO)
 
 from collections import deque
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from websockets.sync.server import serve
 
 import torch
 import numpy as np
+import time
 from whisper_live.transcriber import WhisperModel
 
 
@@ -24,9 +26,30 @@ class TranscriptionServer:
     Attributes:
         clients (dict): A dictionary to store connected clients.
     """
-
+    RATE = 16000
     def __init__(self):
+        # voice activity detection model
+        self.vad_model, _ = torch.hub.load(repo_or_dir='snakers4/silero-vad',
+                                           model='silero_vad',
+                                           force_reload=True,
+                                           onnx=True
+                                           )
+        self.vad_threshold = 0.4
         self.clients = {}
+        self.websockets = {}
+        self.clients_start_time = {}
+        self.max_clients = 4
+        self.max_connection_time = 600 # in seconds
+    
+    def get_wait_time(self):
+        wait_time = None
+        for k,v in self.clients_start_time.items():
+            current_client_time_remaining = self.max_connection_time - (time.time() - v)
+            if wait_time is None:
+                wait_time = current_client_time_remaining
+            elif current_client_time_remaining < wait_time:
+                wait_time = current_client_time_remaining
+        return wait_time/60
 
     def recv_audio(self, websocket):
         """
@@ -35,30 +58,73 @@ class TranscriptionServer:
         Args:
             websocket (WebSocket): The WebSocket connection for the client.
         """
+        logging.info("New client connected")
         options = websocket.recv()
         options = json.loads(options)
+
+        if len(self.clients) >= self.max_clients:
+            logging.warning("Client Queue Full. Asking client to wait ...")
+            wait_time = self.get_wait_time()
+            response = {
+                "uid" : options["uid"],
+                "status": "WAIT",
+                "message": wait_time,
+            }
+            websocket.send(json.dumps(response))
+            websocket.close()
+            del websocket
+            return
+        
         client = ServeClient(
             websocket,
             multilingual=options["multilingual"],
             language=options["language"],
             task=options["task"],
+            client_uid=options["uid"]
         )
-
+        
         self.clients[websocket] = client
+        self.clients_start_time[websocket] = time.time() 
 
         while True:
             try:
                 frame_data = websocket.recv()
-                frame_np = np.frombuffer(frame_data, np.float32)
+                frame_np = np.frombuffer(frame_data, dtype=np.float32)
+
+                try:
+                    speech_prob = self.vad_model(torch.from_numpy(frame_np.copy()), self.RATE).item()
+                    if speech_prob < self.vad_threshold:
+                        continue
+                    
+                except Exception as e:
+                    logging.error(e)
+                    return
                 self.clients[websocket].add_frames(frame_np)
 
+                elapsed_time = time.time() - self.clients_start_time[websocket]
+                if elapsed_time >= self.max_connection_time:
+                    self.clients[websocket].disconnect()
+                    logging.warning(f"{self.clients[websocket]} Client disconnected due to overtime.")
+                    self.clients[websocket].cleanup()
+                    self.clients.pop(websocket)
+                    self.clients_start_time.pop(websocket)
+                    websocket.close()
+                    del websocket
+                    break
+
+
             except Exception as e:
+                logging.error(e)
                 self.clients[websocket].cleanup()
                 self.clients.pop(websocket)
+                self.clients_start_time.pop(websocket)
                 logging.info("Connection Closed.")
+                logging.info(self.clients)
+
+                del websocket
                 break
 
-    def run(self, host, port):
+    def run(self, host, port=9090):
         """
         Run the transcription server.
 
@@ -73,8 +139,10 @@ class TranscriptionServer:
 class ServeClient:
     RATE = 16000
     SERVER_READY = "SERVER_READY"
+    DISCONNECT = "DISCONNECT"
 
-    def __init__(self, websocket, task="transcribe", device=None, multilingual=False, language=None):
+    def __init__(self, websocket, task="transcribe", device=None, multilingual=False, language=None, client_uid=None):
+        self.client_uid = client_uid
         self.data = b""
         self.frames = b""
         self.language = language if multilingual else "en"
@@ -86,14 +154,6 @@ class ServeClient:
             compute_type="int8" if device=="cpu" else "float16", 
             local_files_only=False,
         )
-        
-        # voice activity detection model
-        self.vad_model, _ = torch.hub.load(repo_or_dir='snakers4/silero-vad',
-                                           model='silero_vad',
-                                           force_reload=True,
-                                           onnx=True
-                                           )
-        self.vad_threshold = 0.4
         
         self.timestamp_offset = 0.0
         self.frames_np = None
@@ -117,7 +177,14 @@ class ServeClient:
         self.websocket = websocket
         self.trans_thread = threading.Thread(target=self.speech_to_text)
         self.trans_thread.start()
-        self.websocket.send(json.dumps(self.SERVER_READY))
+        self.websocket.send(
+            json.dumps(
+                {
+                    "uid": self.client_uid,
+                    "message": self.SERVER_READY
+                }
+            )
+        )
     
     def fill_output(self, output):
         """
@@ -142,15 +209,6 @@ class ServeClient:
         return wrapped
     
     def add_frames(self, frame_np):
-        try:
-            speech_prob = self.vad_model(torch.from_numpy(frame_np.copy()), self.RATE).item()
-            if speech_prob < self.vad_threshold:
-                return
-            
-        except Exception as e:
-            logging.error(e)
-            return
-        
         if self.frames_np is not None and self.frames_np.shape[0] > 45*self.RATE:
             self.frames_offset += 30.0
             self.frames_np = self.frames_np[int(30*self.RATE):]
@@ -179,7 +237,8 @@ class ServeClient:
                     task=self.task
                 )
             logging.info(f"Detected language {self.language} with probability {lang_prob}")
-            self.websocket.send(json.dumps({"language": self.language, "language_prob": lang_prob}))
+            self.websocket.send(json.dumps(
+                {"uid": self.client_uid, "language": self.language, "language_prob": lang_prob}))
 
         while True:
             if self.exit:
@@ -227,9 +286,14 @@ class ServeClient:
                         segments = segments + [last_segment]
                     
                     try:
-                        self.websocket.send(json.dumps(segments))
+                        self.websocket.send(
+                            json.dumps({
+                                "uid": self.client_uid,
+                                "segments": segments
+                            })
+                        )
                     except Exception as e:
-                        logging.info(f"[ERROR]: {e}")
+                        logging.error(f"[ERROR]: {e}")
                 else:
                     # show previous output if there is pause i.e. no output from whisper
                     segments = []
@@ -246,11 +310,16 @@ class ServeClient:
                             self.text.append('')
 
                     try:
-                        self.websocket.send(json.dumps(segments))
+                        self.websocket.send(
+                            json.dumps({
+                                "uid": self.client_uid,
+                                "segments": segments
+                            })
+                        )
                     except Exception as e:
-                        logging.info(f"[INFO]: {e}")
+                        logging.error(f"[ERROR]: {e}")
             except Exception as e:
-                logging.info(f"[INFO]: {e}")
+                logging.error(f"[ERROR]: {e}")
                 time.sleep(0.01)
     
     def update_segments(self, segments, duration):
@@ -321,8 +390,17 @@ class ServeClient:
 
         return last_segment
     
+    def disconnect(self):
+        self.websocket.send(
+            json.dumps(
+                {
+                    "uid": self.client_uid,
+                    "message": self.DISCONNECT
+                }
+            )
+        )
+    
     def cleanup(self):
         logging.info("Cleaning up.")
         self.exit = True
         self.transcriber.destroy()
-

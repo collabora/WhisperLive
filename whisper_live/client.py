@@ -10,6 +10,7 @@ import threading
 import textwrap
 import json
 import websocket
+import uuid
 
 
 def resample(file: str, sr: int = 16000):
@@ -47,10 +48,12 @@ class Client:
     CHANNELS = 1
     RATE = 16000
     RECORD_SECONDS = 60000
-    START_RECORDING = False
+    RECORDING = False
     multilingual = False
     language = None
     task = "transcribe"
+    uid = str(uuid.uuid4())
+    WAITING = False
     
     def __init__(self, host=None, port=None, is_multilingual=False, lang=None, translate=False):
         Client.multilingual = is_multilingual
@@ -90,16 +93,32 @@ class Client:
     @staticmethod
     def on_message(ws, message):
         message = json.loads(message)
-        if message == "SERVER_READY":
-            Client.START_RECORDING = True
+        if message.get('uid')!=Client.uid:
+            print("[ERROR]: invalid client uid")
+            return
+        
+        if "status" in message.keys() and  message["status"] == "WAIT":
+            Client.WAITING = True
+            print(f"[INFO]:Server is full. Estimated wait time {round(message['message'])} minutes.")
+        
+        if "message" in message.keys() and message["message"] == "DISCONNECT":
+            print("[INFO]: Server overtime disconnected.")
+            Client.RECORDING = False
+
+        if "message" in message.keys() and message["message"] == "SERVER_READY":
+            Client.RECORDING = True
             return
 
-        if isinstance(message, dict):
+        if "language" in message.keys():
             Client.language = message.get("language")
             lang_prob = message.get("language_prob")
             print(f"[INFO]: Server detected language {Client.language} with probability {lang_prob}")
             return
 
+        if "segments" not in message.keys():
+            return
+    
+        message = message["segments"]
         text = []
         if len(message):
             for seg in message:
@@ -134,6 +153,7 @@ class Client:
 
         print("[INFO]: Opened connection")
         ws.send(json.dumps({
+            'uid': Client.uid,
             'multilingual': Client.multilingual,
             'language': Client.language,
             'task': Client.task
@@ -162,7 +182,7 @@ class Client:
                 output=True,
                 frames_per_buffer=self.CHUNK)
         try:
-            while True:
+            while Client.RECORDING:
                 data = self.wf.readframes(self.CHUNK)
                 if data==b'': break
 
@@ -210,6 +230,7 @@ class Client:
             os.makedirs("chunks", exist_ok=True)
         try:
             for _ in range(0, int(self.RATE / self.CHUNK * self.RECORD_SECONDS)):
+                if not Client.RECORDING: break
                 data = self.stream.read(self.CHUNK)
                 self.frames += data
 
@@ -264,7 +285,10 @@ class TranscriptionClient:
         
     def __call__(self, audio=None):
         print("[INFO]: Waiting for server ready ...")
-        while not Client.START_RECORDING:
+        while not Client.RECORDING:
+            if Client.WAITING:
+                self.client.close_websocket()
+                return
             pass
         print("[INFO]: Server Ready!")
         if audio is not None:

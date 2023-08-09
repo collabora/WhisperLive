@@ -119,6 +119,8 @@ document.addEventListener("DOMContentLoaded", function () {
     startButton.disabled = isCapturing;
     stopButton.disabled = !isCapturing;
     useServerCheckbox.disabled = isCapturing; 
+    useMultilingualCheckbox.disabled = isCapturing;
+    
     startButton.classList.toggle("disabled", isCapturing);
     stopButton.classList.toggle("disabled", !isCapturing);
   }
@@ -163,6 +165,13 @@ document.addEventListener("DOMContentLoaded", function () {
         languageDropdown.value = detectedLanguage;
         chrome.storage.local.set({ selectedLanguage: detectedLanguage });
       }
+    }
+  });
+
+  chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+    if (request.action === "toggleCaptureButtons") {
+      toggleCaptureButtons(false);
+      chrome.storage.local.set({ capturingState: { isCapturing: false } })
     }
   });
   

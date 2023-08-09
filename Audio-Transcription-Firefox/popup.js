@@ -113,7 +113,9 @@ document.addEventListener("DOMContentLoaded", function() {
   function toggleCaptureButtons(isCapturing) {
     startButton.disabled = isCapturing;
     stopButton.disabled = !isCapturing;
-    useServerCheckbox.disabled = isCapturing; // Disable checkbox if capturing
+    useServerCheckbox.disabled = isCapturing;
+    useMultilingualCheckbox.disabled = isCapturing;
+
     startButton.classList.toggle("disabled", isCapturing);
     stopButton.classList.toggle("disabled", !isCapturing);
   }
@@ -152,13 +154,23 @@ document.addEventListener("DOMContentLoaded", function() {
 
   browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "updateSelectedLanguage") {
-      const detectedLanguage = request.detectedLanguage;
+      const detectedLanguage = request.data;
   
       if (detectedLanguage) {
         languageDropdown.value = detectedLanguage;
         selectedLanguage = detectedLanguage;
         browser.storage.local.set({ selectedLanguage });
       }
+    }
+  });
+
+  browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === "toggleCaptureButtons") {
+      toggleCaptureButtons(false);
+      browser.storage.local.set({ capturingState: { isCapturing: false } })
+        .catch(function(error) {
+          console.error("Error storing capturing state:", error);
+        });
     }
   });
 });

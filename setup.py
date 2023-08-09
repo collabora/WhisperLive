@@ -9,7 +9,7 @@ README = (HERE / "README.md").read_text()
 
 # This call to setup() does all the work
 setup(name="whisper-live",
-      version="0.0.5",
+      version="0.0.6",
       description="A nearly-live implementation of OpenAI's Whisper.",
       long_description=README,
       long_description_content_type="text/markdown",
