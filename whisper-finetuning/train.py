@@ -81,7 +81,7 @@ def train(dataset, model_size="tiny", language="Hindi"):
         batch["input_features"] = feature_extractor(audio["array"], sampling_rate=audio["sampling_rate"]).input_features[0]
 
         # encode target text to label ids 
-        batch["labels"] = tokenizer(batch["sentence"]).input_ids
+        batch["labels"] = tokenizer(batch["transcription"]).input_ids
         return batch
     
     dataset = dataset.map(
@@ -115,7 +115,7 @@ def train(dataset, model_size="tiny", language="Hindi"):
         gradient_accumulation_steps=4,  # increase by 2x for every 2x decrease in batch size
         learning_rate=1e-5,
         warmup_steps=500,
-        max_steps=4000,
+        max_steps=3500,
         gradient_checkpointing=True,
         fp16=True,
         evaluation_strategy="steps",
@@ -146,5 +146,10 @@ def train(dataset, model_size="tiny", language="Hindi"):
 
 
 if __name__=="__main__":
-    ds = load_custom_dataset_hf(train_split="validation", test_split="validation")
-    train(ds)
+    ds = load_dataset("makaveli10/indic-superb-whisper")
+    dataset_sampling_rate = next(iter(ds.values())).features["audio"].sampling_rate
+    if dataset_sampling_rate != 16000:
+        ds = ds.cast_column(
+            "audio", Audio(sampling_rate=16000)
+        )
+    train(ds, model_size="small")
