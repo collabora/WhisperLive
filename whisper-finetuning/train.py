@@ -2,6 +2,7 @@
 
 """Finetune Whisper on custom dataset"""
 
+import argparse
 import torch
 import evaluate
 
@@ -64,7 +65,8 @@ class DataCollatorSpeechSeq2SeqWithPadding:
     
 
 
-def train(dataset, model_size="tiny", language="Hindi"):
+def train(dataset, opt, language="Hindi"):
+    model_size = opt.model_size
     feature_extractor = WhisperFeatureExtractor.from_pretrained(
         f"openai/whisper-{model_size}")
 
@@ -111,8 +113,8 @@ def train(dataset, model_size="tiny", language="Hindi"):
 
     training_args = Seq2SeqTrainingArguments(
         output_dir=f"./whisper-{model_size}-{language}",  # change to a repo name of your choice
-        per_device_train_batch_size=8,
-        gradient_accumulation_steps=2,  # increase by 2x for every 2x decrease in batch size
+        per_device_train_batch_size=opt.batch_size,
+        gradient_accumulation_steps=opt.grad_acc,  # increase by 2x for every 2x decrease in batch size
         learning_rate=1e-5,
         warmup_steps=500,
         max_steps=3500,
@@ -146,10 +148,15 @@ def train(dataset, model_size="tiny", language="Hindi"):
 
 
 if __name__=="__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model-size', default="small", type=str, help='whisper model size')
+    parser.add_argument('--batch-size', default=8, type=int, help='batch-size per device')
+    parser.add_argument('--grad-acc', default=2, type=int, help='gradient accumulation steps')
+    opt = parser.parse_args()
     ds = load_dataset("makaveli10/indic-superb-whisper")
     dataset_sampling_rate = next(iter(ds.values())).features["audio"].sampling_rate
     if dataset_sampling_rate != 16000:
         ds = ds.cast_column(
             "audio", Audio(sampling_rate=16000)
         )
-    train(ds, model_size="small")
+    train(ds, opt)
