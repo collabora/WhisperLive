@@ -111,8 +111,8 @@ def train(dataset, model_size="tiny", language="Hindi"):
 
     training_args = Seq2SeqTrainingArguments(
         output_dir=f"./whisper-{model_size}-{language}",  # change to a repo name of your choice
-        per_device_train_batch_size=4,
-        gradient_accumulation_steps=4,  # increase by 2x for every 2x decrease in batch size
+        per_device_train_batch_size=8,
+        gradient_accumulation_steps=2,  # increase by 2x for every 2x decrease in batch size
         learning_rate=1e-5,
         warmup_steps=500,
         max_steps=3500,
@@ -122,8 +122,8 @@ def train(dataset, model_size="tiny", language="Hindi"):
         per_device_eval_batch_size=8,
         predict_with_generate=True,
         generation_max_length=225,
-        save_steps=1000,
-        eval_steps=1000,
+        save_steps=500,
+        eval_steps=500,
         logging_steps=25,
         report_to=["tensorboard"],
         load_best_model_at_end=True,
@@ -136,7 +136,7 @@ def train(dataset, model_size="tiny", language="Hindi"):
         args=training_args,
         model=model,
         train_dataset=dataset["train"],
-        eval_dataset=dataset["test"],
+        eval_dataset=dataset["validation"],
         data_collator=data_collator,
         compute_metrics=compute_metrics,
         tokenizer=processor.feature_extractor,
