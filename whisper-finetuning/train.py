@@ -8,7 +8,7 @@ import evaluate
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Union
-from datasets import load_dataset, DatasetDict, Audio
+from datasets import load_dataset, DatasetDict, Audio, concatenate_datasets
 from transformers import WhisperFeatureExtractor, WhisperTokenizer, WhisperProcessor
 from transformers import WhisperForConditionalGeneration
 from transformers import Seq2SeqTrainingArguments, Seq2SeqTrainer
@@ -17,7 +17,6 @@ from transformers import Seq2SeqTrainingArguments, Seq2SeqTrainer
 def load_custom_dataset_hf(
     name="mozilla-foundation/common_voice_11_0",
     subset="hi",
-    train_split="train+validation",
     test_split="test",
     sr=16000,
     use_auth_token=True):
@@ -61,11 +60,9 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         batch["labels"] = labels
 
         return batch
- 
-    
 
 
-def train(dataset, opt, language="Hindi"):
+def train(dataset, opt, language="Hindi", dataset_name="shrutilipi"):
     model_size = opt.model_size
     feature_extractor = WhisperFeatureExtractor.from_pretrained(
         f"openai/whisper-{model_size}")
@@ -81,13 +78,14 @@ def train(dataset, opt, language="Hindi"):
 
         # compute log-Mel input features from input audio array 
         batch["input_features"] = feature_extractor(audio["array"], sampling_rate=audio["sampling_rate"]).input_features[0]
+        batch["input_length"] = len(audio["array"]) / audio["sampling_rate"]
 
         # encode target text to label ids 
-        batch["labels"] = tokenizer(batch["transcription"]).input_ids
+        batch["labels"] = tokenizer(batch["sentence"]).input_ids
         return batch
     
     dataset = dataset.map(
-        prepare_dataset, remove_columns=dataset.column_names["train"], num_proc=4)
+        prepare_dataset, remove_columns=dataset.column_names["train"], num_proc=8)
     
     data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
     metric = evaluate.load("wer")
@@ -112,21 +110,22 @@ def train(dataset, opt, language="Hindi"):
     
 
     training_args = Seq2SeqTrainingArguments(
-        output_dir=f"./whisper-{model_size}-{language}",  # change to a repo name of your choice
+        output_dir=f"./whisper-{model_size}-{language}-{dataset_name}",  # change to a repo name of your choice
         per_device_train_batch_size=opt.batch_size,
         gradient_accumulation_steps=opt.grad_acc,  # increase by 2x for every 2x decrease in batch size
-        learning_rate=1e-5,
-        warmup_steps=500,
-        max_steps=3500,
+        learning_rate=4.25e-5,
+        weight_decay=0.01,
+        warmup_steps=800,
+        max_steps=8000,
         gradient_checkpointing=True,
         fp16=True,
         evaluation_strategy="steps",
         per_device_eval_batch_size=8,
         predict_with_generate=True,
         generation_max_length=225,
-        save_steps=500,
-        eval_steps=500,
-        logging_steps=25,
+        save_steps=1000,
+        eval_steps=1000,
+        logging_steps=50,
         report_to=["tensorboard"],
         load_best_model_at_end=True,
         metric_for_best_model="wer",
@@ -138,25 +137,35 @@ def train(dataset, opt, language="Hindi"):
         args=training_args,
         model=model,
         train_dataset=dataset["train"],
-        eval_dataset=dataset["validation"],
+        eval_dataset=dataset["test"],
         data_collator=data_collator,
         compute_metrics=compute_metrics,
         tokenizer=processor.feature_extractor,
     )
 
     trainer.train()
+    model.save_pretrained(training_args.output_dir)
+    processor.save_pretrained(training_args.output_dir)
 
 
-if __name__=="__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--model-size', default="small", type=str, help='whisper model size')
-    parser.add_argument('--batch-size', default=8, type=int, help='batch-size per device')
-    parser.add_argument('--grad-acc', default=2, type=int, help='gradient accumulation steps')
-    opt = parser.parse_args()
-    ds = load_dataset("makaveli10/indic-superb-whisper")
+def load_datasets():
+    ds = DatasetDict()
+    ds_shrutilipi = load_dataset("audiofolder", split="train+validation", data_dir="/opt/vineet-workspace/shrutilipi/newsonair_v5_processed")
+    ds_mcv_hi = load_dataset("mozilla-foundation/common_voice_11_0", "hi", split="test", use_auth_token=True)
+    ds["train"] = ds_shrutilipi
+    ds["test"] = ds_mcv_hi
     dataset_sampling_rate = next(iter(ds.values())).features["audio"].sampling_rate
     if dataset_sampling_rate != 16000:
         ds = ds.cast_column(
             "audio", Audio(sampling_rate=16000)
         )
+    return ds
+
+if __name__=="__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model-size', default="tiny", type=str, help='whisper model size')
+    parser.add_argument('--batch-size', default=16, type=int, help='batch-size per device')
+    parser.add_argument('--grad-acc', default=1, type=int, help='gradient accumulation steps')
+    opt = parser.parse_args()
+    ds = load_datasets()
     train(ds, opt)
