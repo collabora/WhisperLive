@@ -28,7 +28,7 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
     - To transcribe an audio file:
     ```python
       from whisper_live.client import TranscriptionClient
-      client = TranscriptionClient("localhost", 9090, multilingual=True, language="hi", translate=True)
+      client = TranscriptionClient("localhost", 9090, is_multilingual=True, lang="hi", translate=True)
       client(audio_file_path)
     ```
     This command transcribes the specified audio file (audio.wav) using the Whisper model. It connects to the server running on localhost at port 9090. It also enables the multilingual feature, allowing transcription in multiple languages. The language option specifies the target language for transcription, in this case, Hindi ("hi"). The translate option should be set to `True` if we want to translate from the source language to English and `False` if we want to transcribe in the source language.
@@ -36,7 +36,7 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
     - To transcribe from microphone:
     ```python
       from whisper_live.client import TranscriptionClient
-      client = TranscriptionClient(host, port, multilingual=True, language="hi", translate=True)
+      client = TranscriptionClient(host, port, is_multilingual=True, lang="hi", translate=True)
       client()
     ```
     This command captures audio from the microphone and sends it to the server for transcription. It uses the same options as the previous command, enabling the multilingual feature and specifying the target language and task.
