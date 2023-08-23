@@ -7,7 +7,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const useMultilingualCheckbox = document.getElementById('useMultilingualCheckbox');
   const languageDropdown = document.getElementById('languageDropdown');
   const taskDropdown = document.getElementById('taskDropdown');
-  let selectedLanguage = undefined;
+  let selectedLanguage = null;
   let selectedTask = taskDropdown.value;
 
   // Add click event listeners to the buttons
@@ -119,6 +119,8 @@ document.addEventListener("DOMContentLoaded", function () {
     startButton.disabled = isCapturing;
     stopButton.disabled = !isCapturing;
     useServerCheckbox.disabled = isCapturing; 
+    useMultilingualCheckbox.disabled = isCapturing;
+    
     startButton.classList.toggle("disabled", isCapturing);
     stopButton.classList.toggle("disabled", !isCapturing);
   }
@@ -142,7 +144,11 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   languageDropdown.addEventListener('change', function() {
-    selectedLanguage = languageDropdown.value;
+    if (languageDropdown.value === "") {
+      selectedLanguage = null;
+    } else {
+      selectedLanguage = languageDropdown.value;
+    }
     chrome.storage.local.set({ selectedLanguage });
   });
 
@@ -150,4 +156,23 @@ document.addEventListener("DOMContentLoaded", function () {
     selectedTask = taskDropdown.value;
     chrome.storage.local.set({ selectedTask });
   });
+
+  chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+    if (request.action === "updateSelectedLanguage") {
+      const detectedLanguage = request.detectedLanguage;
+  
+      if (detectedLanguage) {
+        languageDropdown.value = detectedLanguage;
+        chrome.storage.local.set({ selectedLanguage: detectedLanguage });
+      }
+    }
+  });
+
+  chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+    if (request.action === "toggleCaptureButtons") {
+      toggleCaptureButtons(false);
+      chrome.storage.local.set({ capturingState: { isCapturing: false } })
+    }
+  });
+  
 });

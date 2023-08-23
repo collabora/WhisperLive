@@ -66,6 +66,16 @@ function resampleTo16kHZ(audioData, origSampleRate = 44100) {
   return resampledData;
 }
 
+function generateUUID() {
+  let dt = new Date().getTime();
+  const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = (dt + Math.random() * 16) % 16 | 0;
+    dt = Math.floor(dt / 16);
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+  return uuid;
+}
+
 
 /**
  * Starts recording audio from the captured tab.
@@ -73,6 +83,7 @@ function resampleTo16kHZ(audioData, origSampleRate = 44100) {
  */
 async function startRecord(option) {
   const stream = await captureTabAudio();
+  const uuid = generateUUID();
 
   if (stream) {
     // call when the stream inactive
@@ -81,9 +92,14 @@ async function startRecord(option) {
     };
     const socket = new WebSocket(`ws://${option.host}:${option.port}/`);
     let isServerReady = false;
+    let language = option.language;
+    if (language === null && !option.multilingual) {
+      language = 'en';
+    }
     socket.onopen = function(e) { 
       socket.send(
         JSON.stringify({
+          uid: uuid,
           multilingual: option.multilingual,
           language: option.language,
           task: option.task
@@ -92,12 +108,43 @@ async function startRecord(option) {
     };
 
     socket.onmessage = async (event) => {
-      console.log(event.data);
+      const data = JSON.parse(event.data);
+      if (data["uid"] !== uuid)
+        return;
+      
+      if (data["status"] === "WAIT"){
+        await sendMessageToTab(option.currentTabId, {
+          type: "showWaitPopup",
+          data: data["message"],
+        });
+        chrome.runtime.sendMessage({ action: "toggleCaptureButtons", data: false }) 
+        chrome.runtime.sendMessage({ action: "stopCapture" })
+        return;
+      }
+        
       if (isServerReady === false){
         isServerReady = true;
         return;
       }
       
+      if (language === null) {
+        language = data["language"];
+        
+        // send message to popup.js to update dropdown
+        // console.log(language);
+        chrome.runtime.sendMessage({
+          action: "updateSelectedLanguage",
+          detectedLanguage: language,
+        });
+
+        return;
+      }
+
+      if (data["message"] === "DISCONNECT"){
+        chrome.runtime.sendMessage({ action: "toggleCaptureButtons", data: false })        
+        return;
+      }
+
       res = await sendMessageToTab(option.currentTabId, {
         type: "transcript",
         data: event.data,
@@ -118,7 +165,6 @@ async function startRecord(option) {
 
       audioDataCache.push(inputData);
 
-      // feed inputs and run
       socket.send(audioData16kHz);
     };
 

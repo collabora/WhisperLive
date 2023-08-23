@@ -6,7 +6,7 @@ document.addEventListener("DOMContentLoaded", function() {
   const useMultilingualCheckbox = document.getElementById('useMultilingualCheckbox');
   const languageDropdown = document.getElementById('languageDropdown');
   const taskDropdown = document.getElementById('taskDropdown');
-  let selectedLanguage = undefined;
+  let selectedLanguage = null;
   let selectedTask = taskDropdown.value;
 
   browser.storage.local.get("capturingState")
@@ -113,7 +113,9 @@ document.addEventListener("DOMContentLoaded", function() {
   function toggleCaptureButtons(isCapturing) {
     startButton.disabled = isCapturing;
     stopButton.disabled = !isCapturing;
-    useServerCheckbox.disabled = isCapturing; // Disable checkbox if capturing
+    useServerCheckbox.disabled = isCapturing;
+    useMultilingualCheckbox.disabled = isCapturing;
+
     startButton.classList.toggle("disabled", isCapturing);
     stopButton.classList.toggle("disabled", !isCapturing);
   }
@@ -137,12 +139,38 @@ document.addEventListener("DOMContentLoaded", function() {
   });
 
   languageDropdown.addEventListener('change', function() {
-    selectedLanguage = languageDropdown.value;
+    if (languageDropdown.value === "") {
+      selectedLanguage = null;
+    } else {
+      selectedLanguage = languageDropdown.value;
+    }
     browser.storage.local.set({ selectedLanguage });
   });
 
   taskDropdown.addEventListener('change', function() {
     selectedTask = taskDropdown.value;
     browser.storage.local.set({ selectedTask });
+  });
+
+  browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === "updateSelectedLanguage") {
+      const detectedLanguage = request.data;
+  
+      if (detectedLanguage) {
+        languageDropdown.value = detectedLanguage;
+        selectedLanguage = detectedLanguage;
+        browser.storage.local.set({ selectedLanguage });
+      }
+    }
+  });
+
+  browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === "toggleCaptureButtons") {
+      toggleCaptureButtons(false);
+      browser.storage.local.set({ capturingState: { isCapturing: false } })
+        .catch(function(error) {
+          console.error("Error storing capturing state:", error);
+        });
+    }
   });
 });

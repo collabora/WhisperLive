@@ -36,9 +36,12 @@ WORKDIR /app
 COPY setup.sh /app
 COPY requirements/ /app
 
+RUN apt update --fix-missing
 RUN bash setup.sh
 RUN pip install -r server.txt
 
-COPY *py /app
+COPY whisper_live /app/whisper_live
 
-CMD ["python", "server.py"]
+COPY run_server.py /app
+
+CMD ["python", "run_server.py"]
