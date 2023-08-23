@@ -192,6 +192,7 @@ class Client:
 
             self.wf.close()
             self.stream.close()
+            self.close_websocket()
 
         except KeyboardInterrupt:
             self.wf.close()
