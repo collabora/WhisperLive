@@ -195,6 +195,9 @@ class Client:
                 self.stream.write(data)
 
             self.wf.close()
+            elapsed_time = time.time() - self.LAST_RESPONSE_RECIEVED
+            while elapsed_time < self.DISCONNECT_IF_NO_RESPONSE_FOR:
+                continue
             self.stream.close()
             self.close_websocket()
 
@@ -207,8 +210,6 @@ class Client:
             print("[INFO]: Keyboard interrupt.")
 
     def close_websocket(self):
-        while time.time() - self.LAST_RESPONSE_RECIEVED < self.DISCONNECT_IF_NO_RESPONSE_FOR:
-            continue
         try:
             self.client_socket.close()  # Close the WebSocket connection
         except Exception as e:
