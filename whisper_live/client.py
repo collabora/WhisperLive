@@ -11,6 +11,7 @@ import textwrap
 import json
 import websocket
 import uuid
+import time
 
 
 def resample(file: str, sr: int = 16000):
@@ -54,6 +55,8 @@ class Client:
     task = "transcribe"
     uid = str(uuid.uuid4())
     WAITING = False
+    LAST_RESPONSE_RECIEVED = None
+    DISCONNECT_IF_NO_RESPONSE_FOR = 15
     
     def __init__(self, host=None, port=None, is_multilingual=False, lang=None, translate=False):
         Client.multilingual = is_multilingual
@@ -92,6 +95,7 @@ class Client:
     
     @staticmethod
     def on_message(ws, message):
+        Client.LAST_RESPONSE_RECIEVED = time.time()
         message = json.loads(message)
         if message.get('uid')!=Client.uid:
             print("[ERROR]: invalid client uid")
@@ -203,6 +207,8 @@ class Client:
             print("[INFO]: Keyboard interrupt.")
 
     def close_websocket(self):
+        while time.time() - self.LAST_RESPONSE_RECIEVED < self.DISCONNECT_IF_NO_RESPONSE_FOR:
+            continue
         try:
             self.client_socket.close()  # Close the WebSocket connection
         except Exception as e:
