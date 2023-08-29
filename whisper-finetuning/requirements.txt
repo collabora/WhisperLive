@@ -4,4 +4,4 @@ transformers[torch]
 librosa
 evaluate
 jiwer
-gradio
+huggingface_hub
