@@ -12,6 +12,24 @@ from datasets import load_dataset, DatasetDict, Audio, concatenate_datasets
 from transformers import WhisperFeatureExtractor, WhisperTokenizer, WhisperProcessor
 from transformers import WhisperForConditionalGeneration
 from transformers import Seq2SeqTrainingArguments, Seq2SeqTrainer
+from audiomentations import (
+    AddBackgroundNoise,
+    AddGaussianNoise,
+    Compose,
+    Gain,
+    OneOf,
+    PitchShift,
+    PolarityInversion,
+    TimeStretch,
+)
+
+augmentation = Compose(
+    [
+        Gain(min_gain_in_db=-6, max_gain_in_db=6, p=0.1),
+        PitchShift(min_semitones=-4, max_semitones=4, p=0.2),
+        AddGaussianNoise(min_amplitude=0.005, max_amplitude=0.015, p=0.25),
+    ]
+)
 
 
 AUDIO_COLUMN_NAME = "audio"
@@ -45,7 +63,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         return batch
 
 
-def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv"):
+def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv_aug"):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     model_size = opt.model_size
     feature_extractor = WhisperFeatureExtractor.from_pretrained(
@@ -69,7 +87,7 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv"):
         return batch
     
     dataset = dataset.map(
-        prepare_dataset, remove_columns=dataset.column_names["train"], num_proc=8)
+        prepare_dataset, remove_columns=dataset.column_names["train"], num_proc=6)
     
     data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
     metric = evaluate.load("wer")
@@ -109,8 +127,8 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv"):
         gradient_accumulation_steps=opt.grad_acc,  # increase by 2x for every 2x decrease in batch size
         learning_rate=4.25e-5,
         weight_decay=0.01,
-        warmup_steps=1000,
-        max_steps=15000,
+        warmup_steps=1200,
+        max_steps=35000,
         gradient_checkpointing=True,
         fp16=True,
         evaluation_strategy="steps",
@@ -137,7 +155,7 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv"):
         tokenizer=processor.feature_extractor,
     )
 
-    trainer.train()
+    trainer.train(resume_from_checkpoint = False)
     model.save_pretrained(training_args.output_dir)
     processor.save_pretrained(training_args.output_dir)
 
@@ -153,7 +171,18 @@ def normalize_dataset(ds, audio_column_name=None, text_column_name=None):
     return ds
 
 
-def load_datasets():
+def augment_dataset(batch):
+    # load and (possibly) resample audio data to 16kHz
+    sample = batch[AUDIO_COLUMN_NAME]
+
+    # apply augmentation
+    print(batch)
+    augmented_waveform = augmentation(sample["array"], sample_rate=sample["sampling_rate"])
+    batch[AUDIO_COLUMN_NAME]["array"] = augmented_waveform
+    return batch
+
+
+def load_datasets(opt):
     ds = DatasetDict()
     ds_shrutilipi_train = load_dataset("audiofolder", split="train", data_dir="/home/hinode/home/vineet/workspace/newsonair_v5_processed")
     ds_shrutilipi_train = normalize_dataset(ds_shrutilipi_train)
@@ -166,8 +195,21 @@ def load_datasets():
     ds_indic_superb = load_dataset("audiofolder", split="train", data_dir="/opt/vineet-workspace/indic-superb/hindi_merged/")
     ds_indic_superb = normalize_dataset(ds_indic_superb, text_column_name="transcription")
 
+    ds_shrutilipi_train_45_pct = load_dataset("audiofolder", split="train[:45%]", data_dir="/home/hinode/home/vineet/workspace/newsonair_v5_processed")
+    ds_shrutilipi_train_45_pct = normalize_dataset(ds_shrutilipi_train_45_pct)
+
     ds["train"] = concatenate_datasets([ds_shrutilipi_train, ds_mcv_hi_train, ds_indic_superb])
     ds["test"] = concatenate_datasets([ds_mcv_hi_valid])
+
+    if opt.augment:
+        print("applying augmentations..")
+        augmented_dataset = ds_shrutilipi_train_45_pct.map(
+            augment_dataset, num_proc=8, desc="augment train dataset"
+        )
+        # augmented_indic = ds_indic_superb.map(
+        #     augment_dataset, num_proc=8, desc="augment train dataset"
+        # )
+        ds["train"] = concatenate_datasets([ds["train"], augmented_indic, augmented_dataset])
    
     ds["train"] = ds["train"].shuffle(seed=10)
     return ds
@@ -177,6 +219,7 @@ if __name__=="__main__":
     parser.add_argument('--model-size', default="tiny", type=str, help='whisper model size')
     parser.add_argument('--batch-size', default=16, type=int, help='batch-size per device')
     parser.add_argument('--grad-acc', default=1, type=int, help='gradient accumulation steps')
+    parser.add_argument('--augment', action="store_true", help='apply augmentations')
     opt = parser.parse_args()
-    ds = load_datasets()
+    ds = load_datasets(opt)
     train(ds, opt)
