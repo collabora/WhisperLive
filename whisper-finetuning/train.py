@@ -63,7 +63,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         return batch
 
 
-def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv_aug"):
+def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_augmented_indic_mcv"):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     model_size = opt.model_size
     feature_extractor = WhisperFeatureExtractor.from_pretrained(
@@ -87,7 +87,7 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv_aug
         return batch
     
     dataset = dataset.map(
-        prepare_dataset, remove_columns=dataset.column_names["train"], num_proc=6)
+        prepare_dataset, remove_columns=dataset.column_names["train"], num_proc=8, batched=True)
     
     data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
     metric = evaluate.load("wer")
@@ -128,7 +128,7 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv_aug
         learning_rate=4.25e-5,
         weight_decay=0.01,
         warmup_steps=1200,
-        max_steps=35000,
+        max_steps=40000,
         gradient_checkpointing=True,
         fp16=True,
         evaluation_strategy="steps",
@@ -143,6 +143,8 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv_aug
         metric_for_best_model="wer",
         greater_is_better=False,
         push_to_hub=True,
+        dataloader_num_workers=8
+
     )
 
     trainer = Seq2SeqTrainer(
@@ -155,7 +157,7 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv_aug
         tokenizer=processor.feature_extractor,
     )
 
-    trainer.train(resume_from_checkpoint = False)
+    trainer.train(resume_from_checkpoint = True)
     model.save_pretrained(training_args.output_dir)
     processor.save_pretrained(training_args.output_dir)
 
@@ -195,20 +197,18 @@ def load_datasets(opt):
     ds_indic_superb = load_dataset("audiofolder", split="train", data_dir="/opt/vineet-workspace/indic-superb/hindi_merged/")
     ds_indic_superb = normalize_dataset(ds_indic_superb, text_column_name="transcription")
 
-    ds_shrutilipi_train_45_pct = load_dataset("audiofolder", split="train[:45%]", data_dir="/home/hinode/home/vineet/workspace/newsonair_v5_processed")
-    ds_shrutilipi_train_45_pct = normalize_dataset(ds_shrutilipi_train_45_pct)
+    # augmented shrutilipi dataset
+    ds_augmented_shrutilipi = load_dataset("collabora/ai4bharat-shrutilipi-augmented", split="train", use_auth_token=True)
 
-    ds["train"] = concatenate_datasets([ds_shrutilipi_train, ds_mcv_hi_train, ds_indic_superb])
+
+    ds["train"] = concatenate_datasets([ds_shrutilipi_train, ds_mcv_hi_train, ds_indic_superb, ds_augmented_shrutilipi])
     ds["test"] = concatenate_datasets([ds_mcv_hi_valid])
 
     if opt.augment:
         print("applying augmentations..")
         augmented_dataset = ds_shrutilipi_train_45_pct.map(
-            augment_dataset, num_proc=8, desc="augment train dataset"
+            augment_dataset, num_proc=1, desc="augment train dataset"
         )
-        # augmented_indic = ds_indic_superb.map(
-        #     augment_dataset, num_proc=8, desc="augment train dataset"
-        # )
         ds["train"] = concatenate_datasets([ds["train"], augmented_indic, augmented_dataset])
    
     ds["train"] = ds["train"].shuffle(seed=10)
@@ -217,9 +217,10 @@ def load_datasets(opt):
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--model-size', default="tiny", type=str, help='whisper model size')
-    parser.add_argument('--batch-size', default=16, type=int, help='batch-size per device')
+    parser.add_argument('--batch-size', default=32, type=int, help='batch-size per device')
     parser.add_argument('--grad-acc', default=1, type=int, help='gradient accumulation steps')
     parser.add_argument('--augment', action="store_true", help='apply augmentations')
+    parser.add_argument('--num_workers', default=8, type=int, help='num dataloader workers')
     opt = parser.parse_args()
     ds = load_datasets(opt)
     train(ds, opt)
