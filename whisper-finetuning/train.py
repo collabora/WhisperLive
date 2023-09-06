@@ -87,7 +87,7 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_augmented_ind
         return batch
     
     dataset = dataset.map(
-        prepare_dataset, remove_columns=dataset.column_names["train"], num_proc=8, batched=True)
+        prepare_dataset, remove_columns=dataset.column_names["train"], num_proc=8)
     
     data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
     metric = evaluate.load("wer")
@@ -143,7 +143,7 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_augmented_ind
         metric_for_best_model="wer",
         greater_is_better=False,
         push_to_hub=True,
-        dataloader_num_workers=8
+        dataloader_num_workers=opt.num_workers
 
     )
 
@@ -220,7 +220,7 @@ if __name__=="__main__":
     parser.add_argument('--batch-size', default=32, type=int, help='batch-size per device')
     parser.add_argument('--grad-acc', default=1, type=int, help='gradient accumulation steps')
     parser.add_argument('--augment', action="store_true", help='apply augmentations')
-    parser.add_argument('--num_workers', default=8, type=int, help='num dataloader workers')
+    parser.add_argument('--num_workers', default=12, type=int, help='num dataloader workers')
     opt = parser.parse_args()
     ds = load_datasets(opt)
     train(ds, opt)
