@@ -5,3 +5,5 @@ librosa
 evaluate
 jiwer
 huggingface_hub
+audiomentations
+tensorboardX
