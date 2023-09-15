@@ -44,6 +44,29 @@ def resample(file: str, sr: int = 16000):
 
 
 class Client:
+    """
+    Represents a client for audio recording and streaming to a server using WebSocket communication.
+
+    This class allows audio recording from the microphone or playing audio from a file while streaming it to
+    a server for transcription or translation. It uses PyAudio for audio recording and playback and WebSocket
+    for communication with the server.
+
+    Attributes:
+        CHUNK (int): The size of audio chunks for recording and playback.
+        FORMAT: The audio format used by PyAudio (paInt16 for 16-bit PCM).
+        CHANNELS (int): The number of audio channels (1 for mono).
+        RATE (int): The audio sampling rate in Hz (samples per second).
+        RECORD_SECONDS (int): The maximum duration for audio recording in seconds.
+        RECORDING (bool): Indicates whether recording is currently active.
+        multilingual (bool): Indicates if multilingual transcription is enabled.
+        language (str): The selected language for transcription.
+        task (str): The transcription or translation task to be performed.
+        uid (str): A unique identifier for the client.
+        WAITING (bool): Indicates if the client is waiting for server availability.
+        LAST_RESPONSE_RECIEVED (float): Timestamp of the last response received from the server.
+        DISCONNECT_IF_NO_RESPONSE_FOR (int): Maximum time without server response before disconnection.
+
+    """
     CHUNK = 1024
     FORMAT = pyaudio.paInt16
     CHANNELS = 1
@@ -59,6 +82,30 @@ class Client:
     DISCONNECT_IF_NO_RESPONSE_FOR = 15
     
     def __init__(self, host=None, port=None, is_multilingual=False, lang=None, translate=False):
+        """
+        Initializes a Client instance for audio recording and streaming to a server.
+
+        If host and port are not provided, the WebSocket connection will not be established.
+        When translate is True, the task will be set to "translate" instead of "transcribe".
+        he audio recording starts immediately upon initialization.
+
+        Args:
+            host (str): The hostname or IP address of the server.
+            port (int): The port number for the WebSocket server.
+            is_multilingual (bool, optional): Specifies if multilingual transcription is enabled. Default is False.
+            lang (str, optional): The selected language for transcription when multilingual is disabled. Default is None.
+            translate (bool, optional): Specifies if the task is translation. Default is False.
+
+        Attributes:
+            timestamp_offset (float): A timestamp offset for tracking audio timing.
+            audio_bytes (bytes): A buffer for storing audio data.
+            p (pyaudio.PyAudio): An instance of PyAudio for audio streaming.
+            stream (pyaudio.Stream): The audio stream for recording.
+            client_socket (websocket.WebSocketApp): The WebSocket client for server communication.
+            ws_thread (threading.Thread): A thread for running the WebSocket client.
+            frames (bytes): A buffer for accumulating audio frames.
+
+        """
         Client.multilingual = is_multilingual
         Client.language = lang if is_multilingual else "en"
         if translate:
@@ -73,7 +120,6 @@ class Client:
                         input=True,
                         frames_per_buffer=self.CHUNK)
 
-        # create websocket connection
         if host is not None and port is not None:
             socket_url = f"ws://{host}:{port}"    
             self.client_socket = websocket.WebSocketApp(socket_url,
@@ -85,7 +131,6 @@ class Client:
             print("[ERROR]: No host or port specified.")
             return
 
-        # start websocket client in a thread
         self.ws_thread = threading.Thread(target=self.client_socket.run_forever)
         self.ws_thread.setDaemon(True)
         self.ws_thread.start()
@@ -95,6 +140,18 @@ class Client:
     
     @staticmethod
     def on_message(ws, message):
+        """
+        Callback function called when a message is received from the server.
+        
+        It updates various attributes of the client based on the received message, including
+        recording status, language detection, and server messages. If a disconnect message
+        is received, it sets the recording status to False.
+
+        Args:
+            ws (websocket.WebSocketApp): The WebSocket client instance.
+            message (str): The received message from the server.
+
+        """
         Client.LAST_RESPONSE_RECIEVED = time.time()
         message = json.loads(message)
         if message.get('uid')!=Client.uid:
@@ -153,6 +210,16 @@ class Client:
 
     @staticmethod
     def on_open(ws):
+        """
+        Callback function called when the WebSocket connection is successfully opened.
+        
+        Sends an initial configuration message to the server, including client UID, multilingual mode,
+        language selection, and task type.
+
+        Args:
+            ws (websocket.WebSocketApp): The WebSocket client instance.
+
+        """
         print(Client.multilingual, Client.language, Client.task)
 
         print("[INFO]: Opened connection")
@@ -165,19 +232,50 @@ class Client:
 
     @staticmethod
     def bytes_to_float_array(audio_bytes):
+        """
+        Convert audio data from bytes to a NumPy float array.
+        
+        It assumes that the audio data is in 16-bit PCM format. The audio data is normalized to 
+        have values between -1 and 1.
+
+        Args:
+            audio_bytes (bytes): Audio data in bytes.
+
+        Returns:
+            np.ndarray: A NumPy array containing the audio data as float values normalized between -1 and 1.
+        """
         raw_data = np.frombuffer(
             buffer=audio_bytes, dtype=np.int16
         )
         return raw_data.astype(np.float32) / 32768.0
     
     def send_packet_to_server(self, message):
+        """
+        Send an audio packet to the server using WebSocket.
+
+        Args:
+            message (bytes): The audio data packet in bytes to be sent to the server.
+
+        """
         try:
             self.client_socket.send(message, websocket.ABNF.OPCODE_BINARY)
         except Exception as e:
             print(e)
     
     def play_file(self, filename):
-        # read audio and create pyaudio stream
+        """
+        Play an audio file and send it to the server for processing.
+        
+        Reads an audio file, plays it through the audio output, and simultaneously sends
+        the audio data to the server for processing. It uses PyAudio to create an audio 
+        stream for playback. The audio data is read from the file in chunks, converted to 
+        floating-point format, and sent to the server using WebSocket communication.
+        This method is typically used when you want to process pre-recorded audio and send it
+        to the server in real-time.
+
+        Args:
+            filename (str): The path to the audio file to be played and sent to the server.
+        """
         self.wf = wave.open(filename, 'rb')
         self.stream = self.p.open(format=self.p.get_format_from_width(self.wf.getsampwidth()),
                 channels=self.wf.getnchannels(),
@@ -210,20 +308,44 @@ class Client:
             print("[INFO]: Keyboard interrupt.")
 
     def close_websocket(self):
+        """
+        Close the WebSocket connection and join the WebSocket thread.
+
+        First attempts to close the WebSocket connection using `self.client_socket.close()`. After 
+        closing the connection, it joins the WebSocket thread to ensure proper termination.
+
+        """
         try:
-            self.client_socket.close()  # Close the WebSocket connection
+            self.client_socket.close()
         except Exception as e:
             print("[ERROR]: Error closing WebSocket:", e)
 
         try:
-            self.ws_thread.join()  # Wait for the WebSocket thread to finish
+            self.ws_thread.join()
         except Exception as e:
             print("[ERROR:] Error joining WebSocket thread:", e)
 
     def get_client_socket(self):
+        """
+        Get the WebSocket client socket instance.
+
+        Returns:
+            WebSocketApp: The WebSocket client socket instance currently in use by the client.
+        """
         return self.client_socket
     
     def write_audio_frames_to_file(self, frames, file_name):
+        """
+        Write audio frames to a WAV file.
+
+        The WAV file is created or overwritten with the specified name. The audio frames should be 
+        in the correct format and match the specified channel, sample width, and sample rate.
+
+        Args:
+            frames (bytes): The audio frames to be written to the file.
+            file_name (str): The name of the WAV file to which the frames will be written.
+
+        """
         wf = wave.open(file_name, 'wb')
         wf.setnchannels(self.CHANNELS)
         wf.setsampwidth(2)
@@ -232,8 +354,23 @@ class Client:
         wf.close()
 
     def record(self, out_file="output_recording.wav"):
+        """
+        Record audio data from the input stream and save it to a WAV file.
+
+        Continuously records audio data from the input stream, sends it to the server via a WebSocket
+        connection, and simultaneously saves it to multiple WAV files in chunks. It stops recording when
+        the `RECORD_SECONDS` duration is reached or when the `RECORDING` flag is set to `False`.
+
+        Audio data is saved in chunks to the "chunks" directory. Each chunk is saved as a separate WAV file.
+        The recording will continue until the specified duration is reached or until the `RECORDING` flag is set to `False`.
+        The recording process can be interrupted by sending a KeyboardInterrupt (e.g., pressing Ctrl+C). After recording, 
+        the method combines all the saved audio chunks into the specified `out_file`.
+
+        Args:
+            out_file (str, optional): The name of the output WAV file to save the entire recording. Default is "output_recording.wav".
+
+        """
         n_audio_file = 0
-        # create dir for saving audio chunks
         if not os.path.exists("chunks"):
             os.makedirs("chunks", exist_ok=True)
         try:
@@ -266,10 +403,22 @@ class Client:
             self.p.terminate()
             self.close_websocket()
 
-            # combine all the audio files
             self.write_output_recording(n_audio_file, out_file)
     
     def write_output_recording(self, n_audio_file, out_file):
+        """
+        Combine and save recorded audio chunks into a single WAV file.
+        
+        The individual audio chunk files are expected to be located in the "chunks" directory. Reads each chunk 
+        file, appends its audio data to the final recording, and then deletes the chunk file. After combining
+        and saving, the final recording is stored in the specified `out_file`.
+
+
+        Args:
+            n_audio_file (int): The number of audio chunk files to combine.
+            out_file (str): The name of the output WAV file to save the final recording.
+
+        """
         input_files = [f"chunks/{i}.wav" for i in range(n_audio_file) if os.path.exists(f"chunks/{i}.wav")]
         wf = wave.open(out_file, 'wb')
         wf.setnchannels(self.CHANNELS)
@@ -288,10 +437,44 @@ class Client:
 
 
 class TranscriptionClient:
+    """
+    Client for handling audio transcription tasks via a WebSocket connection.
+
+    Acts as a high-level client for audio transcription tasks using a WebSocket connection. It can be used
+    to send audio data for transcription to a server and receive transcribed text segments.
+
+    Args:
+        host (str): The hostname or IP address of the server.
+        port (int): The port number to connect to on the server.
+        is_multilingual (bool, optional): Indicates whether the transcription should support multiple languages (default is False).
+        lang (str, optional): The primary language for transcription (used if `is_multilingual` is False). Default is None, which defaults to English ('en').
+        translate (bool, optional): Indicates whether translation tasks are required (default is False).
+
+    Attributes:
+        client (Client): An instance of the underlying Client class responsible for handling the WebSocket connection.
+
+    Example:
+        To create a TranscriptionClient and start transcription on microphone audio:
+        ```python
+        transcription_client = TranscriptionClient(host="localhost", port=9090, is_multilingual=True)
+        transcription_client()
+        ```
+    """
     def __init__(self, host, port, is_multilingual=False, lang=None, translate=False):
         self.client = Client(host, port, is_multilingual, lang, translate)
         
     def __call__(self, audio=None):
+        """
+        Start the transcription process.
+
+        Initiates the transcription process by connecting to the server via a WebSocket. It waits for the server
+        to be ready to receive audio data and then sends audio for transcription. If an audio file is provided, it 
+        will be played and streamed to the server; otherwise, it will perform live recording.
+
+        Args:
+            audio (str, optional): Path to an audio file for transcription. Default is None, which triggers live recording.
+                   
+        """
         print("[INFO]: Waiting for server ready ...")
         while not Client.RECORDING:
             if Client.WAITING:
