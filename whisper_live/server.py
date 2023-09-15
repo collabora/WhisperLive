@@ -305,8 +305,6 @@ class ServeClient:
         Args:
             frame_np (numpy.ndarray): The audio frame data as a NumPy array.
 
-        Returns:
-            None
         """
         if self.frames_np is not None and self.frames_np.shape[0] > 45*self.RATE:
             self.frames_offset += 30.0
@@ -328,9 +326,6 @@ class ServeClient:
         are sent to the client in real-time, and a history of segments is maintained to provide context.Pauses in speech 
         (no output from Whisper) are handled by showing the previous output for a set duration. A blank segment is added if 
         there is no speech for a specified duration to indicate a pause.
-
-        Returns:
-            None
 
         Raises:
             Exception: If there is an issue with audio processing or WebSocket communication.
@@ -521,8 +516,6 @@ class ServeClient:
         This method sends a disconnect message to the client via the WebSocket connection to notify them
         that the transcription service is disconnecting gracefully.
 
-        Returns:
-            None
         """
         self.websocket.send(
             json.dumps(
@@ -541,8 +534,6 @@ class ServeClient:
         the exit flag to indicate the transcription thread should exit gracefully, and destroying resources
         associated with the transcription process.
 
-        Returns:
-            None
         """
         logging.info("Cleaning up.")
         self.exit = True
