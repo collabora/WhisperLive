@@ -1,16 +1,12 @@
 import websockets
-import pickle, struct, time, pyaudio
+import time
 import threading
-import os, json
-import base64
-import wave
+import json
 import textwrap
 
 import logging
 # logging.basicConfig(level = logging.INFO)
 
-from collections import deque
-from dataclasses import dataclass
 from websockets.sync.server import serve
 
 import torch
@@ -275,7 +271,7 @@ class ServeClient:
         previous complete segments to provide a coherent and visually organized transcription. 
         - It ensures that the combined transcription fits within two lines, with a maximum of 50 characters per line.
         - Segments are concatenated in the order they exist in the list of previous segments, with the most
-        recent complete segment first and older segments appended as needed to maintain the character limit.
+        recent complete segment first and older segments prepended as needed to maintain the character limit.
         - If a 3-second pause is detected in the previous segments, any text preceding it is discarded to ensure
         the transcription starts with the most recent complete content. The resulting transcription is returned
         as a single string.
