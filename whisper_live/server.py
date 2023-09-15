@@ -266,13 +266,10 @@ class ServeClient:
         Format the current incomplete transcription output by combining it with previous complete segments.
         The resulting transcription is wrapped into two lines, each containing a maximum of 50 characters.
 
-        Details:
-        - This method is responsible for combining the current incomplete segment with a history of
-        previous complete segments to provide a coherent and visually organized transcription. 
-        - It ensures that the combined transcription fits within two lines, with a maximum of 50 characters per line.
-        - Segments are concatenated in the order they exist in the list of previous segments, with the most
+        It ensures that the combined transcription fits within two lines, with a maximum of 50 characters per line.
+        Segments are concatenated in the order they exist in the list of previous segments, with the most
         recent complete segment first and older segments prepended as needed to maintain the character limit.
-        - If a 3-second pause is detected in the previous segments, any text preceding it is discarded to ensure
+        If a 3-second pause is detected in the previous segments, any text preceding it is discarded to ensure
         the transcription starts with the most recent complete content. The resulting transcription is returned
         as a single string.
 
@@ -301,12 +298,9 @@ class ServeClient:
         of audio frames as they are received. It also ensures that the buffer does not exceed a specified size
         to prevent excessive memory usage.
 
-        Details:
-        - The method appends incoming audio frames to the ongoing audio stream buffer.
-        - If the buffer size exceeds a threshold (45 seconds of audio data), it discards the oldest 30 seconds
-          of audio data to maintain a reasonable buffer size.
-        - If the buffer is empty, it initializes it with the provided audio frame.
-        - The audio stream buffer is used for real-time processing of audio data for transcription.
+        If the buffer size exceeds a threshold (45 seconds of audio data), it discards the oldest 30 seconds
+        of audio data to maintain a reasonable buffer size. If the buffer is empty, it initializes it with the provided
+        audio frame. The audio stream buffer is used for real-time processing of audio data for transcription.
 
         Args:
             frame_np (numpy.ndarray): The audio frame data as a NumPy array.
@@ -329,12 +323,11 @@ class ServeClient:
         This method continuously receives audio frames, performs real-time transcription, and sends
         transcribed segments to the client via a WebSocket connection.
 
-        Details:
-        - If the client's language is not detected, it waits for 30 seconds of audio input to make a language prediction.
-        - It utilizes the Whisper ASR model to transcribe the audio, continuously processing and streaming results.
-        - Segments are sent to the client in real-time, and a history of segments is maintained to provide context.
-        - Pauses in speech (no output from Whisper) are handled by showing the previous output for a set duration.
-        - A blank segment is added if there is no speech for a specified duration to indicate a pause.
+        If the client's language is not detected, it waits for 30 seconds of audio input to make a language prediction.
+        It utilizes the Whisper ASR model to transcribe the audio, continuously processing and streaming results. Segments
+        are sent to the client in real-time, and a history of segments is maintained to provide context.Pauses in speech 
+        (no output from Whisper) are handled by showing the previous output for a set duration. A blank segment is added if 
+        there is no speech for a specified duration to indicate a pause.
 
         Returns:
             None
@@ -449,19 +442,13 @@ class ServeClient:
         Processes the segments from whisper. Appends all the segments to the list
         except for the last segment assuming that it is incomplete.
 
-        This method takes segments obtained from the Whisper, processes them, and updates the
-        ongoing transcript with the transcribed text. It handles complete segments, incomplete
-        segments, and repeated segments while maintaining chronological order.
-
-        Details:
-        - The method updates the ongoing transcript with transcribed segments, including their start and end times.
-        - Complete segments are appended to the transcript in chronological order.
-        - Incomplete segments (assumed to be the last one) are processed to identify repeated content. If
-          the same incomplete segment is seen multiple times, it updates the offset and appends the segment
-          to the transcript.
-        - A threshold is used to detect repeated content and ensure it is only included once in the transcript.
-        - The timestamp offset is updated based on the duration of processed segments.
-        - The method returns the last processed segment, allowing it to be sent to the client for real-time updates.
+        Updates the ongoing transcript with transcribed segments, including their start and end times.
+        Complete segments are appended to the transcript in chronological order. Incomplete segments 
+        (assumed to be the last one) are processed to identify repeated content. If the same incomplete 
+        segment is seen multiple times, it updates the offset and appends the segment to the transcript.
+        A threshold is used to detect repeated content and ensure it is only included once in the transcript.
+        The timestamp offset is updated based on the duration of processed segments. The method returns the 
+        last processed segment, allowing it to be sent to the client for real-time updates.
 
         Args:
             segments(dict) : dictionary of segments as returned by whisper
