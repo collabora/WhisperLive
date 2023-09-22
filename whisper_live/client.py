@@ -19,12 +19,13 @@ def resample(file: str, sr: int = 16000):
     # https://github.com/openai/whisper/blob/7858aa9c08d98f75575035ecd6481f462d66ca27/whisper/audio.py#L22
     Open an audio file and read as mono waveform, resampling as necessary,
     save the resampled audio
-    Parameters
-    ----------
-    file: str
-        The audio file to open
-    sr: int
-        The sample rate to resample the audio if necessary
+
+    Args:
+        file (str): The audio file to open
+        sr (int): The sample rate to resample the audio if necessary
+    
+    Returns:
+        resampled_file (str): The resampled audio file
     """
     try:
         # This launches a subprocess to decode audio while down-mixing and resampling as necessary.
