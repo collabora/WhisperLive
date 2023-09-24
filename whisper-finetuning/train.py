@@ -139,7 +139,7 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv_ind
 
         return {"wer": wer}
     
-    num_steps = 120000
+    num_steps = opt.epochs * len(dataset["train"])
     training_args = Seq2SeqTrainingArguments(
         output_dir=f"./whisper-{model_size}-{language}-{dataset_name}",  # change to a repo name of your choice
         per_device_train_batch_size=opt.batch_size,
@@ -147,7 +147,7 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv_ind
         learning_rate=4.25e-5,
         weight_decay=0.01,
         warmup_steps=1200,
-        max_steps=int(num_steps/opt.grad_acc),
+        max_steps=int(num_steps/(opt.batch_size * opt.grad_acc)),
         gradient_checkpointing=True,
         fp16=True,
         evaluation_strategy="steps",
@@ -161,7 +161,7 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv_ind
         load_best_model_at_end=True,
         metric_for_best_model="wer",
         greater_is_better=False,
-        push_to_hub=False,
+        push_to_hub=True,
         dataloader_num_workers=opt.num_workers)
 
     trainer = Seq2SeqTrainer(
@@ -203,23 +203,23 @@ def augment_dataset(batch):
 
 def load_datasets(opt):
     ds = DatasetDict()
-    # ds_shrutilipi_train = load_dataset("audiofolder", split="train", data_dir="/home/hinode/home/vineet/workspace/newsonair_v5_processed")
-    # ds_shrutilipi_train = normalize_dataset(ds_shrutilipi_train)
+    ds_shrutilipi_train = load_dataset("collabora/ai4bharat-shrutilipi", split="train+validation")
+    ds_shrutilipi_train = normalize_dataset(ds_shrutilipi_train)
     
     ds_mcv_hi_train = load_dataset("mozilla-foundation/common_voice_11_0", "hi", split="train", use_auth_token=True)
     ds_mcv_hi_train = normalize_dataset(ds_mcv_hi_train)
     ds_mcv_hi_valid = load_dataset("mozilla-foundation/common_voice_11_0", "hi", split="validation", use_auth_token=True)
     ds_mcv_hi_valid = normalize_dataset(ds_mcv_hi_valid)
 
-    # ds_indic_superb = load_dataset("audiofolder", split="train", data_dir="/opt/vineet-workspace/indic-superb/hindi_merged/")
-    # ds_indic_superb = normalize_dataset(ds_indic_superb, text_column_name="transcription")
+    ds_indic_superb = load_dataset("makaveli10/indic-superb-whisper", split="train+validation")
+    ds_indic_superb = normalize_dataset(ds_indic_superb, text_column_name="transcription")
 
     # augmented shrutilipi dataset
     # ds_augmented_shrutilipi = load_dataset("collabora/ai4bharat-shrutilipi-augmented", split="train", use_auth_token=True)
 
 
-    # ds["train"] = concatenate_datasets([ds_shrutilipi_train, ds_mcv_hi_train, ds_indic_superb])
-    ds["train"] = concatenate_datasets([ds_mcv_hi_train])
+    ds["train"] = concatenate_datasets([ds_shrutilipi_train, ds_mcv_hi_train, ds_indic_superb])
+    # ds["train"] = concatenate_datasets([ds_mcv_hi_train])
     ds["test"] = concatenate_datasets([ds_mcv_hi_valid])
 
     if opt.augment:
@@ -236,7 +236,7 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--model-size', default="medium", type=str, help='whisper model size')
     parser.add_argument('--batch-size', default=8, type=int, help='batch-size per device')
-    parser.add_argument('--grad-acc', default=1, type=int, help='gradient accumulation steps')
+    parser.add_argument('--grad-acc', default=4, type=int, help='gradient accumulation steps')
     parser.add_argument('--augment', action="store_true", help='apply augmentations')
     parser.add_argument('--num_workers', default=12, type=int, help='num dataloader workers')
     parser.add_argument('--epochs', default=3, type=int, help='num epochs')
