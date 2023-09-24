@@ -1,7 +1,6 @@
 # original: https://huggingface.co/blog/fine-tune-whisper
 
 """Finetune Whisper on custom dataset"""
-
 import argparse
 import torch
 import evaluate
@@ -22,6 +21,18 @@ from audiomentations import (
     PolarityInversion,
     TimeStretch,
 )
+from indicnlp import common
+from indicnlp import loader
+from indicnlp.normalize.indic_normalize import DevanagariNormalizer
+from indicnlp.transliterate.unicode_transliterate import ItransTransliterator
+lang='hi'
+
+
+common.set_resources_path('indic_nlp_resources')
+loader.load()
+
+normalizer = DevanagariNormalizer("hi")
+
 
 augmentation = Compose(
     [
@@ -63,7 +74,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         return batch
 
 
-def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_augmented_indic_mcv"):
+def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv_indic_norm"):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     model_size = opt.model_size
     feature_extractor = WhisperFeatureExtractor.from_pretrained(
@@ -83,12 +94,20 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_augmented_ind
         batch["input_length"] = len(audio["array"]) / audio["sampling_rate"]
 
         # encode target text to label ids
-        batch["labels"] = processor.tokenizer(batch[TEXT_COLUMN_NAME]).input_ids
+        input_str = normalizer.normalize(batch[TEXT_COLUMN_NAME]).strip()
+        batch["labels"] = processor.tokenizer(input_str).input_ids
         return batch
     
     dataset = dataset.map(
         prepare_dataset, remove_columns=dataset.column_names["train"], num_proc=8)
     
+    def is_labels_in_length_range(labels):
+        return len(labels) < 448
+    
+    dataset = dataset.filter(
+        is_labels_in_length_range, num_proc=4, input_columns=["labels"]
+    )
+
     data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
     metric = evaluate.load("wer")
     # model = model.to(device)
@@ -109,9 +128,9 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_augmented_ind
         label_str = tokenizer.batch_decode(label_ids, skip_special_tokens=True)
 
         if do_normalize_eval:
-            pred_str = [processor.tokenizer._normalize(pred) for pred in pred_str]
-            # perhaps already normalised
-            label_str = [processor.tokenizer._normalize(label) for label in label_str]
+            pred_str = [normalizer.normalize(pred) for pred in pred_str]
+            # # perhaps already normalised
+            label_str = [normalizer.normalize(label) for label in label_str]
             # filtering step to only evaluate the samples that correspond to non-zero references
             pred_str = [pred_str[i].strip() for i in range(len(pred_str)) if len(label_str[i]) > 0]
             label_str = [label_str[i].strip() for i in range(len(label_str)) if len(label_str[i]) > 0]
@@ -120,7 +139,7 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_augmented_ind
 
         return {"wer": wer}
     
-
+    num_steps = 120000
     training_args = Seq2SeqTrainingArguments(
         output_dir=f"./whisper-{model_size}-{language}-{dataset_name}",  # change to a repo name of your choice
         per_device_train_batch_size=opt.batch_size,
@@ -128,24 +147,22 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_augmented_ind
         learning_rate=4.25e-5,
         weight_decay=0.01,
         warmup_steps=1200,
-        max_steps=40000,
+        max_steps=int(num_steps/opt.grad_acc),
         gradient_checkpointing=True,
         fp16=True,
         evaluation_strategy="steps",
         per_device_eval_batch_size=8,
         predict_with_generate=True,
         generation_max_length=225,
-        save_steps=1000,
-        eval_steps=1000,
-        logging_steps=100,
+        save_steps=2000,
+        eval_steps=2000,
+        logging_steps=200,
         report_to=["tensorboard"],
         load_best_model_at_end=True,
         metric_for_best_model="wer",
         greater_is_better=False,
-        push_to_hub=True,
-        dataloader_num_workers=opt.num_workers
-
-    )
+        push_to_hub=False,
+        dataloader_num_workers=opt.num_workers)
 
     trainer = Seq2SeqTrainer(
         args=training_args,
@@ -157,7 +174,7 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_augmented_ind
         tokenizer=processor.feature_extractor,
     )
 
-    trainer.train(resume_from_checkpoint = True)
+    trainer.train(resume_from_checkpoint = False)
     model.save_pretrained(training_args.output_dir)
     processor.save_pretrained(training_args.output_dir)
 
@@ -186,22 +203,23 @@ def augment_dataset(batch):
 
 def load_datasets(opt):
     ds = DatasetDict()
-    ds_shrutilipi_train = load_dataset("audiofolder", split="train", data_dir="/home/hinode/home/vineet/workspace/newsonair_v5_processed")
-    ds_shrutilipi_train = normalize_dataset(ds_shrutilipi_train)
+    # ds_shrutilipi_train = load_dataset("audiofolder", split="train", data_dir="/home/hinode/home/vineet/workspace/newsonair_v5_processed")
+    # ds_shrutilipi_train = normalize_dataset(ds_shrutilipi_train)
     
     ds_mcv_hi_train = load_dataset("mozilla-foundation/common_voice_11_0", "hi", split="train", use_auth_token=True)
     ds_mcv_hi_train = normalize_dataset(ds_mcv_hi_train)
     ds_mcv_hi_valid = load_dataset("mozilla-foundation/common_voice_11_0", "hi", split="validation", use_auth_token=True)
     ds_mcv_hi_valid = normalize_dataset(ds_mcv_hi_valid)
 
-    ds_indic_superb = load_dataset("audiofolder", split="train", data_dir="/opt/vineet-workspace/indic-superb/hindi_merged/")
-    ds_indic_superb = normalize_dataset(ds_indic_superb, text_column_name="transcription")
+    # ds_indic_superb = load_dataset("audiofolder", split="train", data_dir="/opt/vineet-workspace/indic-superb/hindi_merged/")
+    # ds_indic_superb = normalize_dataset(ds_indic_superb, text_column_name="transcription")
 
     # augmented shrutilipi dataset
-    ds_augmented_shrutilipi = load_dataset("collabora/ai4bharat-shrutilipi-augmented", split="train", use_auth_token=True)
+    # ds_augmented_shrutilipi = load_dataset("collabora/ai4bharat-shrutilipi-augmented", split="train", use_auth_token=True)
 
 
-    ds["train"] = concatenate_datasets([ds_shrutilipi_train, ds_mcv_hi_train, ds_indic_superb, ds_augmented_shrutilipi])
+    # ds["train"] = concatenate_datasets([ds_shrutilipi_train, ds_mcv_hi_train, ds_indic_superb])
+    ds["train"] = concatenate_datasets([ds_mcv_hi_train])
     ds["test"] = concatenate_datasets([ds_mcv_hi_valid])
 
     if opt.augment:
@@ -216,11 +234,12 @@ def load_datasets(opt):
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model-size', default="tiny", type=str, help='whisper model size')
-    parser.add_argument('--batch-size', default=32, type=int, help='batch-size per device')
+    parser.add_argument('--model-size', default="medium", type=str, help='whisper model size')
+    parser.add_argument('--batch-size', default=8, type=int, help='batch-size per device')
     parser.add_argument('--grad-acc', default=1, type=int, help='gradient accumulation steps')
     parser.add_argument('--augment', action="store_true", help='apply augmentations')
     parser.add_argument('--num_workers', default=12, type=int, help='num dataloader workers')
+    parser.add_argument('--epochs', default=3, type=int, help='num epochs')
     opt = parser.parse_args()
     ds = load_datasets(opt)
     train(ds, opt)
