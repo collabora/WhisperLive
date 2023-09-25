@@ -44,6 +44,9 @@ def resample(file: str, sr: int = 16000):
 
 
 class Client:
+    """
+    Handles audio recording, streaming, and communication with a server using WebSocket.
+    """
     INSTANCES = {}
 
     def __init__(

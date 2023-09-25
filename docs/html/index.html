@@ -220,6 +220,140 @@ port (int): The port number to bind the server.</p>
 </dd></dl>
 
 <dl class="py class" id="module-whisper_live.client">
+<dt class="sig sig-object py" id="whisper_live.client.Client">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">whisper_live.client.</span></span><span class="sig-name descname"><span class="pre">Client</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">host</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">port</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_multilingual</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lang</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">translate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client" title="Link to this definition">¶</a></dt>
+<dd><p>Handles audio recording, streaming, and communication with a server using WebSocket.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.bytes_to_float_array">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">bytes_to_float_array</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">audio_bytes</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.bytes_to_float_array" title="Link to this definition">¶</a></dt>
+<dd><p>Convert audio data from bytes to a NumPy float array.</p>
+<p>It assumes that the audio data is in 16-bit PCM format. The audio data is normalized to 
+have values between -1 and 1.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>audio_bytes (bytes): Audio data in bytes.</p>
+</dd>
+<dt>Returns:</dt><dd><p>np.ndarray: A NumPy array containing the audio data as float values normalized between -1 and 1.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.close_websocket">
+<span class="sig-name descname"><span class="pre">close_websocket</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.close_websocket" title="Link to this definition">¶</a></dt>
+<dd><p>Close the WebSocket connection and join the WebSocket thread.</p>
+<p>First attempts to close the WebSocket connection using <cite>self.client_socket.close()</cite>. After 
+closing the connection, it joins the WebSocket thread to ensure proper termination.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.get_client_socket">
+<span class="sig-name descname"><span class="pre">get_client_socket</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.get_client_socket" title="Link to this definition">¶</a></dt>
+<dd><p>Get the WebSocket client socket instance.</p>
+<dl class="simple">
+<dt>Returns:</dt><dd><p>WebSocketApp: The WebSocket client socket instance currently in use by the client.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.on_message">
+<span class="sig-name descname"><span class="pre">on_message</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ws</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.on_message" title="Link to this definition">¶</a></dt>
+<dd><p>Callback function called when a message is received from the server.</p>
+<p>It updates various attributes of the client based on the received message, including
+recording status, language detection, and server messages. If a disconnect message
+is received, it sets the recording status to False.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>ws (websocket.WebSocketApp): The WebSocket client instance.
+message (str): The received message from the server.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.on_open">
+<span class="sig-name descname"><span class="pre">on_open</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ws</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.on_open" title="Link to this definition">¶</a></dt>
+<dd><p>Callback function called when the WebSocket connection is successfully opened.</p>
+<p>Sends an initial configuration message to the server, including client UID, multilingual mode,
+language selection, and task type.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>ws (websocket.WebSocketApp): The WebSocket client instance.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.play_file">
+<span class="sig-name descname"><span class="pre">play_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filename</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.play_file" title="Link to this definition">¶</a></dt>
+<dd><p>Play an audio file and send it to the server for processing.</p>
+<p>Reads an audio file, plays it through the audio output, and simultaneously sends
+the audio data to the server for processing. It uses PyAudio to create an audio 
+stream for playback. The audio data is read from the file in chunks, converted to 
+floating-point format, and sent to the server using WebSocket communication.
+This method is typically used when you want to process pre-recorded audio and send it
+to the server in real-time.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>filename (str): The path to the audio file to be played and sent to the server.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.record">
+<span class="sig-name descname"><span class="pre">record</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">out_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'output_recording.wav'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.record" title="Link to this definition">¶</a></dt>
+<dd><p>Record audio data from the input stream and save it to a WAV file.</p>
+<p>Continuously records audio data from the input stream, sends it to the server via a WebSocket
+connection, and simultaneously saves it to multiple WAV files in chunks. It stops recording when
+the <cite>RECORD_SECONDS</cite> duration is reached or when the <cite>RECORDING</cite> flag is set to <cite>False</cite>.</p>
+<p>Audio data is saved in chunks to the “chunks” directory. Each chunk is saved as a separate WAV file.
+The recording will continue until the specified duration is reached or until the <cite>RECORDING</cite> flag is set to <cite>False</cite>.
+The recording process can be interrupted by sending a KeyboardInterrupt (e.g., pressing Ctrl+C). After recording, 
+the method combines all the saved audio chunks into the specified <cite>out_file</cite>.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>out_file (str, optional): The name of the output WAV file to save the entire recording. Default is “output_recording.wav”.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.send_packet_to_server">
+<span class="sig-name descname"><span class="pre">send_packet_to_server</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.send_packet_to_server" title="Link to this definition">¶</a></dt>
+<dd><p>Send an audio packet to the server using WebSocket.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>message (bytes): The audio data packet in bytes to be sent to the server.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.write_audio_frames_to_file">
+<span class="sig-name descname"><span class="pre">write_audio_frames_to_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">frames</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.write_audio_frames_to_file" title="Link to this definition">¶</a></dt>
+<dd><p>Write audio frames to a WAV file.</p>
+<p>The WAV file is created or overwritten with the specified name. The audio frames should be 
+in the correct format and match the specified channel, sample width, and sample rate.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>frames (bytes): The audio frames to be written to the file.
+file_name (str): The name of the WAV file to which the frames will be written.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.write_output_recording">
+<span class="sig-name descname"><span class="pre">write_output_recording</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_audio_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_file</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.write_output_recording" title="Link to this definition">¶</a></dt>
+<dd><p>Combine and save recorded audio chunks into a single WAV file.</p>
+<p>The individual audio chunk files are expected to be located in the “chunks” directory. Reads each chunk 
+file, appends its audio data to the final recording, and then deletes the chunk file. After combining
+and saving, the final recording is stored in the specified <cite>out_file</cite>.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>n_audio_file (int): The number of audio chunk files to combine.
+out_file (str): The name of the output WAV file to save the final recording.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="whisper_live.client.TranscriptionClient">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">whisper_live.client.</span></span><span class="sig-name descname"><span class="pre">TranscriptionClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">host</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">port</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_multilingual</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lang</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">translate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.TranscriptionClient" title="Link to this definition">¶</a></dt>
 <dd><p>Client for handling audio transcription tasks via a WebSocket connection.</p>
