@@ -1,3 +1,5 @@
+# original: https://github.com/snakers4/silero-vad/blob/master/utils_vad.py
+
 import os
 import subprocess
 import torch
