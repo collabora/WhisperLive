@@ -17,6 +17,7 @@ import torch
 import numpy as np
 import time
 from whisper_live.transcriber import WhisperModel
+from whisper_live.vad import VoiceActivityDetection
 
 
 class TranscriptionServer:
@@ -29,11 +30,7 @@ class TranscriptionServer:
     RATE = 16000
     def __init__(self):
         # voice activity detection model
-        self.vad_model, _ = torch.hub.load(repo_or_dir='snakers4/silero-vad',
-                                           model='silero_vad',
-                                           force_reload=True,
-                                           onnx=True
-                                           )
+        self.vad_model = VoiceActivityDetection()
         self.vad_threshold = 0.4
         self.clients = {}
         self.websockets = {}
