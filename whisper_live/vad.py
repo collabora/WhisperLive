@@ -9,7 +9,7 @@ import onnxruntime
 
 class VoiceActivityDetection():
 
-    def __init__(self):
+    def __init__(self, force_onnx_cpu=True):
         path = self.download()
         opts = onnxruntime.SessionOptions()
         opts.log_severity_level = 3
@@ -17,7 +17,11 @@ class VoiceActivityDetection():
         opts.inter_op_num_threads = 1
         opts.intra_op_num_threads = 1
 
-        self.session = onnxruntime.InferenceSession(path, providers=['CPUExecutionProvider'], sess_options=opts)
+        if force_onnx_cpu and 'CPUExecutionProvider' in onnxruntime.get_available_providers():
+            self.session = onnxruntime.InferenceSession(path, providers=['CPUExecutionProvider'], sess_options=opts)
+        else:
+            self.session = onnxruntime.InferenceSession(path, providers=['CUDAExecutionProvider'], sess_options=opts)
+
 
         self.reset_states()
         self.sample_rates = [8000, 16000]
