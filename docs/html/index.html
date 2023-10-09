@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Welcome to Whisper Live documentation! &#8212; whisper_live  documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=4f649999" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=039e1c02" />
+    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=888ff710"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="welcome-to-whisper-live-documentation">
+<h1>Welcome to Whisper Live documentation!<a class="headerlink" href="#welcome-to-whisper-live-documentation" title="Link to this heading">¶</a></h1>
+<div class="toctree-wrapper compound">
+</div>
+<dl class="py class" id="module-whisper_live.server">
+<dt class="sig sig-object py" id="whisper_live.server.ServeClient">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">whisper_live.server.</span></span><span class="sig-name descname"><span class="pre">ServeClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">websocket</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">task</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'transcribe'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multilingual</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">language</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">client_uid</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.server.ServeClient" title="Link to this definition">¶</a></dt>
+<dd><dl class="simple">
+<dt>Attributes:</dt><dd><p>RATE (int): The audio sampling rate (constant) set to 16000.
+SERVER_READY (str): A constant message indicating that the server is ready.
+DISCONNECT (str): A constant message indicating that the client should disconnect.
+client_uid (str): A unique identifier for the client.
+data (bytes): Accumulated audio data.
+frames (bytes): Accumulated audio frames.
+language (str): The language for transcription.
+task (str): The task type, e.g., “transcribe.”
+transcriber (WhisperModel): The Whisper model for speech-to-text.
+timestamp_offset (float): The offset in audio timestamps.
+frames_np (numpy.ndarray): NumPy array to store audio frames.
+frames_offset (float): The offset in audio frames.
+text (list): List of transcribed text segments.
+current_out (str): The current incomplete transcription.
+prev_out (str): The previous incomplete transcription.
+t_start (float): Timestamp for the start of transcription.
+exit (bool): A flag to exit the transcription thread.
+same_output_threshold (int): Threshold for consecutive same output segments.
+show_prev_out_thresh (int): Threshold for showing previous output segments.
+add_pause_thresh (int): Threshold for adding a pause (blank) segment.
+transcript (list): List of transcribed segments.
+send_last_n_segments (int): Number of last segments to send to the client.
+wrapper (textwrap.TextWrapper): Text wrapper for formatting text.
+pick_previous_segments (int): Number of previous segments to include in the output.
+websocket: The WebSocket connection for the client.</p>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.server.ServeClient.add_frames">
+<span class="sig-name descname"><span class="pre">add_frames</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">frame_np</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.server.ServeClient.add_frames" title="Link to this definition">¶</a></dt>
+<dd><p>Add audio frames to the ongoing audio stream buffer.</p>
+<p>This method is responsible for maintaining the audio stream buffer, allowing the continuous addition
+of audio frames as they are received. It also ensures that the buffer does not exceed a specified size
+to prevent excessive memory usage.</p>
+<p>If the buffer size exceeds a threshold (45 seconds of audio data), it discards the oldest 30 seconds
+of audio data to maintain a reasonable buffer size. If the buffer is empty, it initializes it with the provided
+audio frame. The audio stream buffer is used for real-time processing of audio data for transcription.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>frame_np (numpy.ndarray): The audio frame data as a NumPy array.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.server.ServeClient.cleanup">
+<span class="sig-name descname"><span class="pre">cleanup</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.server.ServeClient.cleanup" title="Link to this definition">¶</a></dt>
+<dd><p>Perform cleanup tasks before exiting the transcription service.</p>
+<p>This method performs necessary cleanup tasks, including stopping the transcription thread, marking
+the exit flag to indicate the transcription thread should exit gracefully, and destroying resources
+associated with the transcription process.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.server.ServeClient.disconnect">
+<span class="sig-name descname"><span class="pre">disconnect</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.server.ServeClient.disconnect" title="Link to this definition">¶</a></dt>
+<dd><p>Notify the client of disconnection and send a disconnect message.</p>
+<p>This method sends a disconnect message to the client via the WebSocket connection to notify them
+that the transcription service is disconnecting gracefully.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.server.ServeClient.fill_output">
+<span class="sig-name descname"><span class="pre">fill_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.server.ServeClient.fill_output" title="Link to this definition">¶</a></dt>
+<dd><p>Format the current incomplete transcription output by combining it with previous complete segments.
+The resulting transcription is wrapped into two lines, each containing a maximum of 50 characters.</p>
+<p>It ensures that the combined transcription fits within two lines, with a maximum of 50 characters per line.
+Segments are concatenated in the order they exist in the list of previous segments, with the most
+recent complete segment first and older segments prepended as needed to maintain the character limit.
+If a 3-second pause is detected in the previous segments, any text preceding it is discarded to ensure
+the transcription starts with the most recent complete content. The resulting transcription is returned
+as a single string.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>output(str): The current incomplete transcription segment.</p>
+</dd>
+<dt>Returns:</dt><dd><p>str: A formatted transcription wrapped in two lines.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.server.ServeClient.speech_to_text">
+<span class="sig-name descname"><span class="pre">speech_to_text</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.server.ServeClient.speech_to_text" title="Link to this definition">¶</a></dt>
+<dd><p>Process an audio stream in an infinite loop, continuously transcribing the speech.</p>
+<p>This method continuously receives audio frames, performs real-time transcription, and sends
+transcribed segments to the client via a WebSocket connection.</p>
+<p>If the client’s language is not detected, it waits for 30 seconds of audio input to make a language prediction.
+It utilizes the Whisper ASR model to transcribe the audio, continuously processing and streaming results. Segments
+are sent to the client in real-time, and a history of segments is maintained to provide context.Pauses in speech 
+(no output from Whisper) are handled by showing the previous output for a set duration. A blank segment is added if 
+there is no speech for a specified duration to indicate a pause.</p>
+<dl class="simple">
+<dt>Raises:</dt><dd><p>Exception: If there is an issue with audio processing or WebSocket communication.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.server.ServeClient.update_segments">
+<span class="sig-name descname"><span class="pre">update_segments</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">segments</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">duration</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.server.ServeClient.update_segments" title="Link to this definition">¶</a></dt>
+<dd><p>Processes the segments from whisper. Appends all the segments to the list
+except for the last segment assuming that it is incomplete.</p>
+<p>Updates the ongoing transcript with transcribed segments, including their start and end times.
+Complete segments are appended to the transcript in chronological order. Incomplete segments 
+(assumed to be the last one) are processed to identify repeated content. If the same incomplete 
+segment is seen multiple times, it updates the offset and appends the segment to the transcript.
+A threshold is used to detect repeated content and ensure it is only included once in the transcript.
+The timestamp offset is updated based on the duration of processed segments. The method returns the 
+last processed segment, allowing it to be sent to the client for real-time updates.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>segments(dict) : dictionary of segments as returned by whisper
+duration(float): duration of the current chunk</p>
+</dd>
+<dt>Returns:</dt><dd><dl class="simple">
+<dt>dict or None: The last processed segment with its start time, end time, and transcribed text.</dt><dd><p>Returns None if there are no valid segments to process.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="whisper_live.server.TranscriptionServer">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">whisper_live.server.</span></span><span class="sig-name descname"><span class="pre">TranscriptionServer</span></span><a class="headerlink" href="#whisper_live.server.TranscriptionServer" title="Link to this definition">¶</a></dt>
+<dd><p>Represents a transcription server that handles incoming audio from clients.</p>
+<dl class="simple">
+<dt>Attributes:</dt><dd><p>RATE (int): The audio sampling rate (constant) set to 16000.
+vad_model (torch.Module): The voice activity detection model.
+vad_threshold (float): The voice activity detection threshold.
+clients (dict): A dictionary to store connected clients.
+websockets (dict): A dictionary to store WebSocket connections.
+clients_start_time (dict): A dictionary to track client start times.
+max_clients (int): Maximum allowed connected clients.
+max_connection_time (int): Maximum allowed connection time in seconds.</p>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.server.TranscriptionServer.get_wait_time">
+<span class="sig-name descname"><span class="pre">get_wait_time</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.server.TranscriptionServer.get_wait_time" title="Link to this definition">¶</a></dt>
+<dd><p>Calculate and return the estimated wait time for clients.</p>
+<dl class="simple">
+<dt>Returns:</dt><dd><p>float: The estimated wait time in minutes.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.server.TranscriptionServer.recv_audio">
+<span class="sig-name descname"><span class="pre">recv_audio</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">websocket</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.server.TranscriptionServer.recv_audio" title="Link to this definition">¶</a></dt>
+<dd><p>Receive audio chunks from a client in an infinite loop.</p>
+<p>Continuously receives audio frames from a connected client
+over a WebSocket connection. It processes the audio frames using a
+voice activity detection (VAD) model to determine if they contain speech
+or not. If the audio frame contains speech, it is added to the client’s
+audio data for ASR.
+If the maximum number of clients is reached, the method sends a
+“WAIT” status to the client, indicating that they should wait
+until a slot is available.
+If a client’s connection exceeds the maximum allowed time, it will
+be disconnected, and the client’s resources will be cleaned up.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>websocket (WebSocket): The WebSocket connection for the client.</p>
+</dd>
+<dt>Raises:</dt><dd><p>Exception: If there is an error during the audio frame processing.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.server.TranscriptionServer.run">
+<span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">host</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">port</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">9090</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.server.TranscriptionServer.run" title="Link to this definition">¶</a></dt>
+<dd><p>Run the transcription server.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>host (str): The host address to bind the server.
+port (int): The port number to bind the server.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class" id="module-whisper_live.client">
+<dt class="sig sig-object py" id="whisper_live.client.Client">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">whisper_live.client.</span></span><span class="sig-name descname"><span class="pre">Client</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">host</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">port</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_multilingual</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lang</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">translate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client" title="Link to this definition">¶</a></dt>
+<dd><p>Handles audio recording, streaming, and communication with a server using WebSocket.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.bytes_to_float_array">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">bytes_to_float_array</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">audio_bytes</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.bytes_to_float_array" title="Link to this definition">¶</a></dt>
+<dd><p>Convert audio data from bytes to a NumPy float array.</p>
+<p>It assumes that the audio data is in 16-bit PCM format. The audio data is normalized to 
+have values between -1 and 1.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>audio_bytes (bytes): Audio data in bytes.</p>
+</dd>
+<dt>Returns:</dt><dd><p>np.ndarray: A NumPy array containing the audio data as float values normalized between -1 and 1.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.close_websocket">
+<span class="sig-name descname"><span class="pre">close_websocket</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.close_websocket" title="Link to this definition">¶</a></dt>
+<dd><p>Close the WebSocket connection and join the WebSocket thread.</p>
+<p>First attempts to close the WebSocket connection using <cite>self.client_socket.close()</cite>. After 
+closing the connection, it joins the WebSocket thread to ensure proper termination.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.get_client_socket">
+<span class="sig-name descname"><span class="pre">get_client_socket</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.get_client_socket" title="Link to this definition">¶</a></dt>
+<dd><p>Get the WebSocket client socket instance.</p>
+<dl class="simple">
+<dt>Returns:</dt><dd><p>WebSocketApp: The WebSocket client socket instance currently in use by the client.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.on_message">
+<span class="sig-name descname"><span class="pre">on_message</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ws</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.on_message" title="Link to this definition">¶</a></dt>
+<dd><p>Callback function called when a message is received from the server.</p>
+<p>It updates various attributes of the client based on the received message, including
+recording status, language detection, and server messages. If a disconnect message
+is received, it sets the recording status to False.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>ws (websocket.WebSocketApp): The WebSocket client instance.
+message (str): The received message from the server.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.on_open">
+<span class="sig-name descname"><span class="pre">on_open</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ws</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.on_open" title="Link to this definition">¶</a></dt>
+<dd><p>Callback function called when the WebSocket connection is successfully opened.</p>
+<p>Sends an initial configuration message to the server, including client UID, multilingual mode,
+language selection, and task type.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>ws (websocket.WebSocketApp): The WebSocket client instance.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.play_file">
+<span class="sig-name descname"><span class="pre">play_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filename</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.play_file" title="Link to this definition">¶</a></dt>
+<dd><p>Play an audio file and send it to the server for processing.</p>
+<p>Reads an audio file, plays it through the audio output, and simultaneously sends
+the audio data to the server for processing. It uses PyAudio to create an audio 
+stream for playback. The audio data is read from the file in chunks, converted to 
+floating-point format, and sent to the server using WebSocket communication.
+This method is typically used when you want to process pre-recorded audio and send it
+to the server in real-time.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>filename (str): The path to the audio file to be played and sent to the server.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.record">
+<span class="sig-name descname"><span class="pre">record</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">out_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'output_recording.wav'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.record" title="Link to this definition">¶</a></dt>
+<dd><p>Record audio data from the input stream and save it to a WAV file.</p>
+<p>Continuously records audio data from the input stream, sends it to the server via a WebSocket
+connection, and simultaneously saves it to multiple WAV files in chunks. It stops recording when
+the <cite>RECORD_SECONDS</cite> duration is reached or when the <cite>RECORDING</cite> flag is set to <cite>False</cite>.</p>
+<p>Audio data is saved in chunks to the “chunks” directory. Each chunk is saved as a separate WAV file.
+The recording will continue until the specified duration is reached or until the <cite>RECORDING</cite> flag is set to <cite>False</cite>.
+The recording process can be interrupted by sending a KeyboardInterrupt (e.g., pressing Ctrl+C). After recording, 
+the method combines all the saved audio chunks into the specified <cite>out_file</cite>.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>out_file (str, optional): The name of the output WAV file to save the entire recording. Default is “output_recording.wav”.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.send_packet_to_server">
+<span class="sig-name descname"><span class="pre">send_packet_to_server</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.send_packet_to_server" title="Link to this definition">¶</a></dt>
+<dd><p>Send an audio packet to the server using WebSocket.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>message (bytes): The audio data packet in bytes to be sent to the server.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.write_audio_frames_to_file">
+<span class="sig-name descname"><span class="pre">write_audio_frames_to_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">frames</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.write_audio_frames_to_file" title="Link to this definition">¶</a></dt>
+<dd><p>Write audio frames to a WAV file.</p>
+<p>The WAV file is created or overwritten with the specified name. The audio frames should be 
+in the correct format and match the specified channel, sample width, and sample rate.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>frames (bytes): The audio frames to be written to the file.
+file_name (str): The name of the WAV file to which the frames will be written.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="whisper_live.client.Client.write_output_recording">
+<span class="sig-name descname"><span class="pre">write_output_recording</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_audio_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_file</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.Client.write_output_recording" title="Link to this definition">¶</a></dt>
+<dd><p>Combine and save recorded audio chunks into a single WAV file.</p>
+<p>The individual audio chunk files are expected to be located in the “chunks” directory. Reads each chunk 
+file, appends its audio data to the final recording, and then deletes the chunk file. After combining
+and saving, the final recording is stored in the specified <cite>out_file</cite>.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>n_audio_file (int): The number of audio chunk files to combine.
+out_file (str): The name of the output WAV file to save the final recording.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="whisper_live.client.TranscriptionClient">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">whisper_live.client.</span></span><span class="sig-name descname"><span class="pre">TranscriptionClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">host</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">port</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_multilingual</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lang</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">translate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.TranscriptionClient" title="Link to this definition">¶</a></dt>
+<dd><p>Client for handling audio transcription tasks via a WebSocket connection.</p>
+<p>Acts as a high-level client for audio transcription tasks using a WebSocket connection. It can be used
+to send audio data for transcription to a server and receive transcribed text segments.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>host (str): The hostname or IP address of the server.
+port (int): The port number to connect to on the server.
+is_multilingual (bool, optional): Indicates whether the transcription should support multiple languages (default is False).
+lang (str, optional): The primary language for transcription (used if <cite>is_multilingual</cite> is False). Default is None, which defaults to English (‘en’).
+translate (bool, optional): Indicates whether translation tasks are required (default is False).</p>
+</dd>
+<dt>Attributes:</dt><dd><p>client (Client): An instance of the underlying Client class responsible for handling the WebSocket connection.</p>
+</dd>
+<dt>Example:</dt><dd><p>To create a TranscriptionClient and start transcription on microphone audio:
+<code class="docutils literal notranslate"><span class="pre">`python</span>
+<span class="pre">transcription_client</span> <span class="pre">=</span> <span class="pre">TranscriptionClient(host=&quot;localhost&quot;,</span> <span class="pre">port=9090,</span> <span class="pre">is_multilingual=True)</span>
+<span class="pre">transcription_client()</span>
+<span class="pre">`</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="whisper_live.client.resample">
+<span class="sig-prename descclassname"><span class="pre">whisper_live.client.</span></span><span class="sig-name descname"><span class="pre">resample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sr</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">16000</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#whisper_live.client.resample" title="Link to this definition">¶</a></dt>
+<dd><p># <a class="reference external" href="https://github.com/openai/whisper/blob/7858aa9c08d98f75575035ecd6481f462d66ca27/whisper/audio.py#L22">https://github.com/openai/whisper/blob/7858aa9c08d98f75575035ecd6481f462d66ca27/whisper/audio.py#L22</a>
+Open an audio file and read as mono waveform, resampling as necessary,
+save the resampled audio</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>file (str): The audio file to open
+sr (int): The sample rate to resample the audio if necessary</p>
+</dd>
+<dt>Returns:</dt><dd><p>resampled_file (str): The resampled audio file</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="indices-and-tables">
+<h1>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Link to this heading">¶</a></h1>
+<ul class="simple">
+<li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p></li>
+<li><p><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></p></li>
+<li><p><a class="reference internal" href="search.html"><span class="std std-ref">Search Page</span></a></p></li>
+</ul>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="#">whisper_live</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="#">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2023, Collabora.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 7.2.6</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.13</a>
+      
+      |
+      <a href="_sources/index.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
