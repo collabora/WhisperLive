@@ -7,7 +7,7 @@ import evaluate
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Union
-from datasets import load_dataset, DatasetDict, Audio, concatenate_datasets
+from datasets import load_dataset, DatasetDict, Audio, concatenate_datasets, load_from_disk
 from transformers import WhisperFeatureExtractor, WhisperTokenizer, WhisperProcessor
 from transformers import WhisperForConditionalGeneration
 from transformers import Seq2SeqTrainingArguments, Seq2SeqTrainer
@@ -74,7 +74,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         return batch
 
 
-def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv_indic_norm"):
+def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv_indic_norm_test"):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     model_size = opt.model_size
     feature_extractor = WhisperFeatureExtractor.from_pretrained(
@@ -98,15 +98,15 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv_ind
         batch["labels"] = processor.tokenizer(input_str).input_ids
         return batch
     
-    dataset = dataset.map(
-        prepare_dataset, remove_columns=dataset.column_names["train"], num_proc=8)
+    # dataset = dataset.map(
+    #     prepare_dataset, remove_columns=dataset.column_names["train"], num_proc=8)
     
     def is_labels_in_length_range(labels):
         return len(labels) < 448
     
-    dataset = dataset.filter(
-        is_labels_in_length_range, num_proc=4, input_columns=["labels"]
-    )
+    # dataset = dataset.filter(
+    #     is_labels_in_length_range, num_proc=4, input_columns=["labels"]
+    # )
 
     data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
     metric = evaluate.load("wer")
@@ -161,7 +161,7 @@ def train(dataset, opt, language="Hindi", dataset_name="shrutilipi_indic_mcv_ind
         load_best_model_at_end=True,
         metric_for_best_model="wer",
         greater_is_better=False,
-        push_to_hub=True,
+        push_to_hub=False,
         dataloader_num_workers=opt.num_workers)
 
     trainer = Seq2SeqTrainer(
@@ -234,12 +234,22 @@ def load_datasets(opt):
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model-size', default="medium", type=str, help='whisper model size')
+    parser.add_argument('--model-size', default="tiny", type=str, help='whisper model size')
     parser.add_argument('--batch-size', default=8, type=int, help='batch-size per device')
-    parser.add_argument('--grad-acc', default=4, type=int, help='gradient accumulation steps')
+    parser.add_argument('--grad-acc', default=1, type=int, help='gradient accumulation steps')
     parser.add_argument('--augment', action="store_true", help='apply augmentations')
     parser.add_argument('--num_workers', default=12, type=int, help='num dataloader workers')
     parser.add_argument('--epochs', default=3, type=int, help='num epochs')
+    parser.add_argument(
+        '--hf_preprocessed_dataset', 
+        default="makaveli10/whisper-hindi-preprocessed", 
+        type=str, 
+        help="whisper preprocessed dataset"
+    )
     opt = parser.parse_args()
-    ds = load_datasets(opt)
+    if opt.hf_preprocessed_dataset:
+        ds = load_from_disk("/home/hinode/home/vineet/workspace/whisper-hindi-preprocessed")
+        print(opt.hf_preprocessed_dataset)
+    else:
+        ds = load_datasets(opt)
     train(ds, opt)
