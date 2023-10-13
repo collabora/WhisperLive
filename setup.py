@@ -21,9 +21,15 @@ setup(name="whisper-live",
       author_email="vineet.suryan@collabora.com",
       license="MIT",
       classifiers=[
+          "Development Status :: 4 - Beta",
+          "Intended Audience :: Developers",
+          "Intended Audience :: Science/Research",
           "License :: OSI Approved :: MIT License",
+          "Programming Language :: Python :: 3",
+          "Programming Language :: Python :: 3 :: Only",
           "Programming Language :: Python :: 3.8",
           "Programming Language :: Python :: 3.9",
+          "Topic :: Scientific/Engineering :: Artificial Intelligence",
       ],
       packages=find_packages(
         exclude=("examples",
@@ -43,4 +49,6 @@ setup(name="whisper-live",
         "ffmpeg-python",
         "scipy",
         "websocket-client",
-      ])
+      ],
+      python_requires=">=3.8"
+)

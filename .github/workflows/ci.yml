@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check Out Repository
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+
+    - name: Set up FFmpeg
+      uses: FedericoCarboni/setup-ffmpeg@v2
+
+    - name: Install Additional Requirements
+      run: |
+        sudo apt-get -y install portaudio19-dev wget
+      shell: bash
+
+    - name: Install Client Requirements
+      run: pip install -r requirements/client.txt
+
+    - name: Install Server Requirements
+      run: pip install -r requirements/server.txt
+
+    - name: Install Wheel for Build
+      run: pip install wheel twine
+
+    - name: Build and Publish Package to PyPI
+      run: |
+        python setup.py sdist bdist_wheel
+        twine upload --repository-url https://upload.pypi.org/legacy/ dist/*
+      env:
+        TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+        TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
