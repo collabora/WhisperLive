@@ -1,6 +1,6 @@
 import pathlib
 from setuptools import find_packages, setup
-from mypackage.__version__ import __version__
+from whisper_live.__version__ import __version__
 
 
 # The directory containing this file
