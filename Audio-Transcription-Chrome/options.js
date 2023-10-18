@@ -184,16 +184,17 @@ async function startRecord(option) {
  * @param {Object} sender - The sender object containing information about the message sender.
  * @param {Function} sendResponse - The function to send a response back to the message sender.
  */
-chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const { type, data } = request;
 
   switch (type) {
     case "start_capture":
-      await startRecord(data);
+      startRecord(data);
       break;
     default:
       break;
   }
 
   sendResponse({});
+  return true;
 });
