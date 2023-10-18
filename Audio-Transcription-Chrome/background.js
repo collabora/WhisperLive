@@ -207,13 +207,3 @@ chrome.runtime.onMessage.addListener(async (message) => {
 });
 
 
-/**
- * Listens for if the tab is reloaded.
- * @param {Object} message - The message received from the runtime.
- */
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete') {
-    await executeScriptInTab(tabId, "content.js");
-    await delayExecution(500);
-  }
-});
