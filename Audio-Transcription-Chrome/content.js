@@ -173,13 +173,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (type === "STOP") {
         remove_element();
         sendResponse({data: "STOPPED"});
-        return;
+        return true;
     } else if (type === "showWaitPopup"){
         initPopupElement();
 
         showPopup(`Estimated wait time ~ ${Math.round(data)} minutes`);
         sendResponse({data: "popup"});
-        return;
+        return true;
     }
 
     init_element();
@@ -234,4 +234,5 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     sendResponse({});
+    return true;
 });
