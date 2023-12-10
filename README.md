@@ -41,6 +41,12 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
     ```
     This command captures audio from the microphone and sends it to the server for transcription. It uses the same options as the previous command, enabling the multilingual feature and specifying the target language and task.
 
+    - To trasncribe from a HLS stream:
+    ```python
+      client = TranscriptionClient(host, port, is_multilingual=True, lang="en", translate=False) 
+      client(hls_url="http://domain.url/playlist.m3u8") 
+    ```
+    This command streams audio into the server from a HLS stream. It uses the same options as the previous command, enabling the multilingual feature and specifying the target language and task.
 
 ## Transcribe audio from browser
 - Run the server

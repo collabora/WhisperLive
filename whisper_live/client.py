@@ -11,7 +11,6 @@ import json
 import websocket
 import uuid
 import time
-import subprocess
 
 
 def resample(file: str, sr: int = 16000):
@@ -355,19 +354,14 @@ class Client:
         print("[INFO]: Connecting to HLS stream...")
         process = None  # Initialize process to None
 
-
         try:
-            # Launch an FFMPEG process to connect to the HLS stream
-            command = [
-                'ffmpeg',
-                '-i', hls_url,         # Input URL
-                '-acodec', 'pcm_s16le', # Output codec
-                '-f', 's16le',         # Output format
-                '-ac', '1',            # Set audio channels to 1 (mono)
-                '-ar', str(self.rate), # Resample audio to the specified rate
-                '-'
-            ]
-            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            # Connecting to the HLS stream using ffmpeg-python
+            process = (
+                ffmpeg
+                .input(hls_url, threads=0)
+                .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=self.rate)
+                .run_async(pipe_stdout=True, pipe_stderr=True)
+            )
 
             # Process the stream
             while True:
@@ -384,6 +378,7 @@ class Client:
                 process.kill()
 
         print("[INFO]: HLS stream processing finished.")
+
 
     def record(self, out_file="output_recording.wav"):
         """
