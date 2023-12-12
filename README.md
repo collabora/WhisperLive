@@ -44,7 +44,7 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
     - To trasncribe from a HLS stream:
     ```python
       client = TranscriptionClient(host, port, is_multilingual=True, lang="en", translate=False) 
-      client(hls_url="http://domain.url/playlist.m3u8") 
+      client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/bbc_1xtra.isml/bbc_1xtra-audio%3d96000.norewind.m3u8") 
     ```
     This command streams audio into the server from a HLS stream. It uses the same options as the previous command, enabling the multilingual feature and specifying the target language and task.
 
