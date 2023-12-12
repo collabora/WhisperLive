@@ -344,6 +344,42 @@ class Client:
             wavfile.setframerate(self.rate)
             wavfile.writeframes(frames)
 
+    def process_hls_stream(self, hls_url):
+        """
+        Connect to an HLS source, process the audio stream, and send it for transcription.
+
+        Args:
+            hls_url (str): The URL of the HLS stream source.
+        """
+        print("[INFO]: Connecting to HLS stream...")
+        process = None  # Initialize process to None
+
+        try:
+            # Connecting to the HLS stream using ffmpeg-python
+            process = (
+                ffmpeg
+                .input(hls_url, threads=0)
+                .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=self.rate)
+                .run_async(pipe_stdout=True, pipe_stderr=True)
+            )
+
+            # Process the stream
+            while True:
+                in_bytes = process.stdout.read(self.chunk * 2)  # 2 bytes per sample
+                if not in_bytes:
+                    break
+                audio_array = self.bytes_to_float_array(in_bytes)
+                self.send_packet_to_server(audio_array.tobytes())
+
+        except Exception as e:
+            print(f"[ERROR]: Failed to connect to HLS stream: {e}")
+        finally:
+            if process:
+                process.kill()
+
+        print("[INFO]: HLS stream processing finished.")
+
+
     def record(self, out_file="output_recording.wav"):
         """
         Record audio data from the input stream and save it to a WAV file.
@@ -464,7 +500,7 @@ class TranscriptionClient:
     def __init__(self, host, port, is_multilingual=False, lang=None, translate=False):
         self.client = Client(host, port, is_multilingual, lang, translate)
 
-    def __call__(self, audio=None):
+    def __call__(self, audio=None, hls_url=None):
         """
         Start the transcription process.
 
@@ -483,7 +519,9 @@ class TranscriptionClient:
                 return
             pass
         print("[INFO]: Server Ready!")
-        if audio is not None:
+        if hls_url is not None:
+            self.client.process_hls_stream(hls_url)
+        elif audio is not None:
             resampled_file = resample(audio)
             self.client.play_file(resampled_file)
         else:
