@@ -102,7 +102,8 @@ async function startRecord(option) {
           uid: uuid,
           multilingual: option.multilingual,
           language: option.language,
-          task: option.task
+          task: option.task,
+          model_size: option.modelSize
         })
       );
     };

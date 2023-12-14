@@ -125,10 +125,21 @@
   </div>
   <div class="dropdown-container">
     <label for="taskDropdown">Select task:</label>
-    <select id="taskDropdown" disabled>
+    <select id="taskDropdown" >
       <option value="">Select Task</option>
       <option value="transcribe" selected>Transcribe</option>
       <option value="translate">Translate</option>
+    </select>
+  </div>
+  <div class="dropdown-container">
+    <label for="modelSizeDropdown">Select Model Size:</label>
+    <select id="modelSizeDropdown">
+      <option value="">Select Task</option>
+      <option value="tiny">Tiny</option>
+      <option value="base">Base</option>
+      <option value="small" selected>Small</option>
+      <option value="medium">Medium</option>
+      <option value="large-v2">Large-v2</option>
     </select>
   </div>
 </body>
