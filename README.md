@@ -28,18 +28,33 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
     - To transcribe an audio file:
     ```python
       from whisper_live.client import TranscriptionClient
-      client = TranscriptionClient("localhost", 9090, is_multilingual=True, lang="hi", translate=True)
-      client(audio_file_path)
+      client = TranscriptionClient(
+        "localhost",
+        9090,
+        is_multilingual=False,
+        lang="en",
+        translate=False,
+        model_size="small"
+      )
+
+      client("tests/jfk.wav")
     ```
-    This command transcribes the specified audio file (audio.wav) using the Whisper model. It connects to the server running on localhost at port 9090. It also enables the multilingual feature, allowing transcription in multiple languages. The language option specifies the target language for transcription, in this case, Hindi ("hi"). The translate option should be set to `True` if we want to translate from the source language to English and `False` if we want to transcribe in the source language.
+    This command transcribes the specified audio file (audio.wav) using the Whisper model. It connects to the server running on localhost at port 9090. It can also enable the multilingual feature, allowing transcription in multiple languages. The language option specifies the target language for transcription, in this case, English ("en"). The translate option should be set to `True` if we want to translate from the source language to English and `False` if we want to transcribe in the source language.
 
     - To transcribe from microphone:
     ```python
       from whisper_live.client import TranscriptionClient
-      client = TranscriptionClient(host, port, is_multilingual=True, lang="hi", translate=True)
+      client = TranscriptionClient(
+        "localhost",
+        9090,
+        is_multilingual=True,
+        lang="hi",
+        translate=True,
+        model_size="small"
+      )
       client()
     ```
-    This command captures audio from the microphone and sends it to the server for transcription. It uses the same options as the previous command, enabling the multilingual feature and specifying the target language and task.
+    This command captures audio from the microphone and sends it to the server for transcription. It uses the multilingual option with `hi` as the selectelanguage, enabling the multilingual feature and specifying the target language and task. We use whisper `small` by default but can be changed to any other option based on the requirements and the hardware running the server.
 
     - To trasncribe from a HLS stream:
     ```python
