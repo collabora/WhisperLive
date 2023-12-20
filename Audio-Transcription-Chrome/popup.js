@@ -7,8 +7,10 @@ document.addEventListener("DOMContentLoaded", function () {
   const useMultilingualCheckbox = document.getElementById('useMultilingualCheckbox');
   const languageDropdown = document.getElementById('languageDropdown');
   const taskDropdown = document.getElementById('taskDropdown');
+  const modelSizeDropdown = document.getElementById('modelSizeDropdown');
   let selectedLanguage = null;
   let selectedTask = taskDropdown.value;
+  let selectedModelSize = modelSizeDropdown.value;
 
   // Add click event listeners to the buttons
   startButton.addEventListener("click", startCapture);
@@ -52,6 +54,13 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
+  chrome.storage.local.get("selectedModelSize", ({ selectedModelSize: storedModelSize }) => {
+    if (storedModelSize !== undefined) {
+      modelSizeDropdown.value = storedModelSize;
+      selectedModelSize = storedModelSize;
+    }
+  });
+
   // Function to handle the start capture button click event
   async function startCapture() {
     // Ignore click if the button is disabled
@@ -64,7 +73,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Send a message to the background script to start capturing
     let host = "localhost";
-    let port = "9090";
+    let port = "5901";
     const useCollaboraServer = useServerCheckbox.checked;
     if (useCollaboraServer){
       host = "transcription.kurg.org"
@@ -79,7 +88,8 @@ document.addEventListener("DOMContentLoaded", function () {
         port: port,
         useMultilingual: useMultilingualCheckbox.checked,
         language: selectedLanguage,
-        task: selectedTask
+        task: selectedTask,
+        modelSize: selectedModelSize
       }, () => {
         // Update capturing state in storage and toggle the buttons
         chrome.storage.local.set({ capturingState: { isCapturing: true } }, () => {
@@ -120,6 +130,7 @@ document.addEventListener("DOMContentLoaded", function () {
     stopButton.disabled = !isCapturing;
     useServerCheckbox.disabled = isCapturing; 
     useMultilingualCheckbox.disabled = isCapturing;
+    modelSizeDropdown.disabled = isCapturing;
     
     startButton.classList.toggle("disabled", isCapturing);
     stopButton.classList.toggle("disabled", !isCapturing);
@@ -155,6 +166,11 @@ document.addEventListener("DOMContentLoaded", function () {
   taskDropdown.addEventListener('change', function() {
     selectedTask = taskDropdown.value;
     chrome.storage.local.set({ selectedTask });
+  });
+
+  modelSizeDropdown.addEventListener('change', function() {
+    selectedModelSize = modelSizeDropdown.value;
+    chrome.storage.local.set({ selectedModelSize });
   });
 
   chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {

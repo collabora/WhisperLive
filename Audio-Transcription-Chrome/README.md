@@ -29,6 +29,7 @@ When using the Audio Transcription extension, you have the following options:
  - **Use Multilingual Model**: Enable this option to utilize the multilingual capabilities of OpenAI-whisper.
  - **Language**: Select the target language for transcription or translation. You can choose from a variety of languages supported by OpenAI-whisper.
  - **Task:** Choose the specific task to perform on the audio. You can select either "transcribe" for transcription or "translate" to translate the audio to English.
+ - **Model Size**: Select the whisper model size to run the server with.
 
 ### Getting Started
 - Make sure the transcription server is running properly. To know more about how to start the server, see the [documentation here](https://github.com/collabora/whisper-live).

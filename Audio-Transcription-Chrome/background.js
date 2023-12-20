@@ -156,7 +156,8 @@ async function startCapture(options) {
           port: options.port, 
           multilingual: options.useMultilingual,
           language: options.language,
-          task: options.task
+          task: options.task,
+          modelSize: options.modelSize
         },
       });
     } else {

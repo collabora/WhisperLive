@@ -6,8 +6,11 @@ document.addEventListener("DOMContentLoaded", function() {
   const useMultilingualCheckbox = document.getElementById('useMultilingualCheckbox');
   const languageDropdown = document.getElementById('languageDropdown');
   const taskDropdown = document.getElementById('taskDropdown');
+  const modelSizeDropdown = document.getElementById('modelSizeDropdown');
   let selectedLanguage = null;
   let selectedTask = taskDropdown.value;
+  let selectedModelSize = modelSizeDropdown.value;
+  
 
   browser.storage.local.get("capturingState")
     .then(function(result) {
@@ -54,9 +57,16 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
+  browser.storage.local.get("selectedModelSize", ({ selectedModelSize: storedModelSize }) => {
+    if (storedModelSize !== undefined) {
+      modelSizeDropdown.value = storedModelSize;
+      selectedModelSize = storedModelSize;
+    }
+  });
+
   startButton.addEventListener("click", function() {
     let host = "localhost";
-    let port = "9090";
+    let port = "5901";
     const useCollaboraServer = useServerCheckbox.checked;
 
     if (useCollaboraServer){
@@ -75,7 +85,8 @@ document.addEventListener("DOMContentLoaded", function() {
               port: port,
               useMultilingual: useMultilingualCheckbox.checked,
               language: selectedLanguage,
-              task: selectedTask
+              task: selectedTask,
+              modelSize: selectedModelSize
             } 
           });
         toggleCaptureButtons(true);
@@ -115,6 +126,7 @@ document.addEventListener("DOMContentLoaded", function() {
     stopButton.disabled = !isCapturing;
     useServerCheckbox.disabled = isCapturing;
     useMultilingualCheckbox.disabled = isCapturing;
+    modelSizeDropdown.disabled = isCapturing;
 
     startButton.classList.toggle("disabled", isCapturing);
     stopButton.classList.toggle("disabled", !isCapturing);
@@ -150,6 +162,11 @@ document.addEventListener("DOMContentLoaded", function() {
   taskDropdown.addEventListener('change', function() {
     selectedTask = taskDropdown.value;
     browser.storage.local.set({ selectedTask });
+  });
+
+  modelSizeDropdown.addEventListener('change', function() {
+    selectedModelSize = modelSizeDropdown.value;
+    browser.storage.local.set({ selectedModelSize });
   });
 
   browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
