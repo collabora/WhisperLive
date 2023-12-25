@@ -54,9 +54,9 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
       )
       client()
     ```
-    This command captures audio from the microphone and sends it to the server for transcription. It uses the multilingual option with `hi` as the selectelanguage, enabling the multilingual feature and specifying the target language and task. We use whisper `small` by default but can be changed to any other option based on the requirements and the hardware running the server.
+    This command captures audio from the microphone and sends it to the server for transcription. It uses the multilingual option with `hi` as the selected language, enabling the multilingual feature and specifying the target language and task. We use whisper `small` by default but can be changed to any other option based on the requirements and the hardware running the server.
 
-    - To trasncribe from a HLS stream:
+    - To transcribe from a HLS stream:
     ```python
       client = TranscriptionClient(host, port, is_multilingual=True, lang="en", translate=False) 
       client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/bbc_1xtra.isml/bbc_1xtra-audio%3d96000.norewind.m3u8") 
