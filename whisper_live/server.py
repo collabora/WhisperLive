@@ -211,7 +211,7 @@ class ServeClient:
         self.data = b""
         self.frames = b""
         self.model_sizes = [
-            "tiny", "base", "small", "medium", "large-v2"
+            "tiny", "base", "small", "medium", "large-v2", "large-v3"
         ]
         self.multilingual = multilingual
         self.model_size = self.get_model_size(model_size)
@@ -277,7 +277,7 @@ class ServeClient:
             )
             return None
         
-        if model_size == "large-v2":
+        if model_size in ["large-v2", "large-v3"]:
             self.multilingual = True
             return model_size
 
