@@ -412,7 +412,7 @@ class Client:
             for _ in range(0, int(self.rate / self.chunk * self.record_seconds)):
                 if not self.recording:
                     break
-                data = self.stream.read(self.chunk)
+                data = self.stream.read(self.chunk, exception_on_overflow = False)
                 self.frames += data
 
                 audio_array = Client.bytes_to_float_array(data)
