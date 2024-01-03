@@ -407,6 +407,14 @@ class ServeClient:
                 logging.error(f"[ERROR]: {e}")
                 time.sleep(0.01)
     
+    def format_segment(self, start, end, text):
+        """Helper function to format a segment with string timestamps."""
+        return {
+            'start': "{:.3f}".format(start),
+            'end': "{:.3f}".format(end),
+            'text': text
+        }
+
     def update_segments(self, segments, duration):
         """
         Processes the segments from whisper. Appends all the segments to the list
@@ -437,22 +445,16 @@ class ServeClient:
                 text_ = s.text
                 self.text.append(text_)
                 start, end = self.timestamp_offset + s.start, self.timestamp_offset + min(duration, s.end)
-                self.transcript.append(
-                    {
-                        'start': start,
-                        'end': end,
-                        'text': text_
-                    }
-                )
+                self.transcript.append(self.format_segment(start, end, text_))
                 
                 offset = min(duration, s.end)
 
         self.current_out += segments[-1].text
-        last_segment = {
-            'start': self.timestamp_offset + segments[-1].start,
-            'end': self.timestamp_offset + min(duration, segments[-1].end),
-            'text': self.current_out
-        }
+        last_segment = self.format_segment(
+            self.timestamp_offset + segments[-1].start,
+            self.timestamp_offset + min(duration, segments[-1].end),
+            self.current_out
+        )
         
         # if same incomplete segment is seen multiple times then update the offset
         # and append the segment to the list
@@ -464,13 +466,11 @@ class ServeClient:
         if self.same_output_threshold > 5:
             if not len(self.text) or self.text[-1].strip().lower()!=self.current_out.strip().lower():          
                 self.text.append(self.current_out)
-                self.transcript.append(
-                    {
-                        'start': self.timestamp_offset,
-                        'end': self.timestamp_offset + duration,
-                        'text': self.current_out
-                    }
-                )
+                self.transcript.append(self.format_segment(
+                    self.timestamp_offset,
+                    self.timestamp_offset + duration,
+                    self.current_out
+                ))
             self.current_out = ''
             offset = duration
             self.same_output_threshold = 0
