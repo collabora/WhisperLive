@@ -102,7 +102,9 @@ class TranscriptionServer:
             language=options["language"],
             task=options["task"],
             client_uid=options["uid"],
-            model_size=options["model_size"]
+            model_size=options["model_size"],
+            initial_prompt=options["initial_prompt"],
+            vad_parameters=options["vad_parameters"]
         )
         
         self.clients[websocket] = client
@@ -190,7 +192,9 @@ class ServeClient:
         multilingual=False,
         language=None,
         client_uid=None,
-        model_size="small"
+        model_size="small",
+        initial_prompt=None,
+        vad_parameters=None
         ):
         """
         Initialize a ServeClient instance.
@@ -218,6 +222,8 @@ class ServeClient:
         self.language = language if self.multilingual else "en"
         self.task = task
         self.websocket = websocket
+        self.initial_prompt = initial_prompt
+        self.vad_parameters = vad_parameters or {"threshold": 0.5}
         
         device = "cuda" if torch.cuda.is_available() else "cpu"
         
@@ -352,11 +358,11 @@ class ServeClient:
                 # whisper transcribe with prompt
                 result, info = self.transcriber.transcribe(
                     input_sample, 
-                    initial_prompt=None,
+                    initial_prompt=self.initial_prompt,
                     language=self.language,
                     task=self.task,
                     vad_filter=True,
-                    vad_parameters={"threshold": 0.5}
+                    vad_parameters=self.vad_parameters
                 )
 
                 if self.language is None:
