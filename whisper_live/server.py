@@ -120,7 +120,7 @@ class TranscriptionServer:
                 elapsed_time = time.time() - self.clients_start_time[websocket]
                 if elapsed_time >= self.max_connection_time:
                     self.clients[websocket].disconnect()
-                    logging.warning(f"{self.clients[websocket]} Client disconnected due to overtime.")
+                    logging.warning(f"Client with uid '{self.clients[websocket].client_uid}' disconnected due to overtime.")
                     self.clients[websocket].cleanup()
                     self.clients.pop(websocket)
                     self.clients_start_time.pop(websocket)
@@ -129,13 +129,11 @@ class TranscriptionServer:
                     break
 
             except Exception as e:
-                logging.error(e)
+                logging.info(f"[ERROR]: Client with uid '{self.clients[websocket].client_uid}' Disconnected.")
                 if self.clients[websocket].model_size is not None:
                     self.clients[websocket].cleanup()
                 self.clients.pop(websocket)
                 self.clients_start_time.pop(websocket)
-                logging.info("Connection Closed.")
-                logging.info(self.clients)
                 del websocket
                 break
 
@@ -407,10 +405,10 @@ class ServeClient:
                         })
                     )
                 except Exception as e:
-                    logging.error(f"[ERROR]: {e}")
+                    logging.error(f"[ERROR]: Failed to send message to client: {e}")
 
             except Exception as e:
-                logging.error(f"[ERROR]: {e}")
+                logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
                 time.sleep(0.01)
     
     def format_segment(self, start, end, text):
@@ -518,4 +516,3 @@ class ServeClient:
         """
         logging.info("Cleaning up.")
         self.exit = True
-        self.transcriber.destroy()
