@@ -13,11 +13,6 @@ if __name__ == "__main__":
     if args.backend == "tensorrt":
         if args.whisper_tensorrt_path is None:
             raise ValueError("Please Provide a valid tensorrt model path")
-        
-        from whisper_live.server_tensorrt import TranscriptionServerTRT
 
-        server = TranscriptionServerTRT()
-        server.run("0.0.0.0", port=6006, whisper_tensorrt_path=args.whisper_tensorrt_path)
-    else:
-        server = TranscriptionServer()
-        server.run("0.0.0.0")
+    server = TranscriptionServer()
+    server.run("0.0.0.0", port=6006, backend=args.backend, whisper_tensorrt_path=args.whisper_tensorrt_path)
