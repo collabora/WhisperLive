@@ -8,7 +8,7 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
 ## Installation
 - Install PyAudio and ffmpeg
 ```bash
- bash setup.sh
+ bash scripts/setup.sh
 ```
 
 - Install whisper-live from pip
