@@ -68,7 +68,7 @@ class TranscriptionServer:
 
         return wait_time / 60
 
-    def recv_audio(self, websocket, backend="tensorrt", whisper_tensorrt_path=None):
+    def recv_audio(self, websocket, backend="tensorrt", whisper_tensorrt_path=None, multilingual=False):
         """
         Receive audio chunks from a client in an infinite loop.
         
@@ -118,7 +118,7 @@ class TranscriptionServer:
                 self.backend = "tensorrt"
                 client = ServeClientTensorRT(
                     websocket,
-                    multilingual=options["multilingual"],
+                    multilingual=multilingual,
                     language=options["language"],
                     task=options["task"],
                     client_uid=options["uid"],
@@ -200,7 +200,7 @@ class TranscriptionServer:
                 del websocket
                 break
 
-    def run(self, host, port=9090, backend="tensorrt", whisper_tensorrt_path=None):
+    def run(self, host, port=9090, backend="tensorrt", whisper_tensorrt_path=None, multilingual=False):
         """
         Run the transcription server.
 
@@ -212,7 +212,8 @@ class TranscriptionServer:
             functools.partial(
                 self.recv_audio,
                 backend=backend,
-                whisper_tensorrt_path=whisper_tensorrt_path
+                whisper_tensorrt_path=whisper_tensorrt_path,
+                multilingual=multilingual
             ),
             host,
             port
@@ -369,7 +370,14 @@ class ServeClientTensorRT(ServeClientBase):
         self.language = language if multilingual else "en"
         self.task = task
         self.eos = False
-        self.transcriber = WhisperTRTLLM(model_path, False, "assets", device="cuda")
+        self.transcriber = WhisperTRTLLM(
+            model_path, 
+            assets_dir="assets", 
+            device="cuda",
+            is_multilingual=multilingual,
+            language=self.language,
+            task=self.task
+        )
 
         # threading
         self.trans_thread = threading.Thread(target=self.speech_to_text)

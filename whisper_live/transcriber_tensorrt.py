@@ -181,7 +181,10 @@ class WhisperTRTLLM(object):
         engine_dir,
         debug_mode=False,
         assets_dir=None,
-        device=None
+        device=None,
+        is_multilingual=False,
+        language="en",
+        task="transcribe"
         ):
         world_size = 1
         runtime_rank = tensorrt_llm.mpi_rank()
@@ -198,10 +201,10 @@ class WhisperTRTLLM(object):
         #                                tokenizer_dir=assets_dir)
         self.device = device
         self.tokenizer = get_tokenizer(
-            False,
+            is_multilingual,
             num_languages=self.encoder.num_languages,
-            language="en",
-            task="transcribe",
+            language=language,
+            task=task,
         )
         self.filters = mel_filters(self.device, self.encoder.n_mels, assets_dir)
 
