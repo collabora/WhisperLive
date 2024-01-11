@@ -103,8 +103,8 @@ class TranscriptionServer:
             task=options["task"],
             client_uid=options["uid"],
             model_size=options["model_size"],
-            initial_prompt=options["initial_prompt"],
-            vad_parameters=options["vad_parameters"]
+            initial_prompt=options.get("initial_prompt"),
+            vad_parameters=options.get("vad_parameters")
         )
         
         self.clients[websocket] = client
