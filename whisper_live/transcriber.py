@@ -934,9 +934,6 @@ class WhisperModel:
             )
         ]
 
-    def destroy(self):
-        del self.model
-
 
 def restore_speech_timestamps(
     segments: Iterable[Segment],
