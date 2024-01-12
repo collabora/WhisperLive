@@ -35,3 +35,4 @@ source $ENV
 
 cd /home/TensorRT-LLM
 python3 scripts/build_wheel.py --clean --trt_root /usr/local/tensorrt
+pip install build/tensorrt_llm-0.7.1-cp310-cp310-linux_x86_64.whl
