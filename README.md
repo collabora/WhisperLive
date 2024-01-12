@@ -100,12 +100,17 @@ This command streams audio into the server from a HLS stream. It uses the same o
  docker run -it --gpus all -p 9090:9090 whisper-live:latest
 ```
 
+- TensorRT.Follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) in order to setup and use TensorRT backend. 
+```bash
+ docker build --file docker/Dockerfile.tensorrt --tag tensorrt_llm/devel:latest .
+```
+
 - CPU
 ```bash
  docker build . -t whisper-live -f docker/Dockerfile.cpu
  docker run -it -p 9090:9090 whisper-live:latest
 ```
-**Note**: This only builds the docker image for `faster_whisper` backend. Follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) in order to setup and use TensorRT backend. By default we use "small" model size. To build docker image for a different model size, change the size in server.py and then build the docker image.
+**Note**: By default we use "small" model size. To build docker image for a different model size, change the size in server.py and then build the docker image.
 
 ## Future Work
 - [ ] Add translation to other languages on top of transcription.

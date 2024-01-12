@@ -4,27 +4,21 @@ We have only tested the TensorRT backend in docker so, we recommend docker for a
 ## Installation
 - Install [docker](https://docs.docker.com/engine/install/)
 - Install [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
-- Pull the pytorch docker image.
-```bash
-docker pull nvcr.io/nvidia/pytorch_23.10-py3
-```
 - Clone this repo.
 ```bash
 git clone https://github.com/collabora/WhisperLive.git
+cd WhisperLive
 ```
+- Build the TensorRT-LLM docker image
+```bash
+docker build --file docker/Dockerfile.tensorrt --tag tensorrt_llm/devel:latest .
+```
+**NOTE**: This could take some time.
 - Next, we run the docker image and mount WhisperLive repo to the containers `/home` directory.
 ```bash
-docker run -it --gpus all --shm-size=64g /path/to/WhisperLive:/home/WhisperLive nvcr.io/nvidia/pytorch_23.10-py3
+docker run -it --gpus all --shm-size=64g /path/to/WhisperLive:/home/WhisperLive tensorrt_llm/devel:latest
 ```
-- Build `tensorrt-llm`.
-```bash
-cd /home/
-cp WhisperLive/scripts/install_tensorrt_llm.sh .
-bash install_tensorrt_llm.sh
-```
-This should clone the [NVIDIA/TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) and build it as well.
-
-- Test the installation.
+- Once inside the docker container, make sure to test the installation.
 ```bash
 export ENV=${ENV:-/etc/shinit_v2}
 source $ENV
@@ -36,9 +30,6 @@ python -c "import torch; import tensorrt; import tensorrt_llm"
 ```bash
 cd /home/TensorRT-LLM/examples/whisper
 ``` 
-- Currently, by default TensorRT-LLM only supports `large-v2` and `large-v3`. In this repo, we use `small.en`.
-
-- Edit `build.py` to support all the model sizes i.e. `["tiny", "tiny.en", "base", "base.en", "small", "small.en", "medium", "medium.en"]`. In order to do that, update the list [`choices`](https://github.com/NVIDIA/TensorRT-LLM/blob/a75618df24e97ecf92b8899ca3c229c4b8097dda/examples/whisper/build.py#L58) with the model size you prefer for your WhisperLive server.
 
 - Download the models from [here](https://github.com/openai/whisper/blob/ba3f3cd54b0e5b8ce1ab3de13e32122d0d5f98ab/whisper/__init__.py#L17C1-L30C2)
 ```bash
@@ -83,4 +74,3 @@ python3 run_server.py --port 9090 \
                       --whisper_tensorrt_path /home/TensorRT-LLM/examples/whisper/whisper_small_en \
                       --trt_multilingual
 ```
-

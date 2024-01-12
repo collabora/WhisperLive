@@ -29,9 +29,9 @@ echo 'export PATH=$PATH:/usr/local/bin' >> "${ENV}"
 echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib' >> "${ENV}"
 source $ENV
 
-cd /root/TensorRT-LLM/docker/common/
+cd /home/TensorRT-LLM/docker/common/
 bash install_mpi4py.sh
 source $ENV
 
-cd /root/TensorRT-LLM
+cd /home/TensorRT-LLM
 python3 scripts/build_wheel.py --clean --trt_root /usr/local/tensorrt

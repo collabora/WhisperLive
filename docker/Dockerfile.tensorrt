@@ -1,0 +1,8 @@
+ARG BASE_IMAGE=nvcr.io/nvidia/pytorch
+ARG BASE_TAG=23.10-py3
+
+FROM ${BASE_IMAGE}:${BASE_TAG} as base
+
+WORKDIR /home
+COPY script/install_trt_llm.sh install_trt_llm.sh
+RUN bash install_trt_llm.sh && rm install_trt_llm.sh
