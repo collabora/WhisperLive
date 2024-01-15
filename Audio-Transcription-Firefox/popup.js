@@ -66,7 +66,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
   startButton.addEventListener("click", function() {
     let host = "localhost";
-    let port = "5901";
+    let port = "9090";
     const useCollaboraServer = useServerCheckbox.checked;
 
     if (useCollaboraServer){
