@@ -50,7 +50,14 @@ class Client:
     INSTANCES = {}
 
     def __init__(
-        self, host=None, port=None, is_multilingual=False, lang=None, translate=False, model_size="small"
+        self,
+        host=None,
+        port=None,
+        is_multilingual=False,
+        lang=None,
+        translate=False,
+        model_size="small",
+        use_custom_model=False
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -83,6 +90,8 @@ class Client:
         self.language = lang
         self.model_size = model_size
         self.server_error = False
+        self.use_custom_model = use_custom_model
+
         if translate:
             self.task = "translate"
 
@@ -221,6 +230,7 @@ class Client:
                     "language": self.language,
                     "task": self.task,
                     "model_size": self.model_size,
+                    "use_custom_model": self.use_custom_model   # if runnning your own server with a custom model
                 }
             )
         )
@@ -505,8 +515,16 @@ class TranscriptionClient:
         transcription_client()
         ```
     """
-    def __init__(self, host, port, is_multilingual=False, lang=None, translate=False, model_size="small"):
-        self.client = Client(host, port, is_multilingual, lang, translate, model_size)
+    def __init__(self,
+        host,
+        port,
+        is_multilingual=False,
+        lang=None,
+        translate=False,
+        model_size="small",
+        use_custom_model=False
+    ):
+        self.client = Client(host, port, is_multilingual, lang, translate, model_size, use_custom_model)
 
     def __call__(self, audio=None, hls_url=None):
         """

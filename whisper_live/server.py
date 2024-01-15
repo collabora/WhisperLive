@@ -1,3 +1,4 @@
+import os
 import websockets
 import time
 import threading
@@ -12,6 +13,8 @@ from websockets.sync.server import serve
 import torch
 import numpy as np
 import time
+import functools
+
 from whisper_live.transcriber import WhisperModel
 
 
@@ -58,7 +61,7 @@ class TranscriptionServer:
 
         return wait_time / 60
 
-    def recv_audio(self, websocket):
+    def recv_audio(self, websocket, custom_model_path=None):
         """
         Receive audio chunks from a client in an infinite loop.
         
@@ -95,6 +98,11 @@ class TranscriptionServer:
             websocket.close()
             del websocket
             return
+        
+        # validate custom model
+        if options["use_custom_model"]:
+            if custom_model_path is None or not os.path.exists(custom_model_path):
+                options["use_custom_model"] = False
 
         client = ServeClient(
             websocket,
@@ -102,9 +110,10 @@ class TranscriptionServer:
             language=options["language"],
             task=options["task"],
             client_uid=options["uid"],
-            model_size=options["model_size"],
+            model_size_or_path=custom_model_path if options["use_custom_model"] else options["model_size"],
             initial_prompt=options.get("initial_prompt"),
-            vad_parameters=options.get("vad_parameters")
+            vad_parameters=options.get("vad_parameters"),
+            use_custom_model=options["use_custom_model"]
         )
         
         self.clients[websocket] = client
@@ -137,7 +146,7 @@ class TranscriptionServer:
                 del websocket
                 break
 
-    def run(self, host, port=9090):
+    def run(self, host, port=9090, custom_model_path=None):
         """
         Run the transcription server.
 
@@ -145,7 +154,14 @@ class TranscriptionServer:
             host (str): The host address to bind the server.
             port (int): The port number to bind the server.
         """
-        with serve(self.recv_audio, host, port) as server:
+        with serve(
+            functools.partial(
+                self.recv_audio,
+                custom_model_path=custom_model_path
+            ),
+            host,
+            port
+        ) as server:
             server.serve_forever()
 
 
@@ -190,9 +206,10 @@ class ServeClient:
         multilingual=False,
         language=None,
         client_uid=None,
-        model_size="small",
+        model_size_or_path="small",
         initial_prompt=None,
-        vad_parameters=None
+        vad_parameters=None,
+        use_custom_model=False
         ):
         """
         Initialize a ServeClient instance.
@@ -216,7 +233,11 @@ class ServeClient:
             "tiny", "base", "small", "medium", "large-v2", "large-v3"
         ]
         self.multilingual = multilingual
-        self.model_size = self.get_model_size(model_size)
+        if not use_custom_model:
+            self.model_size_or_path = self.get_model_size(model_size_or_path)
+        else:
+            self.model_size_or_path = model_size_or_path
+        
         self.language = language if self.multilingual else "en"
         self.task = task
         self.websocket = websocket
@@ -225,11 +246,11 @@ class ServeClient:
         
         device = "cuda" if torch.cuda.is_available() else "cpu"
         
-        if self.model_size == None:
+        if self.model_size_or_path == None:
             return
         
         self.transcriber = WhisperModel(
-            self.model_size, 
+            self.model_size_or_path,
             device=device,
             compute_type="int8" if device=="cpu" else "float16", 
             local_files_only=False,
