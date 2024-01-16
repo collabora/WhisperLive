@@ -65,7 +65,8 @@ class Client:
         translate=False,
         model_size="small",
         use_custom_model=False,
-        callback: Callable[[frozenset[str]], any]=None
+        callback: Callable[[frozenset[str]], any]=None,
+        replay_playback: bool=False,
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -100,6 +101,7 @@ class Client:
         self.server_error = False
         self.use_custom_model = use_custom_model
         self.callback = callback
+        self.replay_playback = replay_playback
 
         if translate:
             self.task = "translate"
@@ -313,7 +315,9 @@ class Client:
 
                     audio_array = self.bytes_to_float_array(data)
                     self.send_packet_to_server(audio_array.tobytes())
-                    # self.stream.write(data)
+                    
+                    if self.replay_playback:
+                        self.stream.write(data)
 
                 wavfile.close()
 
@@ -539,9 +543,10 @@ class TranscriptionClient:
         translate=False,
         model_size="small",
         use_custom_model=False,
-        callback: Callable[[frozenset[str]], any]=None
+        callback: Callable[[frozenset[str]], any]=None,
+        replay_playback: bool=False,
     ):
-        self.client = Client(host, port, is_multilingual, lang, translate, model_size, use_custom_model, callback)
+        self.client = Client(host, port, is_multilingual, lang, translate, model_size, use_custom_model, callback, replay_playback)
 
     def __call__(self, audio=None, hls_url=None):
         """
@@ -570,5 +575,5 @@ class TranscriptionClient:
         else:
             self.client.record()
 
-    def transcribed_messages(self) -> list[list[str]]:
+    def transcribed_messages(self) -> list[frozenset[str]]:
         return self.client.total_messages()
