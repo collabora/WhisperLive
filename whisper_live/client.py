@@ -51,9 +51,9 @@ class Client:
     """
     INSTANCES = {}
 
-    __messages__ : list[list[str]] = []
+    __messages__ : list[frozenset[str]] = []
 
-    def total_messages(self) -> list[list[str]]:
+    def total_messages(self) -> list[frozenset[str]]:
         return self.__messages__
 
     def __init__(
@@ -65,7 +65,7 @@ class Client:
         translate=False,
         model_size="small",
         use_custom_model=False,
-        callback: Callable[[list[str]], any]=None
+        callback: Callable[[frozenset[str]], any]=None
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -205,18 +205,15 @@ class Client:
             text = text[-3:]
         wrapper = textwrap.TextWrapper(width=60)
         word_list = wrapper.wrap(text="".join(text))
+        immutable_word_list = frozenset(word_list)
 
-        self.callback(word_list)
-    
-        # Print each line.
-        # if os.name == "nt":
-        #     os.system("cls")
-        # else:
-        #     os.system("clear")
-        # for element in word_list:
-        #     print(element)
+        latest_word_list_hash = hash(self.__messages__[-1]) if len(self.__messages__) > 0 else None
+        current_word_list_hash = hash(immutable_word_list)
 
-        self.__messages__.append(word_list)
+        if latest_word_list_hash != current_word_list_hash:
+            self.callback(immutable_word_list)
+
+        self.__messages__.append(immutable_word_list)
 
     def on_error(self, ws, error):
         print(error)
@@ -316,7 +313,7 @@ class Client:
 
                     audio_array = self.bytes_to_float_array(data)
                     self.send_packet_to_server(audio_array.tobytes())
-                    self.stream.write(data)
+                    # self.stream.write(data)
 
                 wavfile.close()
 
@@ -542,7 +539,7 @@ class TranscriptionClient:
         translate=False,
         model_size="small",
         use_custom_model=False,
-        callback: Callable[[list[str]], any]=None
+        callback: Callable[[frozenset[str]], any]=None
     ):
         self.client = Client(host, port, is_multilingual, lang, translate, model_size, use_custom_model, callback)
 
