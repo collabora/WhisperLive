@@ -12,6 +12,8 @@ import websocket
 import uuid
 import time
 
+from typing import Callable
+
 
 def resample(file: str, sr: int = 16000):
     """
@@ -49,6 +51,11 @@ class Client:
     """
     INSTANCES = {}
 
+    __messages__ : list[frozenset[str]] = []
+
+    def total_messages(self) -> list[frozenset[str]]:
+        return self.__messages__
+
     def __init__(
         self,
         host=None,
@@ -57,7 +64,9 @@ class Client:
         lang=None,
         translate=False,
         model_size="small",
-        use_custom_model=False
+        use_custom_model=False,
+        callback: Callable[[frozenset[str]], any]=None,
+        replay_playback: bool=False,
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -91,6 +100,8 @@ class Client:
         self.model_size = model_size
         self.server_error = False
         self.use_custom_model = use_custom_model
+        self.callback = callback
+        self.replay_playback = replay_playback
 
         if translate:
             self.task = "translate"
@@ -147,11 +158,13 @@ class Client:
         self.last_response_recieved = time.time()
         message = json.loads(message)
 
+        keys = message.keys()
+
         if self.uid != message.get("uid"):
             print("[ERROR]: invalid client uid")
             return
 
-        if "status" in message.keys():
+        if "status" in keys:
             if message["status"] == "WAIT":
                 self.waiting = True
                 print(
@@ -162,15 +175,15 @@ class Client:
                 self.server_error = True
             return
 
-        if "message" in message.keys() and message["message"] == "DISCONNECT":
+        if "message" in keys and message["message"] == "DISCONNECT":
             print("[INFO]: Server overtime disconnected.")
             self.recording = False
 
-        if "message" in message.keys() and message["message"] == "SERVER_READY":
+        if "message" in keys and message["message"] == "SERVER_READY":
             self.recording = True
             return
 
-        if "language" in message.keys():
+        if "language" in keys:
             self.language = message.get("language")
             lang_prob = message.get("language_prob")
             print(
@@ -178,7 +191,7 @@ class Client:
             )
             return
 
-        if "segments" not in message.keys():
+        if "segments" not in keys:
             return
 
         message = message["segments"]
@@ -194,13 +207,15 @@ class Client:
             text = text[-3:]
         wrapper = textwrap.TextWrapper(width=60)
         word_list = wrapper.wrap(text="".join(text))
-        # Print each line.
-        if os.name == "nt":
-            os.system("cls")
-        else:
-            os.system("clear")
-        for element in word_list:
-            print(element)
+        immutable_word_list = frozenset(word_list)
+
+        latest_word_list_hash = hash(self.__messages__[-1]) if len(self.__messages__) > 0 else None
+        current_word_list_hash = hash(immutable_word_list)
+
+        if latest_word_list_hash != current_word_list_hash:
+            self.callback(immutable_word_list)
+
+        self.__messages__.append(immutable_word_list)
 
     def on_error(self, ws, error):
         print(error)
@@ -222,6 +237,8 @@ class Client:
         print(self.multilingual, self.language, self.task)
 
         print("[INFO]: Opened connection")
+
+        self.__messages__.clear()
         ws.send(
             json.dumps(
                 {
@@ -298,7 +315,9 @@ class Client:
 
                     audio_array = self.bytes_to_float_array(data)
                     self.send_packet_to_server(audio_array.tobytes())
-                    self.stream.write(data)
+                    
+                    if self.replay_playback:
+                        self.stream.write(data)
 
                 wavfile.close()
 
@@ -515,16 +534,19 @@ class TranscriptionClient:
         transcription_client()
         ```
     """
-    def __init__(self,
+    def __init__(
+        self,
         host,
         port,
         is_multilingual=False,
         lang=None,
         translate=False,
         model_size="small",
-        use_custom_model=False
+        use_custom_model=False,
+        callback: Callable[[frozenset[str]], any]=None,
+        replay_playback: bool=False,
     ):
-        self.client = Client(host, port, is_multilingual, lang, translate, model_size, use_custom_model)
+        self.client = Client(host, port, is_multilingual, lang, translate, model_size, use_custom_model, callback, replay_playback)
 
     def __call__(self, audio=None, hls_url=None):
         """
@@ -552,3 +574,6 @@ class TranscriptionClient:
             self.client.play_file(resampled_file)
         else:
             self.client.record()
+
+    def transcribed_messages(self) -> list[frozenset[str]]:
+        return self.client.total_messages()

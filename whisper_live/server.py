@@ -86,6 +86,8 @@ class TranscriptionServer:
         options = websocket.recv()
         options = json.loads(options)
 
+        logging.info(f"with options {options}")
+
         if len(self.clients) >= self.max_clients:
             logging.warning("Client Queue Full. Asking client to wait ...")
             wait_time = self.get_wait_time()
@@ -139,7 +141,7 @@ class TranscriptionServer:
 
             except Exception as e:
                 logging.info(f"[ERROR]: Client with uid '{self.clients[websocket].client_uid}' Disconnected.")
-                if self.clients[websocket].model_size is not None:
+                if self.clients[websocket].model_size_or_path is not None:
                     self.clients[websocket].cleanup()
                 self.clients.pop(websocket)
                 self.clients_start_time.pop(websocket)
