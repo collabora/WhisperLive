@@ -33,6 +33,10 @@ cd /home/TensorRT-LLM/docker/common/
 bash install_mpi4py.sh
 source $ENV
 
+cuda_architectures="${1:-89-real}"
+
+
 cd /home/TensorRT-LLM
-python3 scripts/build_wheel.py --clean --trt_root /usr/local/tensorrt
-pip install build/tensorrt_llm-0.7.1-cp310-cp310-linux_x86_64.whl
+python3 scripts/build_wheel.py --cuda_architectures "${cuda_architectures}" --clean --trt_root /usr/local/tensorrt
+pip install build/tensorrt_llm-*.whl
+pip install --no-deps openai-whisper
