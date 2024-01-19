@@ -5,8 +5,8 @@ ARG CUDA_ARCHITECTURES="89-real"
 FROM ${BASE_IMAGE}:${BASE_TAG} as base
 
 WORKDIR /home
-COPY script/install_trt_llm.sh install_trt_llm.sh
-RUN bash install_trt_llm.sh ${CUDA_ARCHITECTURES} && rm install_trt_llm.sh
+COPY scripts/install_tensorrt_llm.sh install_tensorrt_llm.sh
+RUN bash install_tensorrt_llm.sh ${CUDA_ARCHITECTURES} && rm install_tensorrt_llm.sh
 
 COPY scripts/setup.sh /home
 RUN apt update && bash setup.sh && rm setup.sh

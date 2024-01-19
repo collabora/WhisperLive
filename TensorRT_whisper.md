@@ -12,7 +12,7 @@ cd WhisperLive
 ```
 - Build the TensorRT-LLM docker image
 ```bash
-docker build --file docker/Dockerfile.tensorrt --tag tensorrt_llm/devel:latest .
+docker build --file docker/Dockerfile.tensorrt --tag tensorrt_llm:latest .
 ```
 **NOTE**: This could take some time.
 - Next, we run the docker image and mount WhisperLive repo to the containers `/home` directory.
@@ -20,7 +20,7 @@ docker build --file docker/Dockerfile.tensorrt --tag tensorrt_llm/devel:latest .
 docker run -it --gpus all --shm-size=8g \
        --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
        -v /path/to/WhisperLive:/home/WhisperLive \
-       tensorrt_llm/devel:latest
+       tensorrt_llm:latest
 ```
 - Once inside the docker container, make sure to test the installation. 
 ```bash
@@ -31,7 +31,7 @@ python -c "import torch; import tensorrt; import tensorrt_llm"
 **NOTE**: Uncomment and update library paths if imports fail.
 
 ## Whisper TensorRT Engine
-- For this demo we build `small.en` and `small` multilingual TensorRT engine. The script logs the path of the directory with Whisper TensorRT engine. We need the model_path to run the server.
+- We build `small.en` and `small` multilingual TensorRT engine. The script logs the path of the directory with Whisper TensorRT engine. We need the model_path to run the server.
 ```bash
 # convert small.en
 bash build_whisper_tensorrt /path/to/TensorRT-LLM/examples small.en
