@@ -5,24 +5,33 @@ We have only tested the TensorRT backend in docker so, we recommend docker for a
 ## Installation
 - Install [docker](https://docs.docker.com/engine/install/)
 - Install [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+
 - Clone this repo.
 ```bash
 git clone https://github.com/collabora/WhisperLive.git
 cd WhisperLive
 ```
+
 - Build the TensorRT-LLM docker image
 ```bash
 docker build --file docker/Dockerfile.tensorrt --tag tensorrt_llm:latest .
 ```
 **NOTE**: This could take some time.
+
 - Next, we run the docker image and mount WhisperLive repo to the containers `/home` directory.
 ```bash
 docker run -it --gpus all --shm-size=8g \
        --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
        -v /path/to/WhisperLive:/home/WhisperLive \
        tensorrt_llm:latest
+
+cd /home/TensorRT-LLM
+python3 scripts/build_wheel.py --cuda_architectures "89-real" --clean --trt_root /usr/local/tensorrt
+pip install build/tensorrt_llm*.whl
 ```
-- Once inside the docker container, make sure to test the installation. 
+**NOTE**: `--cuda_architectures "89-real"` builds for 4090, change according to your device.
+
+- Make sure to test the installation. 
 ```bash
 # export ENV=${ENV:-/etc/shinit_v2} 
 # source $ENV

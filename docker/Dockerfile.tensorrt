@@ -1,12 +1,11 @@
 ARG BASE_IMAGE=nvcr.io/nvidia/pytorch
 ARG BASE_TAG=23.10-py3
-ARG CUDA_ARCHITECTURES="89-real"
 
 FROM ${BASE_IMAGE}:${BASE_TAG} as base
 
 WORKDIR /home
 COPY scripts/install_tensorrt_llm.sh install_tensorrt_llm.sh
-RUN bash install_tensorrt_llm.sh ${CUDA_ARCHITECTURES} && rm install_tensorrt_llm.sh
+RUN bash install_tensorrt_llm.sh && rm install_tensorrt_llm.sh
 
 COPY scripts/setup.sh /home
 RUN apt update && bash setup.sh && rm setup.sh
