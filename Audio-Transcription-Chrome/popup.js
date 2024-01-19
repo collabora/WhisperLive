@@ -73,7 +73,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Send a message to the background script to start capturing
     let host = "localhost";
-    let port = "5901";
+    let port = "9090";
     const useCollaboraServer = useServerCheckbox.checked;
     if (useCollaboraServer){
       host = "transcription.kurg.org"

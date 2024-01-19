@@ -120,6 +120,11 @@ class TranscriptionServer:
             websocket.close()
             del websocket
             return
+        
+        # validate custom model
+        if custom_model_path is not None and os.path.exists(custom_model_path):
+            logging.info(f"Using custom model {custom_model_path}")
+            options["model"] = custom_model_path
 
         if self.backend == "tensorrt":
             try:
@@ -561,7 +566,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         client_uid=None,
         model="small",
         initial_prompt=None,
-        vad_parameters=None
+        vad_parameters=None,
         ):
         """
         Initialize a ServeClient instance.
@@ -583,6 +588,7 @@ class ServeClientFasterWhisper(ServeClientBase):
             "tiny", "tiny.en", "base", "base.en", "small", "small.en",
             "medium", "medium.en", "large-v2", "large-v3",
         ]
+
         self.multilingual = multilingual
         if not os.path.exists(model):
             self.model_size_or_path = self.get_model_size(model)
@@ -633,12 +639,13 @@ class ServeClientFasterWhisper(ServeClientBase):
             )
             return None
         
-        if model_size in ["large-v2", "large-v3"]:
+        if model_size.endswith("en") and self.multilingual:
+            logging.info(f"Setting multilingual to false with {model_size} which is english only model.")
+            self.multilingual = False
+            
+        if not model_size.endswith("en") and not self.multilingual:
+            logging.info(f"Setting multilingual to true with multilingual model {model_size}.")
             self.multilingual = True
-            return model_size
-
-        if not self.multilingual:
-            model_size = model_size + ".en"
 
         return model_size
     
