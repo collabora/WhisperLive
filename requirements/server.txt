@@ -1,4 +1,4 @@
-PyAudio
 faster-whisper==0.10.0
+torch
 websockets
 onnxruntime==1.16.0
