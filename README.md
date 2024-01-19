@@ -17,7 +17,7 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
 ```
 
 ### Setting up NVIDIA/TensorRT-LLM for TensorRT backend
-- Please follow [TensorRT_whisper readme]() for installation of [NVIDIA/TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) and for building Whisper-TensorRT engine.
+- Please follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) for installation of [NVIDIA/TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) and for building Whisper-TensorRT engine.
 
 ## Getting Started
 The server supports two backends `faster_whisper` and `tensorrt`. If running `tensorrt` backend follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md)
@@ -27,20 +27,25 @@ The server supports two backends `faster_whisper` and `tensorrt`. If running `te
 ```bash
 python3 run_server.py --port 9090 \
                       --backend faster_whisper
+  
+# running with custom model
+python3 run_server.py --port 9090 \
+                      --backend faster_whisper
+                      -fw "/path/to/custom/faster/whisper/model"
 ```
 
 - TensorRT backend. Currently, we only recommend docker setup for TensorRT as shown in the [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) which works as expected. Make sure you follow the readme and build your TensorRT Engines before running the server with TensorRT backend.
 ```bash
 # Run English only model
-python3 run_server.py --port 9090 \
-                      --backend tensorrt \
-                      --whisper_tensorrt_path /home/TensorRT-LLM/examples/whisper/whisper_small_en
+python3 run_server.py -p 9090 \
+                      -b tensorrt \
+                      -trt /home/TensorRT-LLM/examples/whisper/whisper_small_en
 
 # Run Multilingual model
-python3 run_server.py --port 9090 \
-                      --backend tensorrt \
-                      --whisper_tensorrt_path /home/TensorRT-LLM/examples/whisper/whisper_small \
-                      --trt_multilingual
+python3 run_server.py -p 9090 \
+                      -b tensorrt \
+                      -trt /home/TensorRT-LLM/examples/whisper/whisper_small \
+                      -m
 ```
 
 
