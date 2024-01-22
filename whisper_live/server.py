@@ -120,11 +120,6 @@ class TranscriptionServer:
             websocket.close()
             del websocket
             return
-        
-        # validate custom model
-        if custom_model_path is not None and os.path.exists(custom_model_path):
-            logging.info(f"Using custom model {custom_model_path}")
-            options["model"] = custom_model_path
 
         if self.backend == "tensorrt":
             try:
@@ -487,7 +482,7 @@ class ServeClientTensorRT(ServeClientBase):
 
             try:
                 input_sample = input_bytes.copy()
-
+                logging.info(f"[WhisperTensorRT:] Processing audio with duration: {duration}")
                 mel, duration = self.transcriber.log_mel_spectrogram(input_sample)
                 last_segment = self.transcriber.transcribe(mel)
                 segments = []
@@ -496,7 +491,6 @@ class ServeClientTensorRT(ServeClientBase):
                         segments = self.transcript[:].copy()
                     else:
                         segments = self.transcript[-self.send_last_n_segments:].copy()
-                    print(self.transcript, len(self.transcript))
                     if last_segment is not None:
                         segments.append({"text": last_segment})
                     try:
@@ -508,17 +502,12 @@ class ServeClientTensorRT(ServeClientBase):
                         )
 
                         if self.eos:
-                            print("EOS is true: ", self.timestamp_offset, duration)
                             if not len(self.transcript):
                                 self.transcript.append({"text": last_segment + " "})
                             elif self.transcript[-1]["text"].strip() != last_segment:
                                 self.transcript.append({"text": last_segment + " "})
                             self.timestamp_offset += duration
-                            # self.set_eos(False)
 
-                            # logging.info(
-                            #     f"[INFO:] Processed : {self.timestamp_offset} seconds / {self.frames_np.shape[0] / self.RATE} seconds"
-                            # )
                             
                     except Exception as e:
                         logging.error(f"[ERROR]: {e}")
