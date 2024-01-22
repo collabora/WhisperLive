@@ -17,7 +17,7 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
 ```
 
 ### Setting up NVIDIA/TensorRT-LLM for TensorRT backend
-- Please follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) for installation of [NVIDIA/TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) and for building Whisper-TensorRT engine.
+- Please follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) for setup of [NVIDIA/TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) and for building Whisper-TensorRT engine.
 
 ## Getting Started
 The server supports two backends `faster_whisper` and `tensorrt`. If running `tensorrt` backend follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md)
@@ -34,7 +34,7 @@ python3 run_server.py --port 9090 \
                       -fw "/path/to/custom/faster/whisper/model"
 ```
 
-- TensorRT backend. Currently, we only recommend docker setup for TensorRT as shown in the [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) which works as expected. Make sure you follow the readme and build your TensorRT Engines before running the server with TensorRT backend.
+- TensorRT backend. Currently, we only recommend docker setup for TensorRT. Follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) which works as expected. Make sure to build your TensorRT Engines before running the server with TensorRT backend.
 ```bash
 # Run English only model
 python3 run_server.py -p 9090 \
@@ -100,20 +100,18 @@ This command streams audio into the server from a HLS stream. It uses the same o
 
 ## Whisper Live Server in Docker
 - GPU
-```bash
- docker build . -t whisper-live -f docker/Dockerfile.gpu
- docker run -it --gpus all -p 9090:9090 whisper-live:latest
-```
+  - Faster-Whisper
+  ```bash
+  docker build . -t whisper-live -f docker/Dockerfile.gpu
+  docker run -it --gpus all -p 9090:9090 whisper-live:latest
+  ```
 
-- TensorRT.Follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) in order to setup and use TensorRT backend. 
-```bash
- docker build --file docker/Dockerfile.tensorrt --tag tensorrt_llm/devel:latest .
-```
+  - TensorRT. Follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) in order to setup docker and use TensorRT backend. We provide a pre-built docker image which has TensorRT-LLM built and ready to use.
 
 - CPU
 ```bash
- docker build . -t whisper-live -f docker/Dockerfile.cpu
- docker run -it -p 9090:9090 whisper-live:latest
+docker build . -t whisper-live -f docker/Dockerfile.cpu
+docker run -it -p 9090:9090 whisper-live:latest
 ```
 **Note**: By default we use "small" model size. To build docker image for a different model size, change the size in server.py and then build the docker image.
 
