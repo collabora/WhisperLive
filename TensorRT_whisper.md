@@ -12,24 +12,18 @@ git clone https://github.com/collabora/WhisperLive.git
 cd WhisperLive
 ```
 
-- Build the TensorRT-LLM docker image
+- Pull the TensorRT-LLM docker image which we prebuilt for WhisperLive TensorRT backend.
 ```bash
-docker build --file docker/Dockerfile.tensorrt --tag tensorrt_llm:latest .
+docker pull ghcr.io/collabora/whisperbot-base:latest
 ```
-**NOTE**: This could take some time.
 
 - Next, we run the docker image and mount WhisperLive repo to the containers `/home` directory.
 ```bash
 docker run -it --gpus all --shm-size=8g \
        --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
        -v /path/to/WhisperLive:/home/WhisperLive \
-       tensorrt_llm:latest
-
-cd /home/TensorRT-LLM
-python3 scripts/build_wheel.py --cuda_architectures "89-real" --clean --trt_root /usr/local/tensorrt
-pip install build/tensorrt_llm*.whl
+       ghcr.io/collabora/whisperbot-base:latest
 ```
-**NOTE**: `--cuda_architectures "89-real"` builds for 4090, change according to your device.
 
 - Make sure to test the installation. 
 ```bash
@@ -43,15 +37,18 @@ python -c "import torch; import tensorrt; import tensorrt_llm"
 - We build `small.en` and `small` multilingual TensorRT engine. The script logs the path of the directory with Whisper TensorRT engine. We need the model_path to run the server.
 ```bash
 # convert small.en
-bash build_whisper_tensorrt /path/to/TensorRT-LLM/examples small.en
+bash build_whisper_tensorrt /root/TensorRT-LLM-examples small.en
 
 # convert small multilingual model
-bash build_whisper_tensorrt /path/to/TensorRT-LLM/examples small
+bash build_whisper_tensorrt /root/TensorRT-LLM-examples small
 ```
 
 ## Run WhisperLive Server with TensorRT Backend
 ```bash
 cd /home/WhisperLive
+
+# Install requirements
+pip install -r requirements/server.txt
 
 # Required to create mel spectogram
 wget --directory-prefix=assets assets/mel_filters.npz https://raw.githubusercontent.com/openai/whisper/main/whisper/assets/mel_filters.npz
@@ -59,11 +56,11 @@ wget --directory-prefix=assets assets/mel_filters.npz https://raw.githubusercont
 # Run English only model
 python3 run_server.py --port 9090 \
                       --backend tensorrt \
-                      --trt_model_path "path/from/build/step"
+                      --trt_model_path "path/to/whisper_trt/from/build/step"
 
 # Run Multilingual model
 python3 run_server.py --port 9090 \
                       --backend tensorrt \
-                      --trt_model_path "path/from/build/step" \
+                      --trt_model_path "path/to/whisper_trt/from/build/step" \
                       --trt_multilingual
 ```
