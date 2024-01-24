@@ -33,7 +33,7 @@ RUN apt install python3-pip -y
 RUN mkdir /app
 WORKDIR /app
 
-COPY setup.sh /app
+COPY scripts/setup.sh /app
 COPY requirements/ /app
 
 RUN apt update --fix-missing

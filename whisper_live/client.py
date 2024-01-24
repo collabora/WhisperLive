@@ -72,7 +72,7 @@ class Client:
             lang (str, optional): The selected language for transcription when multilingual is disabled. Default is None.
             translate (bool, optional): Specifies if the task is translation. Default is False.
         """
-        self.chunk = 1024
+        self.chunk = 4096
         self.format = pyaudio.paInt16
         self.channels = 1
         self.rate = 16000

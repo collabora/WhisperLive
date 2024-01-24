@@ -8,7 +8,7 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
 ## Installation
 - Install PyAudio and ffmpeg
 ```bash
- bash setup.sh
+ bash scripts/setup.sh
 ```
 
 - Install whisper-live from pip
@@ -16,61 +16,81 @@ Unlike traditional speech recognition systems that rely on continuous audio stre
  pip install whisper-live
 ```
 
+### Setting up NVIDIA/TensorRT-LLM for TensorRT backend
+- Please follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) for setup of [NVIDIA/TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) and for building Whisper-TensorRT engine.
+
 ## Getting Started
-- Run the server
-```python
- from whisper_live.server import TranscriptionServer
- server = TranscriptionServer()
- server.run("0.0.0.0", 9090)
+The server supports two backends `faster_whisper` and `tensorrt`. If running `tensorrt` backend follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md)
+
+### Running the Server
+- [Faster Whisper](https://github.com/SYSTRAN/faster-whisper) backend
+```bash
+python3 run_server.py --port 9090 \
+                      --backend faster_whisper
+  
+# running with custom model
+python3 run_server.py --port 9090 \
+                      --backend faster_whisper
+                      -fw "/path/to/custom/faster/whisper/model"
 ```
 
-- On the client side
-    - To transcribe an audio file:
-    ```python
-      from whisper_live.client import TranscriptionClient
-      client = TranscriptionClient(
-        "localhost",
-        9090,
-        is_multilingual=False,
-        lang="en",
-        translate=False,
-        model_size="small"
-      )
+- TensorRT backend. Currently, we recommend to only use the docker setup for TensorRT. Follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) which works as expected. Make sure to build your TensorRT Engines before running the server with TensorRT backend.
+```bash
+# Run English only model
+python3 run_server.py -p 9090 \
+                      -b tensorrt \
+                      -trt /home/TensorRT-LLM/examples/whisper/whisper_small_en
 
-      client("tests/jfk.wav")
-    ```
-    This command transcribes the specified audio file (audio.wav) using the Whisper model. It connects to the server running on localhost at port 9090. It can also enable the multilingual feature, allowing transcription in multiple languages. The language option specifies the target language for transcription, in this case, English ("en"). The translate option should be set to `True` if we want to translate from the source language to English and `False` if we want to transcribe in the source language.
+# Run Multilingual model
+python3 run_server.py -p 9090 \
+                      -b tensorrt \
+                      -trt /home/TensorRT-LLM/examples/whisper/whisper_small \
+                      -m
+```
 
-    - To transcribe from microphone:
-    ```python
-      from whisper_live.client import TranscriptionClient
-      client = TranscriptionClient(
-        "localhost",
-        9090,
-        is_multilingual=True,
-        lang="hi",
-        translate=True,
-        model_size="small"
-      )
-      client()
-    ```
-    This command captures audio from the microphone and sends it to the server for transcription. It uses the multilingual option with `hi` as the selected language, enabling the multilingual feature and specifying the target language and task. We use whisper `small` by default but can be changed to any other option based on the requirements and the hardware running the server.
 
-    - To transcribe from a HLS stream:
-    ```python
-      client = TranscriptionClient(host, port, is_multilingual=True, lang="en", translate=False) 
-      client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/bbc_1xtra.isml/bbc_1xtra-audio%3d96000.norewind.m3u8") 
-    ```
-    This command streams audio into the server from a HLS stream. It uses the same options as the previous command, enabling the multilingual feature and specifying the target language and task.
+### Running the Client
+- To transcribe an audio file:
+```python
+from whisper_live.client import TranscriptionClient
+client = TranscriptionClient(
+  "localhost",
+  9090,
+  is_multilingual=False,
+  lang="en",
+  translate=False,
+  model_size="small"
+)
+
+client("tests/jfk.wav")
+```
+This command transcribes the specified audio file (audio.wav) using the Whisper model. It connects to the server running on localhost at port 9090. It can also enable the multilingual feature, allowing transcription in multiple languages. The language option specifies the target language for transcription, in this case, English ("en"). The translate option should be set to `True` if we want to translate from the source language to English and `False` if we want to transcribe in the source language.
+
+- To transcribe from microphone:
+```python
+from whisper_live.client import TranscriptionClient
+client = TranscriptionClient(
+  "localhost",
+  9090,
+  is_multilingual=True,
+  lang="hi",
+  translate=True,
+  model_size="small"
+)
+client()
+```
+This command captures audio from the microphone and sends it to the server for transcription. It uses the multilingual option with `hi` as the selected language, enabling the multilingual feature and specifying the target language and task. We use whisper `small` by default but can be changed to any other option based on the requirements and the hardware running the server.
+
+- To transcribe from a HLS stream:
+```python
+from whisper_live.client import TranscriptionClient
+client = TranscriptionClient(host, port, is_multilingual=True, lang="en", translate=False) 
+client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/bbc_1xtra.isml/bbc_1xtra-audio%3d96000.norewind.m3u8") 
+```
+This command streams audio into the server from a HLS stream. It uses the same options as the previous command, enabling the multilingual feature and specifying the target language and task.
 
 ## Transcribe audio from browser
-- Run the server
-```python
- from whisper_live.server import TranscriptionServer
- server = TranscriptionServer()
- server.run("0.0.0.0", 9090)
-```
-This would start the websocket server on port ```9090```.
+- Run the server with your desired backend as shown [here](https://github.com/collabora/WhisperLive?tab=readme-ov-file#running-the-server)
 
 ### Chrome Extension
 - Refer to [Audio-Transcription-Chrome](https://github.com/collabora/whisper-live/tree/main/Audio-Transcription-Chrome#readme) to use Chrome extension.
@@ -80,21 +100,24 @@ This would start the websocket server on port ```9090```.
 
 ## Whisper Live Server in Docker
 - GPU
-```bash
- docker build . -t whisper-live -f docker/Dockerfile.gpu
- docker run -it --gpus all -p 9090:9090 whisper-live:latest
-```
+  - Faster-Whisper
+  ```bash
+  docker build . -t whisper-live -f docker/Dockerfile.gpu
+  docker run -it --gpus all -p 9090:9090 whisper-live:latest
+  ```
+
+  - TensorRT. Follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) in order to setup docker and use TensorRT backend. We provide a pre-built docker image which has TensorRT-LLM built and ready to use.
 
 - CPU
 ```bash
- docker build . -t whisper-live -f docker/Dockerfile.cpu
- docker run -it -p 9090:9090 whisper-live:latest
+docker build . -t whisper-live -f docker/Dockerfile.cpu
+docker run -it -p 9090:9090 whisper-live:latest
 ```
 **Note**: By default we use "small" model size. To build docker image for a different model size, change the size in server.py and then build the docker image.
 
 ## Future Work
 - [ ] Add translation to other languages on top of transcription.
-- [ ] TensorRT backend for Whisper.
+- [x] TensorRT backend for Whisper.
 
 ## Contact
 
