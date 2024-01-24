@@ -34,7 +34,7 @@ python3 run_server.py --port 9090 \
                       -fw "/path/to/custom/faster/whisper/model"
 ```
 
-- TensorRT backend. Currently, we only recommend docker setup for TensorRT. Follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) which works as expected. Make sure to build your TensorRT Engines before running the server with TensorRT backend.
+- TensorRT backend. Currently, we recommend to only use the docker setup for TensorRT. Follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) which works as expected. Make sure to build your TensorRT Engines before running the server with TensorRT backend.
 ```bash
 # Run English only model
 python3 run_server.py -p 9090 \
