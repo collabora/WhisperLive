@@ -59,7 +59,7 @@ client = TranscriptionClient(
   is_multilingual=False,
   lang="en",
   translate=False,
-  model_size="small"
+  model="small"
 )
 
 client("tests/jfk.wav")
@@ -75,7 +75,7 @@ client = TranscriptionClient(
   is_multilingual=True,
   lang="hi",
   translate=True,
-  model_size="small"
+  model="small"
 )
 client()
 ```
