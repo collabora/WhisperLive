@@ -37,10 +37,10 @@ python -c "import torch; import tensorrt; import tensorrt_llm"
 - We build `small.en` and `small` multilingual TensorRT engine. The script logs the path of the directory with Whisper TensorRT engine. We need the model_path to run the server.
 ```bash
 # convert small.en
-bash build_whisper_tensorrt /root/TensorRT-LLM-examples small.en
+bash scripts/build_whisper_tensorrt.sh /root/TensorRT-LLM-examples small.en
 
 # convert small multilingual model
-bash build_whisper_tensorrt /root/TensorRT-LLM-examples small
+bash scripts/build_whisper_tensorrt.sh /root/TensorRT-LLM-examples small
 ```
 
 ## Run WhisperLive Server with TensorRT Backend
