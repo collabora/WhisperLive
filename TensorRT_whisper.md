@@ -48,7 +48,7 @@ bash scripts/build_whisper_tensorrt.sh /root/TensorRT-LLM-examples small
 cd /home/WhisperLive
 
 # Install requirements
-bash setup.sh
+bash scripts/setup.sh
 pip install -r requirements/server.txt
 
 # Required to create mel spectogram
