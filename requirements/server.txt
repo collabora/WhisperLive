@@ -3,3 +3,6 @@ torch
 websockets
 onnxruntime==1.16.0
 numba
+openai-whisper
+kaldialign
+soundfile
