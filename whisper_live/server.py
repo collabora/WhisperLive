@@ -136,6 +136,7 @@ class TranscriptionServer:
                 )
                 logging.info(f"Running TensorRT backend.")
             except Exception as e:
+                self.client_uid = options["uid"]
                 websocket.send(
                     json.dumps(
                         {
