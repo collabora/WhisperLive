@@ -397,6 +397,7 @@ class ServeClientTensorRT(ServeClientBase):
             language=self.language,
             task=self.task
         )
+        self.warmup()
 
         # threading
         self.trans_thread = threading.Thread(target=self.speech_to_text)
@@ -410,7 +411,13 @@ class ServeClientTensorRT(ServeClientBase):
                 }
             )
         )
-    
+
+    def warmup(self, warmup_steps=10):
+        logging.info("[INFO:] Warming up TensorRT engine..")
+        mel, duration = self.transcriber.log_mel_spectrogram("tests/jfk.flac")
+        for i in range(warmup_steps):
+            last_segment = self.transcriber.transcribe(mel)
+
     def set_eos(self, eos):
         self.lock.acquire()
         self.eos = eos
@@ -553,7 +560,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         multilingual=False,
         language=None,
         client_uid=None,
-        model="small",
+        model="small.en",
         initial_prompt=None,
         vad_parameters=None,
         ):
@@ -587,6 +594,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         self.task = task
         self.initial_prompt = initial_prompt
         self.vad_parameters = vad_parameters or {"threshold": 0.5}
+        self.no_speech_thresh = 0.45
         
         device = "cuda" if torch.cuda.is_available() else "cpu"
         
@@ -721,6 +729,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                         if time.time() - self.t_start > self.add_pause_thresh:
                             self.text.append('')
 
+                if not len(segments): continue
                 try:
                     self.websocket.send(
                         json.dumps({
@@ -773,6 +782,10 @@ class ServeClientFasterWhisper(ServeClientBase):
                 text_ = s.text
                 self.text.append(text_)
                 start, end = self.timestamp_offset + s.start, self.timestamp_offset + min(duration, s.end)
+
+                if start >= end: continue
+                if s.no_speech_prob > self.no_speech_thresh: continue
+
                 self.transcript.append(self.format_segment(start, end, text_))
                 
                 offset = min(duration, s.end)
