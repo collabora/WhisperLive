@@ -78,7 +78,7 @@ function startRecording(data) {
             multilingual: data.useMultilingual,
             language: data.language,
             task: data.task,
-            model_size: data.modelSize
+            model: data.modelSize
         })
       );
     };
