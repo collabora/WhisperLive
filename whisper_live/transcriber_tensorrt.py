@@ -11,7 +11,7 @@ import numpy as np
 from whisper.tokenizer import get_tokenizer
 from whisper_live.tensorrt_utils import (mel_filters, store_transcripts,
                            write_error_stats, load_audio_wav_format,
-                           pad_or_trim)
+                           pad_or_trim, load_audio)
 
 import tensorrt_llm
 import tensorrt_llm.logger as logger

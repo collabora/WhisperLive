@@ -398,6 +398,7 @@ class ServeClientTensorRT(ServeClientBase):
             language=self.language,
             task=self.task
         )
+        self.warmup()
 
         # threading
         self.trans_thread = threading.Thread(target=self.speech_to_text)
@@ -411,6 +412,12 @@ class ServeClientTensorRT(ServeClientBase):
                 }
             )
         )
+
+    def warmup(self, warmup_steps=10):
+        logging.info("[INFO:] Warming up TensorRT engine..")
+        mel, duration = self.transcriber.log_mel_spectrogram("tests/jfk.flac")
+        for i in range(warmup_steps):
+            last_segment = self.transcriber.transcribe(mel)
     
     def set_eos(self, eos):
         self.lock.acquire()
