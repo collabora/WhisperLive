@@ -102,8 +102,6 @@ class Client:
         self.rate = 16000
         self.record_seconds = 60000
         self.recording = False
-        self.multilingual = False
-        self.language = None
         self.task = "transcribe"
         self.uid = str(uuid.uuid4())
         self.waiting = False

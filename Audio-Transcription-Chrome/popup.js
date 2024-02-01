@@ -4,7 +4,6 @@ document.addEventListener("DOMContentLoaded", function () {
   const stopButton = document.getElementById("stopCapture");
 
   const useServerCheckbox = document.getElementById("useServerCheckbox");
-  const useMultilingualCheckbox = document.getElementById('useMultilingualCheckbox');
   const languageDropdown = document.getElementById('languageDropdown');
   const taskDropdown = document.getElementById('taskDropdown');
   const modelSizeDropdown = document.getElementById('modelSizeDropdown');
@@ -29,14 +28,6 @@ document.addEventListener("DOMContentLoaded", function () {
   chrome.storage.local.get("useServerState", ({ useServerState }) => {
     if (useServerState !== undefined) {
       useServerCheckbox.checked = useServerState;
-    }
-  });
-
-  chrome.storage.local.get("useMultilingualModelState", ({ useMultilingualModelState }) => {
-    if (useMultilingualModelState !== undefined) {
-      useMultilingualCheckbox.checked = useMultilingualModelState;
-      languageDropdown.disabled = !useMultilingualModelState;
-      taskDropdown.disabled = !useMultilingualModelState;
     }
   });
 
@@ -86,7 +77,6 @@ document.addEventListener("DOMContentLoaded", function () {
         tabId: currentTab.id,
         host: host,
         port: port,
-        useMultilingual: useMultilingualCheckbox.checked,
         language: selectedLanguage,
         task: selectedTask,
         modelSize: selectedModelSize
@@ -129,7 +119,6 @@ document.addEventListener("DOMContentLoaded", function () {
     startButton.disabled = isCapturing;
     stopButton.disabled = !isCapturing;
     useServerCheckbox.disabled = isCapturing; 
-    useMultilingualCheckbox.disabled = isCapturing;
     modelSizeDropdown.disabled = isCapturing;
     
     startButton.classList.toggle("disabled", isCapturing);
@@ -140,18 +129,6 @@ document.addEventListener("DOMContentLoaded", function () {
   useServerCheckbox.addEventListener("change", () => {
     const useServerState = useServerCheckbox.checked;
     chrome.storage.local.set({ useServerState });
-  });
-
-  useMultilingualCheckbox.addEventListener('change', function() {
-    const useMultilingualModelState = useMultilingualCheckbox.checked;
-    if (useMultilingualModelState) {
-      languageDropdown.disabled = false;
-      taskDropdown.disabled = false;
-    } else {
-      languageDropdown.disabled = true;
-      taskDropdown.disabled = true;
-    }
-    chrome.storage.local.set({ useMultilingualModelState });
   });
 
   languageDropdown.addEventListener('change', function() {
