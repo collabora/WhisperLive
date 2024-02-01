@@ -103,7 +103,7 @@ async function startRecord(option) {
           multilingual: option.multilingual,
           language: option.language,
           task: option.task,
-          model_size: option.modelSize
+          model: option.modelSize
         })
       );
     };

@@ -414,10 +414,10 @@ class ServeClientTensorRT(ServeClientBase):
 
     def warmup(self, warmup_steps=10):
         logging.info("[INFO:] Warming up TensorRT engine..")
-        mel, duration = self.transcriber.log_mel_spectrogram("tests/jfk.flac")
+        mel, _ = self.transcriber.log_mel_spectrogram("tests/jfk.flac")
         for i in range(warmup_steps):
-            last_segment = self.transcriber.transcribe(mel)
-
+            self.transcriber.transcribe(mel)
+    
     def set_eos(self, eos):
         self.lock.acquire()
         self.eos = eos
