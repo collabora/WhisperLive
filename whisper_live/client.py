@@ -192,6 +192,8 @@ class Client:
 
         if "message" in message.keys() and message["message"] == "SERVER_READY":
             self.recording = True
+            self.server_backend = message["backend"]
+            print(f"[INFO]: Server Running with backend {self.server_backend}")
             return
 
         if "language" in message.keys():
@@ -218,7 +220,7 @@ class Client:
 
                 if i == n_segments-1: 
                     self.last_segment = seg
-                else:
+                elif self.server_backend == "faster_whisper":
                     if not len(self.transcript) or float(seg['start']) >= float(self.transcript[-1]['end']):
                         self.transcript.append(seg)
 
@@ -337,7 +339,9 @@ class Client:
                 assert self.last_response_recieved
                 while time.time() - self.last_response_recieved < self.disconnect_if_no_response_for:
                     continue
-                self.write_srt_file(self.srt_file_path)
+
+                if self.server_backend == "faster_whisper":
+                    self.write_srt_file(self.srt_file_path)
                 self.stream.close()
                 self.close_websocket()
 
@@ -347,7 +351,8 @@ class Client:
                 self.stream.close()
                 self.p.terminate()
                 self.close_websocket()
-                self.write_srt_file(self.srt_file_path)
+                if self.server_backend == "faster_whisper":
+                    self.write_srt_file(self.srt_file_path)
                 print("[INFO]: Keyboard interrupt.")
 
     def close_websocket(self):
@@ -475,7 +480,8 @@ class Client:
                     t.start()
                     n_audio_file += 1
                     self.frames = b""
-            self.write_srt_file(self.srt_file_path)
+            if self.server_backend == "faster_whisper":
+                self.write_srt_file(self.srt_file_path)
 
         except KeyboardInterrupt:
             if len(self.frames):
@@ -489,7 +495,8 @@ class Client:
             self.close_websocket()
 
             self.write_output_recording(n_audio_file, out_file)
-            self.write_srt_file(self.srt_file_path)
+            if self.server_backend == "faster_whisper":
+                self.write_srt_file(self.srt_file_path)
 
     def write_output_recording(self, n_audio_file, out_file):
         """
@@ -529,6 +536,7 @@ class Client:
     def write_srt_file(self, output_path="output.srt"):
         self.transcript.append(self.last_segment)
         create_srt_file(self.transcript, output_path)
+
 
 class TranscriptionClient:
     """

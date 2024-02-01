@@ -407,7 +407,8 @@ class ServeClientTensorRT(ServeClientBase):
             json.dumps(
                 {
                     "uid": self.client_uid,
-                    "message": self.SERVER_READY
+                    "message": self.SERVER_READY,
+                    "backend": "tensorrt"
                 }
             )
         )
@@ -615,7 +616,8 @@ class ServeClientFasterWhisper(ServeClientBase):
             json.dumps(
                 {
                     "uid": self.client_uid,
-                    "message": self.SERVER_READY
+                    "message": self.SERVER_READY,
+                    "backend": "faster_whisper"
                 }
             )
         )
