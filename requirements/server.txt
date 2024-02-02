@@ -7,3 +7,4 @@ openai-whisper
 kaldialign
 soundfile
 ffmpeg-python
+scipy
