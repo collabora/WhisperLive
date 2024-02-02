@@ -76,7 +76,6 @@ class Client:
         self,
         host=None,
         port=None,
-        is_multilingual=False,
         lang=None,
         translate=False,
         model="small",
@@ -92,8 +91,7 @@ class Client:
         Args:
             host (str): The hostname or IP address of the server.
             port (int): The port number for the WebSocket server.
-            is_multilingual (bool, optional): Specifies if multilingual transcription is enabled. Default is False.
-            lang (str, optional): The selected language for transcription when multilingual is disabled. Default is None.
+            lang (str, optional): The selected language for transcription. Default is None.
             translate (bool, optional): Specifies if the task is translation. Default is False.
         """
         self.chunk = 4096
@@ -107,7 +105,6 @@ class Client:
         self.waiting = False
         self.last_response_recieved = None
         self.disconnect_if_no_response_for = 15
-        self.multilingual = is_multilingual
         self.language = lang
         self.model = model
         self.server_error = False
@@ -245,7 +242,7 @@ class Client:
         """
         Callback function called when the WebSocket connection is successfully opened.
         
-        Sends an initial configuration message to the server, including client UID, multilingual mode,
+        Sends an initial configuration message to the server, including client UID,
         language selection, and task type.
 
         Args:
@@ -259,7 +256,6 @@ class Client:
             json.dumps(
                 {
                     "uid": self.uid,
-                    "multilingual": self.multilingual,
                     "language": self.language,
                     "task": self.task,
                     "model": self.model,
@@ -546,8 +542,7 @@ class TranscriptionClient:
     Args:
         host (str): The hostname or IP address of the server.
         port (int): The port number to connect to on the server.
-        is_multilingual (bool, optional): Indicates whether the transcription should support multiple languages (default is False).
-        lang (str, optional): The primary language for transcription (used if `is_multilingual` is False). Default is None, which defaults to English ('en').
+        lang (str, optional): The primary language for transcription. Default is None, which defaults to English ('en').
         translate (bool, optional): Indicates whether translation tasks are required (default is False).
 
     Attributes:
@@ -556,19 +551,18 @@ class TranscriptionClient:
     Example:
         To create a TranscriptionClient and start transcription on microphone audio:
         ```python
-        transcription_client = TranscriptionClient(host="localhost", port=9090, is_multilingual=True)
+        transcription_client = TranscriptionClient(host="localhost", port=9090)
         transcription_client()
         ```
     """
     def __init__(self,
         host,
         port,
-        is_multilingual=False,
         lang=None,
         translate=False,
         model="small",
     ):
-        self.client = Client(host, port, is_multilingual, lang, translate, model)
+        self.client = Client(host, port, lang, translate, model)
 
     def __call__(self, audio=None, hls_url=None):
         """

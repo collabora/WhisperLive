@@ -155,7 +155,6 @@ class TranscriptionServer:
                 options["model"] = faster_whisper_custom_model_path
             client = ServeClientFasterWhisper(
                 websocket,
-                multilingual=False,
                 language=options["language"],
                 task=options["task"],
                 client_uid=options["uid"],
@@ -559,7 +558,6 @@ class ServeClientFasterWhisper(ServeClientBase):
         websocket,
         task="transcribe",
         device=None,
-        multilingual=False,
         language=None,
         client_uid=None,
         model="small.en",
@@ -576,7 +574,6 @@ class ServeClientFasterWhisper(ServeClientBase):
             websocket (WebSocket): The WebSocket connection for the client.
             task (str, optional): The task type, e.g., "transcribe." Defaults to "transcribe".
             device (str, optional): The device type for Whisper, "cuda" or "cpu". Defaults to None.
-            multilingual (bool, optional): Whether the client supports multilingual transcription. Defaults to False.
             language (str, optional): The language for transcription. Defaults to None.
             client_uid (str, optional): A unique identifier for the client. Defaults to None.
 

@@ -120,7 +120,7 @@ document.addEventListener("DOMContentLoaded", function () {
     stopButton.disabled = !isCapturing;
     useServerCheckbox.disabled = isCapturing; 
     modelSizeDropdown.disabled = isCapturing;
-    
+    taskDropdown.disabled = isCapturing; 
     startButton.classList.toggle("disabled", isCapturing);
     stopButton.classList.toggle("disabled", !isCapturing);
   }
