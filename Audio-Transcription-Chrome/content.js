@@ -59,7 +59,7 @@ function init_element() {
 
     elem_container = document.createElement('div');
     elem_container.id = "transcription";
-    elem_container.style.cssText = 'padding-top:16px;font-size:18px;line-height:18px;top:0px;position:absolute;width:500px;height:90px;opacity:0.9;z-index:100;background:black;border-radius:10px;color:white;';
+    elem_container.style.cssText = 'padding-top:16px;font-size:18px;position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);z-index: 9999;line-height:18px;width:500px;height:90px;opacity:0.9;z-index:100;background:black;border-radius:10px;color:white;';
 
     for (var i = 0; i < 4; i++) {
         elem_text = document.createElement('span');
