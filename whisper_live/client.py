@@ -249,8 +249,6 @@ class Client:
             ws (websocket.WebSocketApp): The WebSocket client instance.
 
         """
-        print(self.multilingual, self.language, self.task)
-
         print("[INFO]: Opened connection")
         ws.send(
             json.dumps(
