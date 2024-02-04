@@ -26,7 +26,6 @@ To capture the audio in the current tab, we used the chrome `tabCapture` API to 
 ### Options
 When using the Audio Transcription extension, you have the following options:
  - **Use Collabora Server**: We provide a demo server which runs the whisper small model.
- - **Use Multilingual Model**: Enable this option to utilize the multilingual capabilities of OpenAI-whisper.
  - **Language**: Select the target language for transcription or translation. You can choose from a variety of languages supported by OpenAI-whisper.
  - **Task:** Choose the specific task to perform on the audio. You can select either "transcribe" for transcription or "translate" to translate the audio to English.
  - **Model Size**: Select the whisper model size to run the server with.
