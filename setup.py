@@ -53,8 +53,6 @@ setup(name="whisper-live",
         "openai-whisper",
         "kaldialign",
         "soundfile",
-        
-
       ],
       python_requires=">=3.8"
 )
