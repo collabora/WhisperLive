@@ -56,7 +56,6 @@ from whisper_live.client import TranscriptionClient
 client = TranscriptionClient(
   "localhost",
   9090,
-  is_multilingual=False,
   lang="en",
   translate=False,
   model="small"
@@ -64,7 +63,7 @@ client = TranscriptionClient(
 
 client("tests/jfk.wav")
 ```
-This command transcribes the specified audio file (audio.wav) using the Whisper model. It connects to the server running on localhost at port 9090. It can also enable the multilingual feature, allowing transcription in multiple languages. The language option specifies the target language for transcription, in this case, English ("en"). The translate option should be set to `True` if we want to translate from the source language to English and `False` if we want to transcribe in the source language.
+This command transcribes the specified audio file (audio.wav) using the Whisper model. It connects to the server running on localhost at port 9090. Using a multilingual model, language for the transcription will be automatically detected. You can also use the language option to specify the target language for the transcription, in this case, English ("en"). The translate option should be set to `True` if we want to translate from the source language to English and `False` if we want to transcribe in the source language.
 
 - To transcribe from microphone:
 ```python
@@ -72,22 +71,21 @@ from whisper_live.client import TranscriptionClient
 client = TranscriptionClient(
   "localhost",
   9090,
-  is_multilingual=True,
   lang="hi",
   translate=True,
   model="small"
 )
 client()
 ```
-This command captures audio from the microphone and sends it to the server for transcription. It uses the multilingual option with `hi` as the selected language, enabling the multilingual feature and specifying the target language and task. We use whisper `small` by default but can be changed to any other option based on the requirements and the hardware running the server.
+This command captures audio from the microphone and sends it to the server for transcription. It uses the multilingual model with `hi` as the selected language. We use whisper `small` by default but can be changed to any other option based on the requirements and the hardware running the server.
 
 - To transcribe from a HLS stream:
 ```python
 from whisper_live.client import TranscriptionClient
-client = TranscriptionClient(host, port, is_multilingual=True, lang="en", translate=False) 
+client = TranscriptionClient(host, port, lang="en", translate=False) 
 client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/bbc_1xtra.isml/bbc_1xtra-audio%3d96000.norewind.m3u8") 
 ```
-This command streams audio into the server from a HLS stream. It uses the same options as the previous command, enabling the multilingual feature and specifying the target language and task.
+This command streams audio into the server from a HLS stream. It uses the same options as the previous command, using the multilingual model and specifying the target language and task.
 
 ## Transcribe audio from browser
 - Run the server with your desired backend as shown [here](https://github.com/collabora/WhisperLive?tab=readme-ov-file#running-the-server)
