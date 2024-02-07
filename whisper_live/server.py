@@ -23,7 +23,7 @@ from whisper_live.transcriber import WhisperModel
 try:
     from whisper_live.transcriber_tensorrt import WhisperTRTLLM
 except Exception as e:
-    logging.warn("cannot import WhisperTRTLLM")
+    pass
 
 
 class TranscriptionServer:
