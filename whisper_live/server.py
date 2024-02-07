@@ -6,7 +6,7 @@ import json
 import textwrap
 
 import logging
-logging.basicConfig(level = logging.INFO)
+logging.basicConfig(level = logging.WARNING)
 
 from websockets.sync.server import serve
 
