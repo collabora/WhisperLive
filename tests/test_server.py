@@ -40,7 +40,7 @@ class TestServerConnection(unittest.TestCase):
     def setUp(self):
         self.server = TranscriptionServer()
     
-    @mock.patch('whisper_live.server.websockets.WebSocketCommonProtocol')
+    @mock.patch('websockets.WebSocketCommonProtocol')
     def test_connection(self, mock_websocket):
         mock_websocket.recv.return_value = json.dumps({
             'uid': 'test_client',
@@ -51,7 +51,7 @@ class TestServerConnection(unittest.TestCase):
         self.server.recv_audio(mock_websocket, "faster_whisper")
 
     
-    @mock.patch('whisper_live.server.websockets.WebSocketCommonProtocol')
+    @mock.patch('websockets.WebSocketCommonProtocol')
     def test_recv_audio_exception_handling(self, mock_websocket):
         mock_websocket.recv.side_effect = [json.dumps({
             'uid': 'test_client',

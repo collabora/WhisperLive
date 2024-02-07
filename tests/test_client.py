@@ -8,7 +8,7 @@ from whisper_live.client import TranscriptionClient, resample
 
 
 class TestClientWebSocketCommunication(unittest.TestCase):
-    @patch('whisper_live.client.websocket.WebSocketApp')
+    @patch('websocket.WebSocketApp')
     def test_websocket_communication(self, mock_websocket):
         mock_ws_instance = MagicMock()
         mock_websocket.return_value = mock_ws_instance
@@ -23,7 +23,7 @@ class TestClientWebSocketCommunication(unittest.TestCase):
 
 
 class TestClientCallbacks(unittest.TestCase):
-    @patch('whisper_live.client.websocket.WebSocketApp')
+    @patch('websocket.WebSocketApp')
     def setUp(self, mock_websocket):
         self.mock_ws_app = mock_websocket.return_value
         self.mock_ws_app.send = MagicMock()
@@ -97,7 +97,7 @@ class TestAudioResampling(unittest.TestCase):
 
 
 class TestSendingAudioPacket(unittest.TestCase):
-    @patch('whisper_live.client.websocket.WebSocketApp')
+    @patch('websocket.WebSocketApp')
     def setUp(self, mock_websocket):
         self.transcription_client = TranscriptionClient("localhost", "9090")
         self.client = self.transcription_client.client
