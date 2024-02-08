@@ -77,7 +77,11 @@ class TestServerInferenceAccuracy(unittest.TestCase):
         cls.server_process.terminate()
         cls.server_process.wait()
     
-    def setUp(self):
+    @mock.patch('pyaudio.PyAudio')
+    def setUp(self, mock_pyaudio):
+        self.mock_pyaudio = mock_pyaudio.return_value
+        self.mock_stream = mock.MagicMock()
+        self.mock_pyaudio.open.return_value = self.mock_stream
         self.metric = evaluate.load("wer")
         self.normalizer = EnglishTextNormalizer()
         self.client  = TranscriptionClient(
