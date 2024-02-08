@@ -1,4 +1,5 @@
 import os
+import websockets
 import time
 import threading
 import json
@@ -11,8 +12,10 @@ from websockets.sync.server import serve
 
 import torch
 import numpy as np
+import queue
 
 from whisper_live.vad import VoiceActivityDetection
+from scipy.io.wavfile import write
 import functools
 
 from whisper_live.vad import VoiceActivityDetection
@@ -20,7 +23,7 @@ from whisper_live.transcriber import WhisperModel
 try:
     from whisper_live.transcriber_tensorrt import WhisperTRTLLM
 except Exception as e:
-    pass
+    logging.warn("cannot import WhisperTRTLLM")
 
 
 class TranscriptionServer:
