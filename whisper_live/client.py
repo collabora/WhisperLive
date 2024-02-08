@@ -233,15 +233,10 @@ class Client:
             print(element)
 
     def on_error(self, ws, error):
-        print(f"[ERROR] WebSocket Error: {error}")
-        self.server_error = True
-        self.error_message = error
+        print(error)
 
     def on_close(self, ws, close_status_code, close_msg):
         print(f"[INFO]: Websocket connection closed: {close_status_code}: {close_msg}")
-        self.recording = False
-        self.server_error = False
-        self.waiting = False
 
     def on_open(self, ws):
         """
