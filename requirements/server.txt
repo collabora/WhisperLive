@@ -8,3 +8,5 @@ kaldialign
 soundfile
 ffmpeg-python
 scipy
+jiwer
+evaluate
