@@ -7,32 +7,38 @@ from unittest.mock import patch, MagicMock
 from whisper_live.client import TranscriptionClient, resample
 
 
-class TestClientWebSocketCommunication(unittest.TestCase):
-    @patch('websocket.WebSocketApp')
-    def test_websocket_communication(self, mock_websocket):
-        mock_ws_instance = MagicMock()
-        mock_websocket.return_value = mock_ws_instance
-        expected_url = 'ws://localhost:9090'
+class BaseTestCase(unittest.TestCase):
+    @patch('whisper_live.client.websocket.WebSocketApp')
+    @patch('whisper_live.client.pyaudio.PyAudio')
+    def setUp(self, mock_pyaudio, mock_websocket):
+        self.mock_pyaudio_instance = MagicMock()
+        mock_pyaudio.return_value = self.mock_pyaudio_instance
+        self.mock_stream = MagicMock()
+        self.mock_pyaudio_instance.open.return_value = self.mock_stream
 
-        client = TranscriptionClient(host='localhost', port=9090).client
-
-        mock_websocket.assert_called()
-        self.assertEqual(mock_websocket.call_args[0][0], expected_url)
-
-        client.close_websocket()
-
-
-class TestClientCallbacks(unittest.TestCase):
-    @patch('websocket.WebSocketApp')
-    def setUp(self, mock_websocket):
         self.mock_ws_app = mock_websocket.return_value
         self.mock_ws_app.send = MagicMock()
+
         self.client = TranscriptionClient(host='localhost', port=9090, lang="en").client
-    
+
+        self.mock_pyaudio = mock_pyaudio
+        self.mock_websocket = mock_websocket
+
     def tearDown(self):
         self.client.close_websocket()
+        self.mock_pyaudio.stop()
+        self.mock_websocket.stop()
         del self.client
 
+
+class TestClientWebSocketCommunication(BaseTestCase):
+    def test_websocket_communication(self):
+        expected_url = 'ws://localhost:9090'
+        self.mock_websocket.assert_called()
+        self.assertEqual(self.mock_websocket.call_args[0][0], expected_url)
+
+
+class TestClientCallbacks(BaseTestCase):
     def test_on_open(self):
         expected_message = json.dumps({
             "uid": self.client.uid,
@@ -96,17 +102,7 @@ class TestAudioResampling(unittest.TestCase):
         os.remove(resampled_audio)
 
 
-class TestSendingAudioPacket(unittest.TestCase):
-    @patch('websocket.WebSocketApp')
-    def setUp(self, mock_websocket):
-        self.transcription_client = TranscriptionClient("localhost", "9090")
-        self.client = self.transcription_client.client
-        self.client.client_socket = mock_websocket.return_value
-    
-    def tearDown(self):
-        self.client.close_websocket()
-        del self.client
-
+class TestSendingAudioPacket(BaseTestCase):
     def test_send_packet(self):
         mock_audio_packet = b'\x00\x01\x02\x03'
         self.client.send_packet_to_server(mock_audio_packet)
