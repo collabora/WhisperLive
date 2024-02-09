@@ -4,7 +4,8 @@ import scipy
 import websocket
 import unittest
 from unittest.mock import patch, MagicMock
-from whisper_live.client import TranscriptionClient, resample
+from whisper_live.client import TranscriptionClient
+from whisper_live.utils import resample
 
 
 class BaseTestCase(unittest.TestCase):
@@ -68,7 +69,7 @@ class TestClientCallbacks(BaseTestCase):
             ]
         })
         self.client.on_message(self.mock_ws_app, message)
-    
+
         # Assert that the transcript was updated correctly
         self.assertEqual(len(self.client.transcript), 2)
         self.assertEqual(self.client.transcript[1]['text'], "Test transcript 2")
@@ -79,14 +80,14 @@ class TestClientCallbacks(BaseTestCase):
         self.client.on_close(self.mock_ws_app, close_status_code, close_msg)
 
         self.assertFalse(self.client.recording)
-        self.assertFalse(self.client.server_error)        
+        self.assertFalse(self.client.server_error)
         self.assertFalse(self.client.waiting)
-    
+
     def test_on_error(self):
         error_message = "Test Error"
         self.client.on_error(self.mock_ws_app, error_message)
 
-        self.assertTrue(self.client.server_error)        
+        self.assertTrue(self.client.server_error)
         self.assertEqual(self.client.error_message, error_message)
 
 
@@ -95,10 +96,10 @@ class TestAudioResampling(unittest.TestCase):
         original_audio = "assets/jfk.flac"
         expected_sr = 16000
         resampled_audio = resample(original_audio, expected_sr)
-        
+
         sr, _ = scipy.io.wavfile.read(resampled_audio)
         self.assertEqual(sr, expected_sr)
-        
+
         os.remove(resampled_audio)
 
 

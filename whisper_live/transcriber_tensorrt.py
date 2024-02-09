@@ -1,17 +1,14 @@
-import argparse
 import json
 import re
-import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, TextIO, Tuple, Union
+from typing import Union
 
 import torch
 import numpy as np
+import torch.nn.functional as F
 from whisper.tokenizer import get_tokenizer
-from whisper_live.tensorrt_utils import (mel_filters, store_transcripts,
-                           write_error_stats, load_audio_wav_format,
-                           pad_or_trim, load_audio)
+from whisper_live.tensorrt_utils import (mel_filters, load_audio_wav_format, pad_or_trim, load_audio)
 
 import tensorrt_llm
 import tensorrt_llm.logger as logger
@@ -38,8 +35,6 @@ class WhisperEncoding:
         with open(config_path, 'r') as f:
             config = json.load(f)
 
-        use_gpt_attention_plugin = config['plugin_config'][
-            'gpt_attention_plugin']
         dtype = config['builder_config']['precision']
         n_mels = config['builder_config']['n_mels']
         num_languages = config['builder_config']['num_languages']
@@ -176,16 +171,8 @@ class WhisperDecoding:
 
 class WhisperTRTLLM(object):
 
-    def __init__(
-        self,
-        engine_dir,
-        debug_mode=False,
-        assets_dir=None,
-        device=None,
-        is_multilingual=False,
-        language="en",
-        task="transcribe"
-        ):
+    def __init__(self, engine_dir, assets_dir=None, device=None, is_multilingual=False,
+                 language="en", task="transcribe"):
         world_size = 1
         runtime_rank = tensorrt_llm.mpi_rank()
         runtime_mapping = tensorrt_llm.Mapping(world_size, runtime_rank)
@@ -212,7 +199,7 @@ class WhisperTRTLLM(object):
         self,
         audio: Union[str, np.ndarray, torch.Tensor],
         padding: int = 0,
-        return_duration = True
+        return_duration=True
     ):
         """
         Compute the log-Mel spectrogram of
@@ -242,8 +229,7 @@ class WhisperTRTLLM(object):
                     audio, _ = load_audio_wav_format(audio)
                 else:
                     audio = load_audio(audio)
-            assert isinstance(audio,
-                            np.ndarray), f"Unsupported audio type: {type(audio)}"
+            assert isinstance(audio, np.ndarray), f"Unsupported audio type: {type(audio)}"
             duration = audio.shape[-1] / SAMPLE_RATE
             audio = pad_or_trim(audio, N_SAMPLES)
             audio = audio.astype(np.float32)
@@ -254,14 +240,9 @@ class WhisperTRTLLM(object):
         if padding > 0:
             audio = F.pad(audio, (0, padding))
         window = torch.hann_window(N_FFT).to(audio.device)
-        stft = torch.stft(audio,
-                        N_FFT,
-                        HOP_LENGTH,
-                        window=window,
-                        return_complex=True)
+        stft = torch.stft(audio, N_FFT, HOP_LENGTH, window=window, return_complex=True)
         magnitudes = stft[..., :-1].abs()**2
 
-        
         mel_spec = self.filters @ magnitudes
 
         log_spec = torch.clamp(mel_spec, min=1e-10).log10()
@@ -271,7 +252,6 @@ class WhisperTRTLLM(object):
             return log_spec, duration
         else:
             return log_spec
-
 
     def process_batch(
             self,
@@ -296,7 +276,7 @@ class WhisperTRTLLM(object):
             text = self.tokenizer.decode(output_ids[i][0]).strip()
             texts.append(text)
         return texts
-    
+
     def transcribe(
             self,
             mel,
@@ -336,5 +316,5 @@ def decode_wav_file(
     prediction = re.sub(r'<\|.*?\|>', '', prediction)
     if normalizer:
         prediction = normalizer(prediction)
-    
+
     return prediction.strip()

@@ -34,7 +34,7 @@ class VoiceActivityDetection():
 
         if sr != 16000 and (sr % 16000 == 0):
             step = sr // 16000
-            x = x[:,::step]
+            x = x[:, ::step]
             sr = 16000
 
         if sr not in self.sample_rates:

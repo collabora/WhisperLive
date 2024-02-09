@@ -1,7 +1,6 @@
 import unittest
 import numpy as np
 import torch
-import scipy.io as sio
 from whisper_live.tensorrt_utils import load_audio
 from whisper_live.vad import VoiceActivityDetection
 
