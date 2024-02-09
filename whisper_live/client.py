@@ -151,7 +151,7 @@ class Client:
             return
 
         if "message" in message.keys() and message["message"] == "DISCONNECT":
-            print("[INFO]: Server overtime disconnected.")
+            print("[INFO]: Server disconnected due to overtime.")
             self.recording = False
 
         if "message" in message.keys() and message["message"] == "SERVER_READY":
