@@ -707,6 +707,19 @@ class ServeClientFasterWhisper(ServeClientBase):
                 self.text.append('')
         return segments
 
+    def handle_transcription_output(self, result, duration):
+        segments = []
+        if len(result):
+            self.t_start = None
+            last_segment = self.update_segments(result, duration)
+            segments = self.prepare_segments(last_segment)
+        else:
+            # show previous output if there is pause i.e. no output from whisper
+            segments = self.get_previous_output()
+
+        if len(segments):
+            self.send_transcription_to_client(segments)
+
     def speech_to_text(self):
         """
         Process an audio stream in an infinite loop, continuously transcribing the speech.
@@ -743,18 +756,7 @@ class ServeClientFasterWhisper(ServeClientBase):
 
                 if self.language is None:
                     continue
-
-                if len(result):
-                    self.t_start = None
-                    last_segment = self.update_segments(result, duration)
-                    segments = self.prepare_segments(last_segment)
-                else:
-                    # show previous output if there is pause i.e. no output from whisper
-                    segments = self.get_previous_output()
-
-                if not len(segments):
-                    continue
-                self.send_transcription_to_client(segments)
+                self.handle_transcription_output(result, duration)
 
             except Exception as e:
                 logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
