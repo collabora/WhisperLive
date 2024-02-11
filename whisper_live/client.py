@@ -79,7 +79,9 @@ class Client:
         lang=None,
         translate=False,
         model="small",
-        srt_file_path="output.srt"
+        srt_file_path="output.srt",
+        secure_websocket=False,
+        sslopt={},
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -125,7 +127,8 @@ class Client:
         )
 
         if host is not None and port is not None:
-            socket_url = f"ws://{host}:{port}"
+            socket_protocol = "wss" if secure_websocket else "ws"
+            socket_url = f"{socket_protocol}://{host}:{port}"
             self.client_socket = websocket.WebSocketApp(
                 socket_url,
                 on_open=lambda ws: self.on_open(ws),
@@ -142,7 +145,7 @@ class Client:
         Client.INSTANCES[self.uid] = self
 
         # start websocket client in a thread
-        self.ws_thread = threading.Thread(target=self.client_socket.run_forever)
+        self.ws_thread = threading.Thread(target=self.client_socket.run_forever, kwargs={"sslopt": sslopt})
         self.ws_thread.setDaemon(True)
         self.ws_thread.start()
 
@@ -559,8 +562,10 @@ class TranscriptionClient:
         lang=None,
         translate=False,
         model="small",
+        secure_websocket=False,
+        sslopt={},
     ):
-        self.client = Client(host, port, lang, translate, model)
+        self.client = Client(host, port, lang, translate, model, secure_websocket, sslopt)
 
     def __call__(self, audio=None, hls_url=None):
         """

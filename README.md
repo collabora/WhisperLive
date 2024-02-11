@@ -58,7 +58,25 @@ client = TranscriptionClient(
   9090,
   lang="en",
   translate=False,
-  model="small"
+  model="small",
+  secure_websocket=False,
+  sslopt={},
+)
+
+client("tests/jfk.wav")
+```
+
+- To transcribe an audio file with ssl:
+```python
+from whisper_live.client import TranscriptionClient
+client = TranscriptionClient(
+  "localhost",
+  9090,
+  lang="en",
+  translate=False,
+  model="small",
+  secure_websocket=True,
+  sslopt={"ca_certs": "cert.pem"},
 )
 
 client("tests/jfk.wav")
@@ -73,7 +91,9 @@ client = TranscriptionClient(
   9090,
   lang="hi",
   translate=True,
-  model="small"
+  model="small",
+  secure_websocket=False,
+  sslopt={},
 )
 client()
 ```
