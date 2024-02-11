@@ -218,7 +218,8 @@ class TranscriptionServer:
             backend="tensorrt", 
             faster_whisper_custom_model_path=None,
             whisper_tensorrt_path=None, 
-            trt_multilingual=False
+            trt_multilingual=False,
+            ssl_context=None
         ):
         """
         Run the transcription server.
@@ -236,7 +237,8 @@ class TranscriptionServer:
                 trt_multilingual=trt_multilingual
             ),
             host,
-            port
+            port,
+            ssl_context=ssl_context
         ) as server:
             server.serve_forever()
 
