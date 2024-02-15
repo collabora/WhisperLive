@@ -184,6 +184,8 @@ class TranscriptionServer:
             A numpy array containing the audio.
         """
         frame_data = websocket.recv()
+        if frame_data == b"END_OF_AUDIO":
+            return False
         return np.frombuffer(frame_data, dtype=np.float32)
 
     def handle_new_connection(self, websocket, faster_whisper_custom_model_path,
@@ -212,6 +214,10 @@ class TranscriptionServer:
     def process_audio_frames(self, websocket):
         frame_np = self.get_audio_from_websocket(websocket)
         client = self.client_manager.get_client(websocket)
+        if frame_np is False:
+            if self.backend == "tensorrt":
+                client.set_eos(True)
+            return False
 
         if self.backend == "tensorrt":
             voice_active = self.voice_activity(websocket, frame_np)
@@ -219,9 +225,10 @@ class TranscriptionServer:
                 self.no_voice_activity_chunks = 0
                 client.set_eos(False)
             if self.use_vad and not voice_active:
-                return
+                return True
 
         client.add_frames(frame_np)
+        return True
 
     def recv_audio(self,
                    websocket,
@@ -260,7 +267,8 @@ class TranscriptionServer:
 
         try:
             while not self.client_manager.is_client_timeout(websocket):
-                self.process_audio_frames(websocket)
+                if not self.process_audio_frames(websocket):
+                    break
         except ConnectionClosed:
             logging.info("Connection closed by client")
         except Exception as e:
