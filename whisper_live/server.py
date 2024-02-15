@@ -7,7 +7,7 @@ import logging
 import torch
 import numpy as np
 from websockets.sync.server import serve
-
+from websockets.exceptions import ConnectionClosed
 from whisper_live.vad import VoiceActivityDetector
 from whisper_live.transcriber import WhisperModel
 try:
@@ -186,6 +186,23 @@ class TranscriptionServer:
         frame_data = websocket.recv()
         return np.frombuffer(frame_data, dtype=np.float32)
 
+    def handle_new_connection(self, websocket, backend, faster_whisper_custom_model_path,
+                              whisper_tensorrt_path, trt_multilingual):
+        logging.info("New client connected")
+        options = websocket.recv()
+        options = json.loads(options)
+
+        if self.client_manager.is_server_full(websocket, options):
+            websocket.close()
+            return
+
+        self.backend = backend
+        if self.backend == "tensorrt":
+            self.vad_detector = VoiceActivityDetector(frame_rate=self.RATE)
+
+        self.initialize_client(
+            websocket, options, faster_whisper_custom_model_path, whisper_tensorrt_path, trt_multilingual)
+
     def recv_audio(self,
                    websocket,
                    backend="faster_whisper",
@@ -216,45 +233,40 @@ class TranscriptionServer:
         Raises:
             Exception: If there is an error during the audio frame processing.
         """
-        logging.info("New client connected")
-        options = websocket.recv()
-        options = json.loads(options)
+        try:
+            self.handle_new_connection(websocket, backend, faster_whisper_custom_model_path,
+                                       whisper_tensorrt_path, trt_multilingual)
 
-        if self.client_manager.is_server_full(websocket, options):
-            websocket.close()
-            return
+            while not self.client_manager.is_client_timeout(websocket):
+                try:
+                    frame_np = self.get_audio_from_websocket(websocket)
+                    client = self.client_manager.get_client(websocket)
 
-        self.backend = backend
-        if self.backend == "tensorrt":
-            self.vad_detector = VoiceActivityDetector(frame_rate=self.RATE)
+                    # VAD, for faster_whisper VAD model is already integrated
+                    if self.backend == "tensorrt":
+                        if not self.voice_activity(websocket, frame_np):
+                            continue
+                        self.no_voice_activity_chunks = 0
+                        client.set_eos(False)
 
-        self.initialize_client(
-            websocket, options, faster_whisper_custom_model_path, whisper_tensorrt_path, trt_multilingual)
+                    client.add_frames(frame_np)
 
-        while not self.client_manager.is_client_timeout(websocket):
-            try:
-                frame_np = self.get_audio_from_websocket(websocket)
-                client = self.client_manager.get_client(websocket)
-
-                # VAD, for faster_whisper VAD model is already integrated
-                if self.backend == "tensorrt":
-                    if not self.voice_activity(websocket, frame_np):
-                        continue
-                    self.no_voice_activity_chunks = 0
-                    client.set_eos(False)
-
-                client.add_frames(frame_np)
-
-            except Exception as e:
-                logging.error(e)
+                except Exception as e:
+                    logging.error(e)
+                    self.cleanup(websocket)
+                    websocket.close()
+                    break
+        except ConnectionClosed:
+            logging.info(f"Connection closed by client with path: {websocket.path}")
+        except json.JSONDecodeError:
+            logging.error("Failed to decode JSON from client")
+        except Exception as e:
+            logging.error(f"Unexpected error: {str(e)}")
+        finally:
+            if self.client_manager.get_client(websocket):
                 self.cleanup(websocket)
                 websocket.close()
-                break
-
-        if self.client_manager.get_client(websocket):
-            self.cleanup(websocket)
-            websocket.close()
-        del websocket
+            del websocket
 
     def run(self,
             host,
