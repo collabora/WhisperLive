@@ -257,7 +257,7 @@ class TranscriptionServer:
                     websocket.close()
                     break
         except ConnectionClosed:
-            logging.info(f"Connection closed by client with path: {websocket.path}")
+            logging.info("Connection closed by client.")
         except json.JSONDecodeError:
             logging.error("Failed to decode JSON from client")
         except Exception as e:
