@@ -58,7 +58,8 @@ client = TranscriptionClient(
   9090,
   lang="en",
   translate=False,
-  model="small"
+  model="small",
+  use_vad=False,
 )
 
 client("tests/jfk.wav")
@@ -73,11 +74,12 @@ client = TranscriptionClient(
   9090,
   lang="hi",
   translate=True,
-  model="small"
+  model="small",
+  use_vad=True,
 )
 client()
 ```
-This command captures audio from the microphone and sends it to the server for transcription. It uses the multilingual model with `hi` as the selected language. We use whisper `small` by default but can be changed to any other option based on the requirements and the hardware running the server.
+This command captures audio from the microphone and sends it to the server for transcription. It uses the multilingual model with `hi` as the selected language. We use whisper `small` by default but can be changed to any other option based on the requirements and the hardware running the server. The server also has an option to use `VAD`(voice activity detection) which is set to True by default.
 
 - To transcribe from a HLS stream:
 ```python
