@@ -25,7 +25,8 @@ class Client:
         lang=None,
         translate=False,
         model="small",
-        srt_file_path="output.srt"
+        srt_file_path="output.srt",
+        use_vad=True
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -55,6 +56,7 @@ class Client:
         self.model = model
         self.server_error = False
         self.srt_file_path = srt_file_path
+        self.use_vad = use_vad
 
         if translate:
             self.task = "translate"
@@ -201,6 +203,7 @@ class Client:
                     "language": self.language,
                     "task": self.task,
                     "model": self.model,
+                    "use_vad": self.use_vad,
                 }
             )
         )
@@ -497,8 +500,8 @@ class TranscriptionClient:
         transcription_client()
         ```
     """
-    def __init__(self, host, port, lang=None, translate=False, model="small"):
-        self.client = Client(host, port, lang, translate, model)
+    def __init__(self, host, port, lang=None, translate=False, model="small", use_vad=True):
+        self.client = Client(host, port, lang, translate, model, use_vad=use_vad)
 
     def __call__(self, audio=None, hls_url=None):
         """

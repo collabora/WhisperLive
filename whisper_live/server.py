@@ -127,6 +127,7 @@ class TranscriptionServer:
     def __init__(self):
         self.client_manager = ClientManager()
         self.no_voice_activity_chunks = 0
+        self.use_vad = True
 
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
@@ -165,12 +166,11 @@ class TranscriptionServer:
                 client_uid=options["uid"],
                 model=options["model"],
                 initial_prompt=options.get("initial_prompt"),
-                vad_parameters=options.get("vad_parameters")
+                vad_parameters=options.get("vad_parameters"),
+                use_vad=self.use_vad,
             )
             logging.info("Running faster_whisper backend.")
 
-        # self.clients[websocket] = client
-        # self.clients_start_time[websocket] = time.time()
         self.client_manager.add_client(websocket, client)
 
     def get_audio_from_websocket(self, websocket):
@@ -186,22 +186,42 @@ class TranscriptionServer:
         frame_data = websocket.recv()
         return np.frombuffer(frame_data, dtype=np.float32)
 
-    def handle_new_connection(self, websocket, backend, faster_whisper_custom_model_path,
+    def handle_new_connection(self, websocket, faster_whisper_custom_model_path,
                               whisper_tensorrt_path, trt_multilingual):
-        logging.info("New client connected")
-        options = websocket.recv()
-        options = json.loads(options)
+        try:
+            logging.info("New client connected")
+            options = websocket.recv()
+            options = json.loads(options)
+            self.use_vad = options.get('use_vad')
+            if self.client_manager.is_server_full(websocket, options):
+                websocket.close()
+                return False  # Indicates that the connection should not continue
 
-        if self.client_manager.is_server_full(websocket, options):
-            websocket.close()
-            return
+            if self.backend == "tensorrt":
+                self.vad_detector = VoiceActivityDetector(frame_rate=self.RATE)
+            self.initialize_client(websocket, options, faster_whisper_custom_model_path,
+                                   whisper_tensorrt_path, trt_multilingual)
+            return True
+        except json.JSONDecodeError:
+            logging.error("Failed to decode JSON from client")
+            return False
+        except Exception as e:
+            logging.error(f"Error during new connection initialization: {str(e)}")
+            return False
 
-        self.backend = backend
+    def process_audio_frames(self, websocket):
+        frame_np = self.get_audio_from_websocket(websocket)
+        client = self.client_manager.get_client(websocket)
+
         if self.backend == "tensorrt":
-            self.vad_detector = VoiceActivityDetector(frame_rate=self.RATE)
+            voice_active = self.voice_activity(websocket, frame_np)
+            if voice_active:
+                self.no_voice_activity_chunks = 0
+                client.set_eos(False)
+            if self.use_vad and not voice_active:
+                return
 
-        self.initialize_client(
-            websocket, options, faster_whisper_custom_model_path, whisper_tensorrt_path, trt_multilingual)
+        client.add_frames(frame_np)
 
     def recv_audio(self,
                    websocket,
@@ -233,33 +253,16 @@ class TranscriptionServer:
         Raises:
             Exception: If there is an error during the audio frame processing.
         """
+        self.backend = backend
+        if not self.handle_new_connection(websocket, faster_whisper_custom_model_path,
+                                          whisper_tensorrt_path, trt_multilingual):
+            return
+
         try:
-            self.handle_new_connection(websocket, backend, faster_whisper_custom_model_path,
-                                       whisper_tensorrt_path, trt_multilingual)
-
             while not self.client_manager.is_client_timeout(websocket):
-                try:
-                    frame_np = self.get_audio_from_websocket(websocket)
-                    client = self.client_manager.get_client(websocket)
-
-                    # VAD, for faster_whisper VAD model is already integrated
-                    if self.backend == "tensorrt":
-                        if not self.voice_activity(websocket, frame_np):
-                            continue
-                        self.no_voice_activity_chunks = 0
-                        client.set_eos(False)
-
-                    client.add_frames(frame_np)
-
-                except Exception as e:
-                    logging.error(e)
-                    self.cleanup(websocket)
-                    websocket.close()
-                    break
+                self.process_audio_frames(websocket)
         except ConnectionClosed:
-            logging.info(f"Connection closed by client with path: {websocket.path}")
-        except json.JSONDecodeError:
-            logging.error("Failed to decode JSON from client")
+            logging.info("Connection closed by client")
         except Exception as e:
             logging.error(f"Unexpected error: {str(e)}")
         finally:
@@ -660,7 +663,7 @@ class ServeClientTensorRT(ServeClientBase):
 
 class ServeClientFasterWhisper(ServeClientBase):
     def __init__(self, websocket, task="transcribe", device=None, language=None, client_uid=None, model="small.en",
-                 initial_prompt=None, vad_parameters=None):
+                 initial_prompt=None, vad_parameters=None, use_vad=True):
         """
         Initialize a ServeClient instance.
         The Whisper model is initialized based on the client's language and device availability.
@@ -702,6 +705,7 @@ class ServeClientFasterWhisper(ServeClientBase):
             compute_type="int8" if device == "cpu" else "float16",
             local_files_only=False,
         )
+        self.use_vad = use_vad
 
         # threading
         self.trans_thread = threading.Thread(target=self.speech_to_text)
@@ -776,8 +780,8 @@ class ServeClientFasterWhisper(ServeClientBase):
             initial_prompt=self.initial_prompt,
             language=self.language,
             task=self.task,
-            vad_filter=True,
-            vad_parameters=self.vad_parameters)
+            vad_filter=self.use_vad,
+            vad_parameters=self.vad_parameters if self.use_vad else None)
         if self.language is None:
             self.set_language(info)
         return result
