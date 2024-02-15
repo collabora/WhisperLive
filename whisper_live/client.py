@@ -17,6 +17,7 @@ class Client:
     Handles audio recording, streaming, and communication with a server using WebSocket.
     """
     INSTANCES = {}
+    END_OF_AUDIO = "END_OF_AUDIO"
 
     def __init__(
         self,
@@ -203,7 +204,7 @@ class Client:
                     "language": self.language,
                     "task": self.task,
                     "model": self.model,
-                    "use_vad": self.use_vad,
+                    "use_vad": self.use_vad
                 }
             )
         )
@@ -274,7 +275,7 @@ class Client:
                     self.stream.write(data)
 
                 wavfile.close()
-
+                self.send_packet_to_server(Client.END_OF_AUDIO.encode('utf-8'))  # Ensure it's sent as bytes
                 assert self.last_response_recieved
                 while time.time() - self.last_response_recieved < self.disconnect_if_no_response_for:
                     continue
