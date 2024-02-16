@@ -1,9 +1,15 @@
-# whisper-live
-A nearly-live implementation of OpenAI's Whisper.
+# WhisperLive
 
-This project is a real-time transcription application that uses the OpenAI Whisper model to convert speech input into text output. It can be used to transcribe both live audio input from microphone and pre-recorded audio files.
+<h2 align="center">
+  <a href="https://www.youtube.com/watch?v=0PHWCApIcCI"><img
+src="https://img.youtube.com/vi/0PHWCApIcCI/0.jpg" style="background-color:rgba(0,0,0,0);" height=300 alt="WhisperLive"></a>
+  <br><br>A nearly-live implementation of OpenAI's Whisper.
+<br><br>
+</h2>
 
-Unlike traditional speech recognition systems that rely on continuous audio streaming, we use [voice activity detection (VAD)](https://github.com/snakers4/silero-vad) to detect the presence of speech and only send the audio data to whisper when speech is detected. This helps to reduce the amount of data sent to the whisper model and improves the accuracy of the transcription output.
+This project is a real-time transcription application that uses the OpenAI Whisper model
+to convert speech input into text output. It can be used to transcribe both live audio
+input from microphone and pre-recorded audio files.
 
 ## Installation
 - Install PyAudio and ffmpeg
