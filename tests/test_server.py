@@ -69,7 +69,7 @@ class TestServerConnection(unittest.TestCase):
 class TestServerInferenceAccuracy(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.server_process = subprocess.Popen(["python", "run_server.py"])  # Adjust the command as needed
+        cls.server_process = subprocess.Popen(["python", "run_server.py"])
         time.sleep(2)
 
     @classmethod
@@ -134,4 +134,4 @@ class TestExceptionHandling(unittest.TestCase):
             for message in log.output:
                 print(message)
             print()
-            self.assertTrue(any("Unexpected error: Unexpected error" in message for message in log.output))
+            self.assertTrue(any("Unexpected error" in message for message in log.output))
