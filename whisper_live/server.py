@@ -207,6 +207,9 @@ class TranscriptionServer:
         except json.JSONDecodeError:
             logging.error("Failed to decode JSON from client")
             return False
+        except ConnectionClosed:
+            logging.info("Connection closed by client")
+            return False
         except Exception as e:
             logging.error(f"Error during new connection initialization: {str(e)}")
             return False

@@ -58,6 +58,7 @@ class Client:
         self.server_error = False
         self.srt_file_path = srt_file_path
         self.use_vad = use_vad
+        self.last_recieved_segment = None
 
         if translate:
             self.task = "translate"
@@ -123,6 +124,10 @@ class Client:
                       (not self.transcript or
                         float(seg['start']) >= float(self.transcript[-1]['end']))):
                     self.transcript.append(seg)
+        # update last received segment and last valild responsne time
+        if self.last_recieved_segment is None or self.last_recieved_segment != segments[-1]["text"]:
+            self.last_response_recieved = time.time()
+            self.last_recieved_segment = segments[-1]["text"]
 
         # Truncate to last 3 entries for brevity.
         text = text[-3:]
@@ -142,7 +147,6 @@ class Client:
             message (str): The received message from the server.
 
         """
-        self.last_response_recieved = time.time()
         message = json.loads(message)
 
         if self.uid != message.get("uid"):
@@ -158,6 +162,7 @@ class Client:
             self.recording = False
 
         if "message" in message.keys() and message["message"] == "SERVER_READY":
+            self.last_response_recieved = time.time()
             self.recording = True
             self.server_backend = message["backend"]
             print(f"[INFO]: Server Running with backend {self.server_backend}")
@@ -275,11 +280,11 @@ class Client:
                     self.stream.write(data)
 
                 wavfile.close()
-                self.send_packet_to_server(Client.END_OF_AUDIO.encode('utf-8'))  # Ensure it's sent as bytes
+
                 assert self.last_response_recieved
                 while time.time() - self.last_response_recieved < self.disconnect_if_no_response_for:
                     continue
-
+                self.send_packet_to_server(Client.END_OF_AUDIO.encode('utf-8'))  # Ensure it's sent as bytes
                 if self.server_backend == "faster_whisper":
                     self.write_srt_file(self.srt_file_path)
                 self.stream.close()
