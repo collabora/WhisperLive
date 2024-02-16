@@ -126,7 +126,7 @@ class Client:
 
         # Truncate to last 3 entries for brevity.
         text = text[-3:]
-        # utils.clear_screen()
+        utils.clear_screen()
         utils.print_transcript(text)
 
     def on_message(self, ws, message):
