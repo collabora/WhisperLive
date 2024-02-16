@@ -97,7 +97,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: .
-          file: docker/Dockerfile
+          file: docker/Dockerfile.cpu
           push: true
           tags: ghcr.io/makaveli10/whisperlive-cpu:latest
 
