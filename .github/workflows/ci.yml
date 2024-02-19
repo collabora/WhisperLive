@@ -103,6 +103,7 @@ jobs:
   
   build-and-push-docker-gpu:
     needs: [run-tests, check-code-format]
+    timeout-minutes: 20
     runs-on: ubuntu-22.04
     if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
     steps:
