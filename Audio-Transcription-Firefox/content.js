@@ -66,16 +66,12 @@ function resampleTo16kHZ(audioData, origSampleRate = 44100) {
 function startRecording(data) {
     socket = new WebSocket(`ws://${data.host}:${data.port}/`);
     language = data.language;
-    if (language === null && !data.useMultilingual) {
-      language = 'en';
-    }
 
     const uuid = generateUUID();
     socket.onopen = function(e) { 
       socket.send(
         JSON.stringify({
             uid: uuid,
-            multilingual: data.useMultilingual,
             language: data.language,
             task: data.task,
             model: data.modelSize
@@ -201,7 +197,7 @@ function init_element() {
 
     elem_container = document.createElement('div');
     elem_container.id = "transcription";
-    elem_container.style.cssText = 'padding-top:16px;font-size:18px;line-height:18px;top:0px;position:absolute;width:500px;height:90px;opacity:0.9;z-index:100;background:black;border-radius:10px;color:white;';
+    elem_container.style.cssText = 'padding-top:16px;font-size:18px;line-height:18px;position:fixed;top:85%;left:50%;transform:translate(-50%,-50%);width:500px;height:90px;opacity:0.9;z-index:100;background:black;border-radius:10px;color:white;';
 
     for (var i = 0; i < 4; i++) {
         elem_text = document.createElement('span');

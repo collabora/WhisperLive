@@ -1,4 +1,4 @@
-name: CI
+name: Test & Build CI/CD
 
 on:
   push:
@@ -7,46 +7,83 @@ on:
     tags:
       - v*
   pull_request:
-    branches:
-      - main
+    branches: [ main ]
+    types: [opened, synchronize, reopened]
 
 jobs:
-  build-and-push-package:
+  test:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        python-version: [3.8, 3.9, '3.10', '3.11']
     steps:
-    - name: Check Out Repository
-      uses: actions/checkout@v2
+      - uses: actions/checkout@v2
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: 3.8
-    
-    - name: Set up FFmpeg
-      uses: FedericoCarboni/setup-ffmpeg@v2
-    
-    - name: Install Additional requirements
-      run: |
-        sudo apt-get -y install portaudio19-dev wget
-      shell: bash
+      - name: Cache Python dependencies
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cache/pip
+            !~/.cache/pip/log
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('requirements/server.txt', 'requirements/client.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-
+      
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg portaudio19-dev
+      
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/server.txt --extra-index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements/client.txt
+      
+      - name: Run tests
+        run: |
+          echo "Running tests with Python ${{ matrix.python-version }}"
+          python -m unittest discover -s tests
 
-    - name: Install Client Requirements
-      run: pip install -r requirements/client.txt
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+    steps:
+      - uses: actions/checkout@v2
 
-    - name: Install Server Requirements
-      run: pip install -r requirements/server.txt
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
 
-    - name: Install Wheel for build 
-      run: pip install wheel twine
-    
-    - name: Build wheel
-      run: |
-        python setup.py sdist bdist_wheel
-    
-    - name: Push package on Test PyPI
-      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        user: __token__
-        password: ${{ secrets.PYPI_API_TOKEN }}
+      - name: Cache Python dependencies
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cache/pip
+            !~/.cache/pip/log
+          key: ubuntu-latest-pip-3.8-${{ hashFiles('requirements/server.txt', 'requirements/client.txt') }}
+          restore-keys: |
+            ubuntu-latest-pip-3.8-
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg portaudio19-dev
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements/server.txt
+          pip install -r requirements/client.txt
+
+      - name: Build package
+        run: python setup.py sdist bdist_wheel
+
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
