@@ -284,7 +284,7 @@ class Client:
                 assert self.last_response_recieved
                 while time.time() - self.last_response_recieved < self.disconnect_if_no_response_for:
                     continue
-                self.send_packet_to_server(Client.END_OF_AUDIO.encode('utf-8'))  # Ensure it's sent as bytes
+                self.send_packet_to_server(Client.END_OF_AUDIO.encode('utf-8'))
                 if self.server_backend == "faster_whisper":
                     self.write_srt_file(self.srt_file_path)
                 self.stream.close()
@@ -507,7 +507,7 @@ class TranscriptionClient:
         ```
     """
     def __init__(self, host, port, lang=None, translate=False, model="small", use_vad=True):
-        self.client = Client(host, port, lang, translate, model, use_vad=use_vad)
+        self.client = Client(host, port, lang, translate, model, srt_file_path="output.srt", use_vad=use_vad)
 
     def __call__(self, audio=None, hls_url=None):
         """
