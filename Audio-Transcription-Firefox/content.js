@@ -74,7 +74,8 @@ function startRecording(data) {
             uid: uuid,
             language: data.language,
             task: data.task,
-            model: data.modelSize
+            model: data.modelSize,
+            use_vad: data.useVad
         })
       );
     };
