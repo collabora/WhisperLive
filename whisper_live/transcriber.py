@@ -400,7 +400,7 @@ class WhisperModel:
 
         return segments, info
 
-    def generate_segments(
+    def generate_segments(                                                  # noqa: C901
         self,
         features: np.ndarray,
         tokenizer: Tokenizer,
@@ -425,7 +425,7 @@ class WhisperModel:
         all_segments = []
         while seek < content_frames:
             time_offset = seek * self.feature_extractor.time_per_frame
-            segment = features[:, seek : seek + self.feature_extractor.nb_max_frames]
+            segment = features[:, seek:seek + self.feature_extractor.nb_max_frames]
             segment_size = min(
                 self.feature_extractor.nb_max_frames, content_frames - seek
             )
@@ -749,7 +749,7 @@ class WhisperModel:
 
         if previous_tokens:
             prompt.append(tokenizer.sot_prev)
-            prompt.extend(previous_tokens[-(self.max_length // 2 - 1) :])
+            prompt.extend(previous_tokens[-(self.max_length // 2 - 1):])
 
         prompt.extend(tokenizer.sot_sequence)
 
@@ -766,7 +766,7 @@ class WhisperModel:
 
         return prompt
 
-    def add_word_timestamps(
+    def add_word_timestamps(                                                    # noqa: C901
         self,
         segments: List[dict],
         tokenizer: Tokenizer,

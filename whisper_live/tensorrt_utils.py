@@ -214,7 +214,7 @@ def store_transcripts(filename: Pathlike, texts: Iterable[Tuple[str, str,
             print(f"{cut_id}:\thyp={hyp}", file=f)
 
 
-def write_error_stats(
+def write_error_stats(                                              # noqa: C901
     f: TextIO,
     test_set_name: str,
     results: List[Tuple[str, str]],
