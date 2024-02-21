@@ -4,6 +4,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const stopButton = document.getElementById("stopCapture");
 
   const useServerCheckbox = document.getElementById("useServerCheckbox");
+  const useVadCheckbox = document.getElementById("useVadCheckbox");
   const languageDropdown = document.getElementById('languageDropdown');
   const taskDropdown = document.getElementById('taskDropdown');
   const modelSizeDropdown = document.getElementById('modelSizeDropdown');
@@ -28,6 +29,12 @@ document.addEventListener("DOMContentLoaded", function () {
   chrome.storage.local.get("useServerState", ({ useServerState }) => {
     if (useServerState !== undefined) {
       useServerCheckbox.checked = useServerState;
+    }
+  });
+
+  chrome.storage.local.get("useVadState", ({ useVadState }) => {
+    if (useVadState !== undefined) {
+      useVadCheckbox.checked = useVadState;
     }
   });
 
@@ -79,7 +86,8 @@ document.addEventListener("DOMContentLoaded", function () {
         port: port,
         language: selectedLanguage,
         task: selectedTask,
-        modelSize: selectedModelSize
+        modelSize: selectedModelSize,
+        useVad: useVadCheckbox.checked,
       }, () => {
         // Update capturing state in storage and toggle the buttons
         chrome.storage.local.set({ capturingState: { isCapturing: true } }, () => {
@@ -118,7 +126,8 @@ document.addEventListener("DOMContentLoaded", function () {
   function toggleCaptureButtons(isCapturing) {
     startButton.disabled = isCapturing;
     stopButton.disabled = !isCapturing;
-    useServerCheckbox.disabled = isCapturing; 
+    useServerCheckbox.disabled = isCapturing;
+    useVadCheckbox.disabled = isCapturing;
     modelSizeDropdown.disabled = isCapturing;
     languageDropdown.disabled = isCapturing;
     taskDropdown.disabled = isCapturing; 
@@ -130,6 +139,11 @@ document.addEventListener("DOMContentLoaded", function () {
   useServerCheckbox.addEventListener("change", () => {
     const useServerState = useServerCheckbox.checked;
     chrome.storage.local.set({ useServerState });
+  });
+
+  useVadCheckbox.addEventListener("change", () => {
+    const useVadState = useVadCheckbox.checked;
+    chrome.storage.local.set({ useVadState });
   });
 
   languageDropdown.addEventListener('change', function() {

@@ -99,7 +99,8 @@ async function startRecord(option) {
           uid: uuid,
           language: option.language,
           task: option.task,
-          model: option.modelSize
+          model: option.modelSize,
+          use_vad: option.useVad
         })
       );
     };
