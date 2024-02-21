@@ -46,6 +46,7 @@ class TestClientCallbacks(BaseTestCase):
             "language": self.client.language,
             "task": self.client.task,
             "model": self.client.model,
+            "use_vad": True
         })
         self.client.on_open(self.mock_ws_app)
         self.mock_ws_app.send.assert_called_with(expected_message)

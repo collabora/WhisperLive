@@ -64,7 +64,8 @@ client = TranscriptionClient(
   9090,
   lang="en",
   translate=False,
-  model="small"
+  model="small",
+  use_vad=False,
 )
 ```
 It connects to the server running on localhost at port 9090. Using a multilingual model, language for the transcription will be automatically detected. You can also use the language option to specify the target language for the transcription, in this case, English ("en"). The translate option should be set to `True` if we want to translate from the source language to English and `False` if we want to transcribe in the source language.

@@ -21,7 +21,7 @@ docker pull ghcr.io/collabora/whisperbot-base:latest
 ```bash
 docker run -it --gpus all --shm-size=8g \
        --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
-       -v /path/to/WhisperLive:/home/WhisperLive \
+       -p 9090:9090 -v /path/to/WhisperLive:/home/WhisperLive \
        ghcr.io/collabora/whisperbot-base:latest
 ```
 
@@ -48,7 +48,7 @@ bash scripts/build_whisper_tensorrt.sh /root/TensorRT-LLM-examples small
 cd /home/WhisperLive
 
 # Install requirements
-bash scripts/setup.sh
+apt update && bash scripts/setup.sh
 pip install -r requirements/server.txt
 
 # Required to create mel spectogram
