@@ -77,7 +77,7 @@ jobs:
   build-and-push-docker-cpu:
     needs: [run-tests, check-code-format]
     runs-on: ubuntu-22.04
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
     steps:
       - uses: actions/checkout@v2
       
@@ -103,7 +103,7 @@ jobs:
     needs: [run-tests, check-code-format, build-and-push-docker-cpu]
     timeout-minutes: 20
     runs-on: ubuntu-22.04
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
     steps:
       - uses: actions/checkout@v2
 
