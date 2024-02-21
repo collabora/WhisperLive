@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - develop
     tags:
       - v*
   pull_request:
@@ -98,7 +97,7 @@ jobs:
           context: .
           file: docker/Dockerfile.cpu
           push: true
-          tags: ghcr.io/makaveli10/whisperlive-cpu:latest
+          tags: ghcr.io/collabora/whisperlive-cpu:latest
   
   build-and-push-docker-gpu:
     needs: [run-tests, check-code-format, build-and-push-docker-cpu]
@@ -127,7 +126,7 @@ jobs:
           context: .
           file: docker/Dockerfile.gpu
           push: true
-          tags: ghcr.io/makaveli10/whisperlive-gpu:latest
+          tags: ghcr.io/collabora/whisperlive-gpu:latest
 
   publish-to-pypi:
     needs: [run-tests, check-code-format]
