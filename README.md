@@ -93,16 +93,14 @@ client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/b
 - GPU
   - Faster-Whisper
   ```bash
-  docker build . -t whisper-live -f docker/Dockerfile.gpu
-  docker run -it --gpus all -p 9090:9090 whisper-live:latest
+  docker run -it --gpus all -p 9090:9090 ghcr.io/collabora/whisperlive-gpu:latest
   ```
 
   - TensorRT. Follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) in order to setup docker and use TensorRT backend. We provide a pre-built docker image which has TensorRT-LLM built and ready to use.
 
 - CPU
 ```bash
-docker build . -t whisper-live -f docker/Dockerfile.cpu
-docker run -it -p 9090:9090 whisper-live:latest
+docker run -it -p 9090:9090 ghcr.io/collabora/whisperlive-cpu:latest
 ```
 **Note**: By default we use "small" model size. To build docker image for a different model size, change the size in server.py and then build the docker image.
 
