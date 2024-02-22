@@ -157,6 +157,7 @@ jobs:
         run: |
           pip install -r requirements/server.txt
           pip install -r requirements/client.txt
+          pip install wheel
 
       - name: Build package
         run: python setup.py sdist bdist_wheel
