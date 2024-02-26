@@ -30,4 +30,4 @@ COPY whisper_live /app/whisper_live
 
 COPY run_server.py /app
 
-CMD ["python", "run_server.py"]
+CMD ["python3", "run_server.py"]
