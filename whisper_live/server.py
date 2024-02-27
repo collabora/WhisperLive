@@ -575,7 +575,7 @@ class ServeClientTensorRT(ServeClientBase):
             warmup_steps (int): Number of steps to warm up the model for.
         """
         logging.info("[INFO:] Warming up TensorRT engine..")
-        mel, _ = self.transcriber.log_mel_spectrogram("tests/jfk.flac")
+        mel, _ = self.transcriber.log_mel_spectrogram("assets/jfk.flac")
         for i in range(warmup_steps):
             self.transcriber.transcribe(mel)
 
@@ -613,7 +613,10 @@ class ServeClientTensorRT(ServeClientBase):
         """
         logging.info(f"[WhisperTensorRT:] Processing audio with duration: {input_bytes.shape[0] / self.RATE}")
         mel, duration = self.transcriber.log_mel_spectrogram(input_bytes)
-        last_segment = self.transcriber.transcribe(mel)
+        last_segment = self.transcriber.transcribe(
+            mel,
+            text_prefix=f"<|startoftranscript|><|{self.language}|><|{self.task}|><|notimestamps|>"
+        )
         if last_segment:
             self.handle_transcription_output(last_segment, duration)
 
