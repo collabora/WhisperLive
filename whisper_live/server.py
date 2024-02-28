@@ -408,6 +408,11 @@ class ServeClientBase(object):
         if self.frames_np is not None and self.frames_np.shape[0] > 45*self.RATE:
             self.frames_offset += 30.0
             self.frames_np = self.frames_np[int(30*self.RATE):]
+            # check timestamp offset(should be >= self.frame_offset)
+            # this basically means that there is no speech as timestamp offset hasnt updated
+            # and is less than frame_offset
+            if self.timestamp_offset < self.frames_offset:
+                self.timestamp_offset = self.frames_offset
         if self.frames_np is None:
             self.frames_np = frame_np.copy()
         else:
@@ -796,7 +801,8 @@ class ServeClientFasterWhisper(ServeClientBase):
             task=self.task,
             vad_filter=self.use_vad,
             vad_parameters=self.vad_parameters if self.use_vad else None)
-        if self.language is None:
+
+        if self.language is None and info is not None:
             self.set_language(info)
         return result
 
@@ -881,7 +887,9 @@ class ServeClientFasterWhisper(ServeClientBase):
                 input_sample = input_bytes.copy()
                 result = self.transcribe_audio(input_sample)
 
-                if self.language is None:
+                if result is None or self.language is None:
+                    self.timestamp_offset += duration
+                    time.sleep(0.25)    # wait for voice activity, result is None when no voice activity
                     continue
                 self.handle_transcription_output(result, duration)
 
@@ -932,7 +940,6 @@ class ServeClientFasterWhisper(ServeClientBase):
         """
         offset = None
         self.current_out = ''
-        last_segment = None
         # process complete segments
         if len(segments) > 1:
             for i, s in enumerate(segments[:-1]):
