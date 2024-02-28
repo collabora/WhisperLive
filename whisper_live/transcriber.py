@@ -180,7 +180,7 @@ class WhisperModel:
 
         return config
 
-    def transcribe(
+    def transcribe(                                                         # noqa: C901
         self,
         audio: Union[str, BinaryIO, np.ndarray],
         language: Optional[str] = None,
@@ -314,6 +314,9 @@ class WhisperModel:
 
         else:
             speech_chunks = None
+
+        if audio.shape[0] == 0:
+            return None, None
 
         features = self.feature_extractor(audio)
 
