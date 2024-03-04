@@ -1,4 +1,4 @@
-faster-whisper==0.10.0
+faster-whisper==1.0.1
 torch
 websockets
 onnxruntime==1.16.0
