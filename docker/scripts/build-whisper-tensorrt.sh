@@ -48,19 +48,21 @@ download_and_build_model() {
     # wget --directory-prefix=assets "$model_url"
     # echo "Download completed: ${model_name}.pt"
     if [ ! -f "assets/${model_name}.pt" ]; then
-        wget --directory-prefix=assets "$model_url"
+        wget --directory-prefix=assets "$model_url" > /dev/null 2>&1
         echo "Download completed: ${model_name}.pt"
     else
         echo "${model_name}.pt already exists in assets directory."
     fi
 
     local output_dir="whisper_${model_name//./_}"
-    echo "$output_dir"
-    echo "Running build script for $model_name with output directory $output_dir"
-    python3 build.py --output_dir "$output_dir" --use_gpt_attention_plugin --use_gemm_plugin --use_bert_attention_plugin --model_name "$model_name"
+    echo "Running TensorRT-LLM build script for $model_name with output directory $output_dir"
+    python3 build.py --output_dir "$output_dir" --use_gpt_attention_plugin --use_gemm_plugin --use_bert_attention_plugin --model_name "$model_name" > /dev/null 2>&1
     echo "Whisper $model_name TensorRT engine built."
     echo "========================================="
     echo "Model is located at: $(pwd)/$output_dir"
+    mkdir -p /root/scratch-space/models
+    cp -r $output_dir /root/scratch-space/models
+
 }
 
 if [ "$#" -lt 1 ]; then
@@ -70,8 +72,15 @@ fi
 
 tensorrt_examples_dir="$1"
 model_name="${2:-small.en}"
+output_dir="whisper_${model_name//./_}"
 
-cd $1/whisper
-pip install --no-deps -r requirements.txt
+if [ ! -d "/root/scratch-space/models/$output_dir" ] || [ -z "$(ls -A /root/scratch-space/models/$output_dir)" ]; then
+    echo "$output_dir directory does not exist or is empty. Building whisper"
+    cd $1/whisper
+    echo "Installing requirements for Whisper TensorRT-LLM ..."
+    pip install --no-deps -r requirements.txt > /dev/null 2>&1
+    download_and_build_model "$model_name"
+else
+    echo "$model_name directory exists and is not empty. Skipping build-whisper..."
+fi
 
-download_and_build_model "$model_name"

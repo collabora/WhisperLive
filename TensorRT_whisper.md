@@ -12,56 +12,20 @@ git clone https://github.com/collabora/WhisperLive.git
 cd WhisperLive
 ```
 
-- Pull the TensorRT-LLM docker image which we prebuilt for WhisperLive TensorRT backend.
-```bash
-docker pull ghcr.io/collabora/whisperbot-base:latest
+- Build docker image for the gpu architecture
 ```
+mkdir docker/scratch-space
+cp docker/scripts/build-whisper-tensorrt.sh docker/scratch-space
+cp docker/scripts/run-whisperlive.sh docker/scratch-space
 
-- Next, we run the docker image and mount WhisperLive repo to the containers `/home` directory.
-```bash
-docker run -it --gpus all --shm-size=8g \
-       --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
-       -p 9090:9090 -v /path/to/WhisperLive:/home/WhisperLive \
-       ghcr.io/collabora/whisperbot-base:latest
-```
-
-- Make sure to test the installation. 
-```bash
-# export ENV=${ENV:-/etc/shinit_v2} 
-# source $ENV
-python -c "import torch; import tensorrt; import tensorrt_llm"
-```
-**NOTE**: Uncomment and update library paths if imports fail.
-
-## Whisper TensorRT Engine
-- We build `small.en` and `small` multilingual TensorRT engine. The script logs the path of the directory with Whisper TensorRT engine. We need the model_path to run the server.
-```bash
-# convert small.en
-bash scripts/build_whisper_tensorrt.sh /root/TensorRT-LLM-examples small.en
-
-# convert small multilingual model
-bash scripts/build_whisper_tensorrt.sh /root/TensorRT-LLM-examples small
+# For e.g. 3090 RTX cuda architecture is 86-real
+CUDA_ARCH=86-real docker compose build
 ```
 
 ## Run WhisperLive Server with TensorRT Backend
+We run the container with docker compose which builds the tensorrt engine for specified model
+if it doesnt exist already in the mounted volume `docker/scratch-space`
 ```bash
 cd /home/WhisperLive
-
-# Install requirements
-apt update && bash scripts/setup.sh
-pip install -r requirements/server.txt
-
-# Required to create mel spectogram
-wget --directory-prefix=assets assets/mel_filters.npz https://raw.githubusercontent.com/openai/whisper/main/whisper/assets/mel_filters.npz
-
-# Run English only model
-python3 run_server.py --port 9090 \
-                      --backend tensorrt \
-                      --trt_model_path "path/to/whisper_trt/from/build/step"
-
-# Run Multilingual model
-python3 run_server.py --port 9090 \
-                      --backend tensorrt \
-                      --trt_model_path "path/to/whisper_trt/from/build/step" \
-                      --trt_multilingual
+MODEL_SIZE=small.en docker compose up
 ```

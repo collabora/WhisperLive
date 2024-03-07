@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  whisperlive-tensorrt:
+    build:
+      context: docker
+      dockerfile: Dockerfile.tensorrt
+      args:
+        CUDA_ARCH: ${CUDA_ARCH:-89-real;90-real}
+    image: whisperlive-tensorrt:latest
+    volumes:
+      - type: bind
+        source: ./docker/scratch-space
+        target: /root/scratch-space
+    environment:
+      VERBOSE: ${VERBOSE:-false}
+      MODEL_SIZE: ${MODEL_SIZE:-small.en}
+    ports:
+      - "8000:9090"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: ["gpu"]
+    entrypoint: ["/bin/bash", "-c", "/root/scratch-space/run-whisperlive.sh $$MODEL_SIZE"]
