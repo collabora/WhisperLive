@@ -79,8 +79,8 @@ if [ ! -d "/root/scratch-space/models/$output_dir" ] || [ -z "$(ls -A /root/scra
     cd $1/whisper
     echo "Installing requirements for Whisper TensorRT-LLM ..."
     pip install --no-deps -r requirements.txt > /dev/null 2>&1
-    download_and_build_model "$model_name"
+    download_and_build_model "$output_dir"
 else
-    echo "$model_name directory exists and is not empty. Skipping build-whisper..."
+    echo "$output_dir directory exists and is not empty. Skipping build-whisper..."
 fi
 
