@@ -111,7 +111,7 @@ class Client:
                       (not self.transcript or
                         float(seg['start']) >= float(self.transcript[-1]['end']))):
                     self.transcript.append(seg)
-        # update last received segment and last valid responsne time
+        # update last received segment and last valid response time
         if self.last_received_segment is None or self.last_received_segment != segments[-1]["text"]:
             self.last_response_received = time.time()
             self.last_received_segment = segments[-1]["text"]
@@ -330,13 +330,13 @@ class TranscriptionTeeClient:
         for client in self.clients:
             client.write_srt_file(client.srt_file_path)
 
-    def multicast_packet(self, packet, unconditional=True):
+    def multicast_packet(self, packet, unconditional=False):
         """
         Sends an identical packet via all clients.
 
         Args:
             packet (bytes): The audio data packet in bytes to be sent.
-            unconditional (bool, optional): If true, send regardless of whether clients are recording.  Default is True.
+            unconditional (bool, optional): If true, send regardless of whether clients are recording.  Default is False.
         """
         for client in self.clients:
             if (unconditional or client.recording):
