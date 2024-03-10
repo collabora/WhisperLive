@@ -9,7 +9,7 @@ import evaluate
 
 from websockets.exceptions import ConnectionClosed
 from whisper_live.server import TranscriptionServer
-from whisper_live.client import TranscriptionClient
+from whisper_live.client import Client, TranscriptionClient, TranscriptionTeeClient
 from whisper.normalizers import EnglishTextNormalizer
 
 
@@ -84,14 +84,10 @@ class TestServerInferenceAccuracy(unittest.TestCase):
         self.mock_pyaudio.open.return_value = self.mock_stream
         self.metric = evaluate.load("wer")
         self.normalizer = EnglishTextNormalizer()
-        self.client = TranscriptionClient(
-            "localhost", "9090", model="base.en", lang="en",
-        )
 
-    def test_inference(self):
+    def check_prediction(self, srt_path):
         gt = "And so my fellow Americans, ask not, what your country can do for you. Ask what you can do for your country!"
-        self.client("assets/jfk.flac")
-        with open("output.srt", "r") as f:
+        with open(srt_path, "r") as f:
             lines = f.readlines()
             prediction = " ".join([line.strip() for line in lines[2::4]])
         prediction_normalized = self.normalizer(prediction)
@@ -104,6 +100,22 @@ class TestServerInferenceAccuracy(unittest.TestCase):
         )
         self.assertLess(wer, 0.05)
 
+    def test_inference(self):
+        client = TranscriptionClient(
+            "localhost", "9090", model="base.en", lang="en",
+        )
+        client("assets/jfk.flac")
+        self.check_prediction("output.srt")
+
+    def test_simultaneous_inference(self):
+        client1 = Client(
+            "localhost", "9090", model="base.en", lang="en", srt_file_path="transcript1.srt")
+        client2 = Client(
+            "localhost", "9090", model="base.en", lang="en", srt_file_path="transcript2.srt")
+        tee = TranscriptionTeeClient([client1, client2])
+        tee("assets/jfk.flac")
+        self.check_prediction("transcript1.srt")
+        self.check_prediction("transcript2.srt")
 
 class TestExceptionHandling(unittest.TestCase):
     def setUp(self):
