@@ -127,7 +127,7 @@ class TestTee(BaseTestCase):
         del self.tee
         super().tearDown()
 
-    def testInvalidConstructor(self):
+    def test_invalid_constructor(self):
         with self.assertRaises(Exception) as context:
             TranscriptionTeeClient([])
 
