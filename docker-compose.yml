@@ -15,6 +15,7 @@ services:
     environment:
       VERBOSE: ${VERBOSE:-false}
       MODEL_SIZE: ${MODEL_SIZE:-small.en}
+      BACKEND: ${BACKEND:-tensorrt}
     ports:
       - "8000:9090"
     deploy:
@@ -22,4 +23,4 @@ services:
         reservations:
           devices:
             - capabilities: ["gpu"]
-    entrypoint: ["/bin/bash", "-c", "/root/scratch-space/run-whisperlive.sh $$MODEL_SIZE"]
+    entrypoint: ["/bin/bash", "-c", "/root/scratch-space/run-whisperlive.sh $$MODEL_SIZE $$BACKEND"]
