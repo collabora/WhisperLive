@@ -66,13 +66,17 @@ class Client:
         self.timestamp_offset = 0.0
         self.audio_bytes = None
         self.p = pyaudio.PyAudio()
-        self.stream = self.p.open(
-            format=self.format,
-            channels=self.channels,
-            rate=self.rate,
-            input=True,
-            frames_per_buffer=self.chunk,
-        )
+        try:
+            self.stream = self.p.open(
+                format=self.format,
+                channels=self.channels,
+                rate=self.rate,
+                input=True,
+                frames_per_buffer=self.chunk,
+            )
+        except OSError as error:
+            print(f"[WARN]: Unable to access microphone. {error}")
+            self.stream = None
 
         if host is not None and port is not None:
             socket_url = f"ws://{host}:{port}"
