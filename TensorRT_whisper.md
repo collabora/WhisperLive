@@ -12,7 +12,7 @@ git clone https://github.com/collabora/WhisperLive.git
 cd WhisperLive
 ```
 
-- Build docker image for the gpu architecture
+- Build docker image for the gpu architecture. By default the image is built for 4090 i.e. `CUDA_ARCH=89-real;90-real`
 ```
 mkdir docker/scratch-space
 cp docker/scripts/build-whisper-tensorrt.sh docker/scratch-space
@@ -24,8 +24,7 @@ CUDA_ARCH=86-real docker compose build
 
 ## Run WhisperLive Server with TensorRT Backend
 We run the container with docker compose which builds the tensorrt engine for specified model
-if it doesnt exist already in the mounted volume `docker/scratch-space`
+if it doesnt exist already in the mounted volume `docker/scratch-space`. Optionally, if you want to run `faster_whisper` backend use `BACKEND=faster_whisper`
 ```bash
-cd /home/WhisperLive
-MODEL_SIZE=small.en docker compose up
+MODEL_SIZE=small.en BACKEND=tensorrt docker compose up
 ```

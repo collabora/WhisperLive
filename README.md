@@ -96,7 +96,17 @@ client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/b
   docker run -it --gpus all -p 9090:9090 ghcr.io/collabora/whisperlive-gpu:latest
   ```
 
-  - TensorRT. Follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) in order to setup docker and use TensorRT backend. We provide a pre-built docker image which has TensorRT-LLM built and ready to use.
+  - TensorRT. Follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md).
+  ```
+  mkdir docker/scratch-space
+  cp docker/scripts/build-whisper-tensorrt.sh docker/scratch-space
+  cp docker/scripts/run-whisperlive.sh docker/scratch-space
+
+  # For e.g. 3090 RTX cuda architecture is 86-real
+  CUDA_ARCH=86-real docker compose build
+
+  MODEL_SIZE=small.en BACKEND=tensorrt docker compose up
+  ```
 
 - CPU
 ```bash
