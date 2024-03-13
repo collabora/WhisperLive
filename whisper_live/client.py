@@ -284,13 +284,17 @@ class TranscriptionTeeClient:
         self.record_seconds = 60000
         self.frames = b""
         self.p = pyaudio.PyAudio()
-        self.stream = self.p.open(
-            format=self.format,
-            channels=self.channels,
-            rate=self.rate,
-            input=True,
-            frames_per_buffer=self.chunk,
-        )
+        try:
+            self.stream = self.p.open(
+                format=self.format,
+                channels=self.channels,
+                rate=self.rate,
+                input=True,
+                frames_per_buffer=self.chunk,
+            )
+        except OSError as error:
+            print(f"[WARN]: Unable to access microphone. {error}")
+            self.stream = None
 
     def __call__(self, audio=None, hls_url=None):
         """
