@@ -69,6 +69,10 @@ class TestServerConnection(unittest.TestCase):
 class TestServerInferenceAccuracy(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls.mock_pyaudio_patch = mock.patch('pyaudio.PyAudio')
+        cls.mock_pyaudio = cls.mock_pyaudio_patch.start()
+        cls.mock_pyaudio.return_value.open.return_value = mock.MagicMock()
+        
         cls.server_process = subprocess.Popen(["python", "run_server.py"])
         time.sleep(2)
 
@@ -77,11 +81,7 @@ class TestServerInferenceAccuracy(unittest.TestCase):
         cls.server_process.terminate()
         cls.server_process.wait()
 
-    @mock.patch('pyaudio.PyAudio')
-    def setUp(self, mock_pyaudio):
-        self.mock_pyaudio = mock_pyaudio.return_value
-        self.mock_stream = mock.MagicMock()
-        self.mock_pyaudio.open.return_value = self.mock_stream
+    def setUp(self):
         self.metric = evaluate.load("wer")
         self.normalizer = EnglishTextNormalizer()
 
@@ -116,6 +116,7 @@ class TestServerInferenceAccuracy(unittest.TestCase):
         tee("assets/jfk.flac")
         self.check_prediction("transcript1.srt")
         self.check_prediction("transcript2.srt")
+
 
 class TestExceptionHandling(unittest.TestCase):
     def setUp(self):
