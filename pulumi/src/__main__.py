@@ -1,24 +1,29 @@
+import logging
 import base64
 
 import pulumi
 import pulumi_aws as aws
 
+
+logger = logging.getLogger(__name__)
+
 config = pulumi.Config()
 
 vpc_id = config.require("vpc_id")
-
-ecr_repository_name = "collabora/whisperlive-gpu"
-
 public_subnet_id_a = config.require("public_subnet_id_a")
 public_subnet_id_b = config.require("public_subnet_id_b")
+ecr_repository_url = config.get("ecr_repository_url", "ghcr.io/collabora/whisperlive-gpu")
+image_tag = config.get("image_tag", "latest")
 
-# Assuming you have the ECR repository URL
-ecr_repository_url = f"ghcr.io/{ecr_repository_name}"
-image_tag = "latest"
+ami_id = config.get("ami_id", "ami-0a7b82bd04a728ae5")
+
+if ami_id == "ami-0a7b82bd04a728ae5":
+    logger.warning(
+        f"AMI ID {ami_id} is only valid in us-west-1 region. "
+        "If you are this region, please select another ECS compatible GPU AMI for `whisper-live:vpc_id` in the Pulumi config."
+    )
+
 container_name = "whisper-live-gpu-container"
-
-# Define the ECR repository
-ecr_repo = aws.ecr.Repository(ecr_repository_name)
 
 # Define the ECS cluster
 ecs_cluster = aws.ecs.Cluster("gpu_cluster")
