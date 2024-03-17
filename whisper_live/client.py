@@ -14,7 +14,7 @@ import whisper_live.utils as utils
 
 class Client:
     """
-    Handles audio recording, streaming, and communication with a server using WebSocket.
+    Handles communication with a server using WebSocket.
     """
     INSTANCES = {}
     END_OF_AUDIO = "END_OF_AUDIO"
@@ -42,41 +42,25 @@ class Client:
             lang (str, optional): The selected language for transcription. Default is None.
             translate (bool, optional): Specifies if the task is translation. Default is False.
         """
-        self.chunk = 4096
-        self.format = pyaudio.paInt16
-        self.channels = 1
-        self.rate = 16000
-        self.record_seconds = 60000
         self.recording = False
         self.task = "transcribe"
         self.uid = str(uuid.uuid4())
         self.waiting = False
-        self.last_response_recieved = None
+        self.last_response_received = None
         self.disconnect_if_no_response_for = 15
         self.language = lang
         self.model = model
         self.server_error = False
         self.srt_file_path = srt_file_path
         self.use_vad = use_vad
-        self.last_recieved_segment = None
+        self.last_segment = None
+        self.last_received_segment = None
 
         if translate:
             self.task = "translate"
 
         self.timestamp_offset = 0.0
         self.audio_bytes = None
-        self.p = pyaudio.PyAudio()
-        try:
-            self.stream = self.p.open(
-                format=self.format,
-                channels=self.channels,
-                rate=self.rate,
-                input=True,
-                frames_per_buffer=self.chunk,
-            )
-        except OSError as error:
-            print(f"[WARN]: Unable to access microphone. {error}")
-            self.stream = None
 
         if host is not None and port is not None:
             socket_url = f"ws://{host}:{port}"
@@ -100,7 +84,6 @@ class Client:
         self.ws_thread.setDaemon(True)
         self.ws_thread.start()
 
-        self.frames = b""
         self.transcript = []
         print("[INFO]: * recording")
 
@@ -128,10 +111,10 @@ class Client:
                       (not self.transcript or
                         float(seg['start']) >= float(self.transcript[-1]['end']))):
                     self.transcript.append(seg)
-        # update last received segment and last valild responsne time
-        if self.last_recieved_segment is None or self.last_recieved_segment != segments[-1]["text"]:
-            self.last_response_recieved = time.time()
-            self.last_recieved_segment = segments[-1]["text"]
+        # update last received segment and last valid response time
+        if self.last_received_segment is None or self.last_received_segment != segments[-1]["text"]:
+            self.last_response_received = time.time()
+            self.last_received_segment = segments[-1]["text"]
 
         # Truncate to last 3 entries for brevity.
         text = text[-3:]
@@ -166,7 +149,7 @@ class Client:
             self.recording = False
 
         if "message" in message.keys() and message["message"] == "SERVER_READY":
-            self.last_response_recieved = time.time()
+            self.last_response_received = time.time()
             self.recording = True
             self.server_backend = message["backend"]
             print(f"[INFO]: Server Running with backend {self.server_backend}")
@@ -218,23 +201,6 @@ class Client:
             )
         )
 
-    @staticmethod
-    def bytes_to_float_array(audio_bytes):
-        """
-        Convert audio data from bytes to a NumPy float array.
-
-        It assumes that the audio data is in 16-bit PCM format. The audio data is normalized to
-        have values between -1 and 1.
-
-        Args:
-            audio_bytes (bytes): Audio data in bytes.
-
-        Returns:
-            np.ndarray: A NumPy array containing the audio data as float values normalized between -1 and 1.
-        """
-        raw_data = np.frombuffer(buffer=audio_bytes, dtype=np.int16)
-        return raw_data.astype(np.float32) / 32768.0
-
     def send_packet_to_server(self, message):
         """
         Send an audio packet to the server using WebSocket.
@@ -247,62 +213,6 @@ class Client:
             self.client_socket.send(message, websocket.ABNF.OPCODE_BINARY)
         except Exception as e:
             print(e)
-
-    def play_file(self, filename):
-        """
-        Play an audio file and send it to the server for processing.
-
-        Reads an audio file, plays it through the audio output, and simultaneously sends
-        the audio data to the server for processing. It uses PyAudio to create an audio
-        stream for playback. The audio data is read from the file in chunks, converted to
-        floating-point format, and sent to the server using WebSocket communication.
-        This method is typically used when you want to process pre-recorded audio and send it
-        to the server in real-time.
-
-        Args:
-            filename (str): The path to the audio file to be played and sent to the server.
-        """
-
-        # read audio and create pyaudio stream
-        with wave.open(filename, "rb") as wavfile:
-            self.stream = self.p.open(
-                format=self.p.get_format_from_width(wavfile.getsampwidth()),
-                channels=wavfile.getnchannels(),
-                rate=wavfile.getframerate(),
-                input=True,
-                output=True,
-                frames_per_buffer=self.chunk,
-            )
-            try:
-                while self.recording:
-                    data = wavfile.readframes(self.chunk)
-                    if data == b"":
-                        break
-
-                    audio_array = self.bytes_to_float_array(data)
-                    self.send_packet_to_server(audio_array.tobytes())
-                    self.stream.write(data)
-
-                wavfile.close()
-
-                assert self.last_response_recieved
-                while time.time() - self.last_response_recieved < self.disconnect_if_no_response_for:
-                    continue
-                self.send_packet_to_server(Client.END_OF_AUDIO.encode('utf-8'))
-                if self.server_backend == "faster_whisper":
-                    self.write_srt_file(self.srt_file_path)
-                self.stream.close()
-                self.close_websocket()
-
-            except KeyboardInterrupt:
-                wavfile.close()
-                self.stream.stop_stream()
-                self.stream.close()
-                self.p.terminate()
-                self.close_websocket()
-                if self.server_backend == "faster_whisper":
-                    self.write_srt_file(self.srt_file_path)
-                print("[INFO]: Keyboard interrupt.")
 
     def close_websocket(self):
         """
@@ -331,24 +241,163 @@ class Client:
         """
         return self.client_socket
 
-    def write_audio_frames_to_file(self, frames, file_name):
+    def write_srt_file(self, output_path="output.srt"):
         """
-        Write audio frames to a WAV file.
-
-        The WAV file is created or overwritten with the specified name. The audio frames should be
-        in the correct format and match the specified channel, sample width, and sample rate.
+        Writes out the transcript in .srt format.
 
         Args:
-            frames (bytes): The audio frames to be written to the file.
-            file_name (str): The name of the WAV file to which the frames will be written.
+            message (output_path, optional): The path to the target file.  Default is "output.srt".
 
         """
-        with wave.open(file_name, "wb") as wavfile:
-            wavfile: wave.Wave_write
-            wavfile.setnchannels(self.channels)
-            wavfile.setsampwidth(2)
-            wavfile.setframerate(self.rate)
-            wavfile.writeframes(frames)
+        if self.server_backend == "faster_whisper":
+            if (self.last_segment):
+                self.transcript.append(self.last_segment)
+            utils.create_srt_file(self.transcript, output_path)
+
+    def wait_before_disconnect(self):
+        """Waits a bit before disconnecting in order to process pending responses."""
+        assert self.last_response_received
+        while time.time() - self.last_response_received < self.disconnect_if_no_response_for:
+            continue
+
+class TranscriptionTeeClient:
+    """
+    Client for handling audio recording, streaming, and transcription tasks via one or more
+    WebSocket connections.
+
+    Acts as a high-level client for audio transcription tasks using a WebSocket connection. It can be used
+    to send audio data for transcription to one or more servers, and receive transcribed text segments.
+    Args:
+        clients (list): one or more previously initialized Client instances
+
+    Attributes:
+        clients (list): the underlying Client instances responsible for handling WebSocket connections.
+    """
+    def __init__(self, clients):
+        self.clients = clients
+        if not self.clients:
+            raise Exception("At least one client is required.")
+        self.chunk = 4096
+        self.format = pyaudio.paInt16
+        self.channels = 1
+        self.rate = 16000
+        self.record_seconds = 60000
+        self.frames = b""
+        self.p = pyaudio.PyAudio()
+        try:
+            self.stream = self.p.open(
+                format=self.format,
+                channels=self.channels,
+                rate=self.rate,
+                input=True,
+                frames_per_buffer=self.chunk,
+            )
+        except OSError as error:
+            print(f"[WARN]: Unable to access microphone. {error}")
+            self.stream = None
+
+    def __call__(self, audio=None, hls_url=None):
+        """
+        Start the transcription process.
+
+        Initiates the transcription process by connecting to the server via a WebSocket. It waits for the server
+        to be ready to receive audio data and then sends audio for transcription. If an audio file is provided, it
+        will be played and streamed to the server; otherwise, it will perform live recording.
+
+        Args:
+            audio (str, optional): Path to an audio file for transcription. Default is None, which triggers live recording.
+
+        """
+        print("[INFO]: Waiting for server ready ...")
+        for client in self.clients:
+            while not client.recording:
+                if client.waiting or client.server_error:
+                    self.close_all_clients()
+                    return
+
+        print("[INFO]: Server Ready!")
+        if hls_url is not None:
+            self.process_hls_stream(hls_url)
+        elif audio is not None:
+            resampled_file = utils.resample(audio)
+            self.play_file(resampled_file)
+        else:
+            self.record()
+
+    def close_all_clients(self):
+        """Closes all client websockets."""
+        for client in self.clients:
+            client.close_websocket()
+
+    def write_all_clients_srt(self):
+        """Writes out .srt files for all clients."""
+        for client in self.clients:
+            client.write_srt_file(client.srt_file_path)
+
+    def multicast_packet(self, packet, unconditional=False):
+        """
+        Sends an identical packet via all clients.
+
+        Args:
+            packet (bytes): The audio data packet in bytes to be sent.
+            unconditional (bool, optional): If true, send regardless of whether clients are recording.  Default is False.
+        """
+        for client in self.clients:
+            if (unconditional or client.recording):
+                client.send_packet_to_server(packet)
+
+    def play_file(self, filename):
+        """
+        Play an audio file and send it to the server for processing.
+
+        Reads an audio file, plays it through the audio output, and simultaneously sends
+        the audio data to the server for processing. It uses PyAudio to create an audio
+        stream for playback. The audio data is read from the file in chunks, converted to
+        floating-point format, and sent to the server using WebSocket communication.
+        This method is typically used when you want to process pre-recorded audio and send it
+        to the server in real-time.
+
+        Args:
+            filename (str): The path to the audio file to be played and sent to the server.
+        """
+
+        # read audio and create pyaudio stream
+        with wave.open(filename, "rb") as wavfile:
+            self.stream = self.p.open(
+                format=self.p.get_format_from_width(wavfile.getsampwidth()),
+                channels=wavfile.getnchannels(),
+                rate=wavfile.getframerate(),
+                input=True,
+                output=True,
+                frames_per_buffer=self.chunk,
+            )
+            try:
+                while any(client.recording for client in self.clients):
+                    data = wavfile.readframes(self.chunk)
+                    if data == b"":
+                        break
+
+                    audio_array = self.bytes_to_float_array(data)
+                    self.multicast_packet(audio_array.tobytes())
+                    self.stream.write(data)
+
+                wavfile.close()
+
+                for client in self.clients:
+                    client.wait_before_disconnect()
+                self.multicast_packet(Client.END_OF_AUDIO.encode('utf-8'), True)
+                self.write_all_clients_srt()
+                self.stream.close()
+                self.close_all_clients()
+
+            except KeyboardInterrupt:
+                wavfile.close()
+                self.stream.stop_stream()
+                self.stream.close()
+                self.p.terminate()
+                self.close_all_clients()
+                self.write_all_clients_srt()
+                print("[INFO]: Keyboard interrupt.")
 
     def process_hls_stream(self, hls_url):
         """
@@ -375,7 +424,7 @@ class Client:
                 if not in_bytes:
                     break
                 audio_array = self.bytes_to_float_array(in_bytes)
-                self.send_packet_to_server(audio_array.tobytes())
+                self.multicast_packet(audio_array.tobytes())
 
         except Exception as e:
             print(f"[ERROR]: Failed to connect to HLS stream: {e}")
@@ -408,14 +457,14 @@ class Client:
             os.makedirs("chunks", exist_ok=True)
         try:
             for _ in range(0, int(self.rate / self.chunk * self.record_seconds)):
-                if not self.recording:
+                if not any(client.recording for client in self.clients):
                     break
                 data = self.stream.read(self.chunk, exception_on_overflow=False)
                 self.frames += data
 
-                audio_array = Client.bytes_to_float_array(data)
+                audio_array = self.bytes_to_float_array(data)
 
-                self.send_packet_to_server(audio_array.tobytes())
+                self.multicast_packet(audio_array.tobytes())
 
                 # save frames if more than a minute
                 if len(self.frames) > 60 * self.rate:
@@ -429,8 +478,7 @@ class Client:
                     t.start()
                     n_audio_file += 1
                     self.frames = b""
-            if self.server_backend == "faster_whisper":
-                self.write_srt_file(self.srt_file_path)
+            self.write_all_clients_srt()
 
         except KeyboardInterrupt:
             if len(self.frames):
@@ -441,11 +489,30 @@ class Client:
             self.stream.stop_stream()
             self.stream.close()
             self.p.terminate()
-            self.close_websocket()
+            for client in self.clients:
+                client.close_all_clients()
 
             self.write_output_recording(n_audio_file, out_file)
-            if self.server_backend == "faster_whisper":
-                self.write_srt_file(self.srt_file_path)
+            self.write_all_clients_srt()
+
+    def write_audio_frames_to_file(self, frames, file_name):
+        """
+        Write audio frames to a WAV file.
+
+        The WAV file is created or overwritten with the specified name. The audio frames should be
+        in the correct format and match the specified channel, sample width, and sample rate.
+
+        Args:
+            frames (bytes): The audio frames to be written to the file.
+            file_name (str): The name of the WAV file to which the frames will be written.
+
+        """
+        with wave.open(file_name, "wb") as wavfile:
+            wavfile: wave.Wave_write
+            wavfile.setnchannels(self.channels)
+            wavfile.setsampwidth(2)
+            wavfile.setframerate(self.rate)
+            wavfile.writeframes(frames)
 
     def write_output_recording(self, n_audio_file, out_file):
         """
@@ -482,14 +549,26 @@ class Client:
                 os.remove(in_file)
         wavfile.close()
 
-    def write_srt_file(self, output_path="output.srt"):
-        self.transcript.append(self.last_segment)
-        utils.create_srt_file(self.transcript, output_path)
+    @staticmethod
+    def bytes_to_float_array(audio_bytes):
+        """
+        Convert audio data from bytes to a NumPy float array.
 
+        It assumes that the audio data is in 16-bit PCM format. The audio data is normalized to
+        have values between -1 and 1.
 
-class TranscriptionClient:
+        Args:
+            audio_bytes (bytes): Audio data in bytes.
+
+        Returns:
+            np.ndarray: A NumPy array containing the audio data as float values normalized between -1 and 1.
+        """
+        raw_data = np.frombuffer(buffer=audio_bytes, dtype=np.int16)
+        return raw_data.astype(np.float32) / 32768.0
+
+class TranscriptionClient(TranscriptionTeeClient):
     """
-    Client for handling audio transcription tasks via a WebSocket connection.
+    Client for handling audio transcription tasks via a single WebSocket connection.
 
     Acts as a high-level client for audio transcription tasks using a WebSocket connection. It can be used
     to send audio data for transcription to a server and receive transcribed text segments.
@@ -512,30 +591,4 @@ class TranscriptionClient:
     """
     def __init__(self, host, port, lang=None, translate=False, model="small", use_vad=True):
         self.client = Client(host, port, lang, translate, model, srt_file_path="output.srt", use_vad=use_vad)
-
-    def __call__(self, audio=None, hls_url=None):
-        """
-        Start the transcription process.
-
-        Initiates the transcription process by connecting to the server via a WebSocket. It waits for the server
-        to be ready to receive audio data and then sends audio for transcription. If an audio file is provided, it
-        will be played and streamed to the server; otherwise, it will perform live recording.
-
-        Args:
-            audio (str, optional): Path to an audio file for transcription. Default is None, which triggers live recording.
-
-        """
-        print("[INFO]: Waiting for server ready ...")
-        while not self.client.recording:
-            if self.client.waiting or self.client.server_error:
-                self.client.close_websocket()
-                return
-
-        print("[INFO]: Server Ready!")
-        if hls_url is not None:
-            self.client.process_hls_stream(hls_url)
-        elif audio is not None:
-            resampled_file = utils.resample(audio)
-            self.client.play_file(resampled_file)
-        else:
-            self.client.record()
+        TranscriptionTeeClient.__init__(self, [self.client])

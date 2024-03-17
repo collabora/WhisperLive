@@ -2,10 +2,12 @@ import json
 import os
 import scipy
 import websocket
+import copy
 import unittest
 from unittest.mock import patch, MagicMock
-from whisper_live.client import TranscriptionClient
+from whisper_live.client import Client, TranscriptionClient, TranscriptionTeeClient
 from whisper_live.utils import resample
+from pathlib import Path
 
 
 class BaseTestCase(unittest.TestCase):
@@ -24,13 +26,13 @@ class BaseTestCase(unittest.TestCase):
 
         self.mock_pyaudio = mock_pyaudio
         self.mock_websocket = mock_websocket
+        self.mock_audio_packet = b'\x00\x01\x02\x03'
 
     def tearDown(self):
         self.client.close_websocket()
         self.mock_pyaudio.stop()
         self.mock_websocket.stop()
         del self.client
-
 
 class TestClientWebSocketCommunication(BaseTestCase):
     def test_websocket_communication(self):
@@ -106,6 +108,49 @@ class TestAudioResampling(unittest.TestCase):
 
 class TestSendingAudioPacket(BaseTestCase):
     def test_send_packet(self):
-        mock_audio_packet = b'\x00\x01\x02\x03'
-        self.client.send_packet_to_server(mock_audio_packet)
-        self.client.client_socket.send.assert_called_with(mock_audio_packet, websocket.ABNF.OPCODE_BINARY)
+        self.client.send_packet_to_server(self.mock_audio_packet)
+        self.client.client_socket.send.assert_called_with(self.mock_audio_packet, websocket.ABNF.OPCODE_BINARY)
+
+class TestTee(BaseTestCase):
+    @patch('whisper_live.client.websocket.WebSocketApp')
+    @patch('whisper_live.client.pyaudio.PyAudio')
+    def setUp(self, mock_audio, mock_websocket):
+        super().setUp()
+        self.client2 = Client(host='localhost', port=9090, lang="es", translate=False, srt_file_path="transcript.srt")
+        self.client3 = Client(host='localhost', port=9090, lang="es", translate=True, srt_file_path="translation.srt")
+        # need a separate mock for each websocket
+        self.client3.client_socket = copy.deepcopy(self.client3.client_socket)
+        self.tee = TranscriptionTeeClient([self.client2, self.client3])
+
+    def tearDown(self):
+        self.tee.close_all_clients()
+        del self.tee
+        super().tearDown()
+
+    def test_invalid_constructor(self):
+        with self.assertRaises(Exception) as context:
+            TranscriptionTeeClient([])
+
+    def test_multicast_unconditional(self):
+        self.tee.multicast_packet(self.mock_audio_packet, True)
+        for client in self.tee.clients:
+            client.client_socket.send.assert_called_with(self.mock_audio_packet, websocket.ABNF.OPCODE_BINARY)
+
+    def test_multicast_conditional(self):
+        self.client2.recording = False
+        self.client3.recording = True
+        self.tee.multicast_packet(self.mock_audio_packet, False)
+        self.client2.client_socket.send.assert_not_called()
+        self.client3.client_socket.send.assert_called_with(self.mock_audio_packet, websocket.ABNF.OPCODE_BINARY)
+
+    def test_close_all(self):
+        self.tee.close_all_clients()
+        for client in self.tee.clients:
+            client.client_socket.close.assert_called()
+
+    def test_write_all_srt(self):
+        for client in self.tee.clients:
+            client.server_backend = "faster_whisper"
+        self.tee.write_all_clients_srt()
+        self.assertTrue(Path("transcript.srt").is_file())
+        self.assertTrue(Path("translation.srt").is_file())
