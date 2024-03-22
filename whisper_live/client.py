@@ -174,7 +174,6 @@ class Client:
     def on_close(self, ws, close_status_code, close_msg):
         print(f"[INFO]: Websocket connection closed: {close_status_code}: {close_msg}")
         self.recording = False
-        self.server_error = False
         self.waiting = False
 
     def on_open(self, ws):
