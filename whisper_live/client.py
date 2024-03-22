@@ -489,8 +489,7 @@ class TranscriptionTeeClient:
             self.stream.stop_stream()
             self.stream.close()
             self.p.terminate()
-            for client in self.clients:
-                client.close_all_clients()
+            self.close_all_clients()
 
             self.write_output_recording(n_audio_file, out_file)
             self.write_all_clients_srt()
