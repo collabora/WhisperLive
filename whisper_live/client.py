@@ -295,7 +295,7 @@ class TranscriptionTeeClient:
             print(f"[WARN]: Unable to access microphone. {error}")
             self.stream = None
 
-    def __call__(self, audio=None, hls_url=None):
+    def __call__(self, audio=None, hls_url=None, save_file=None):
         """
         Start the transcription process.
 
@@ -316,7 +316,7 @@ class TranscriptionTeeClient:
 
         print("[INFO]: Server Ready!")
         if hls_url is not None:
-            self.process_hls_stream(hls_url)
+            self.process_hls_stream(hls_url, save_file)
         elif audio is not None:
             resampled_file = utils.resample(audio)
             self.play_file(resampled_file)
@@ -398,24 +398,34 @@ class TranscriptionTeeClient:
                 self.write_all_clients_srt()
                 print("[INFO]: Keyboard interrupt.")
 
-    def process_hls_stream(self, hls_url):
+    def process_hls_stream(self, hls_url, save_file):
         """
         Connect to an HLS source, process the audio stream, and send it for transcription.
 
         Args:
             hls_url (str): The URL of the HLS stream source.
+            save_file （str, optional): Local path to save the network stream.
         """
         print("[INFO]: Connecting to HLS stream...")
         process = None  # Initialize process to None
 
         try:
             # Connecting to the HLS stream using ffmpeg-python
-            process = (
-                ffmpeg
-                .input(hls_url, threads=0)
-                .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=self.rate)
-                .run_async(pipe_stdout=True, pipe_stderr=True)
-            )
+            if save_file is None:
+                process = (
+                    ffmpeg
+                    .input(hls_url, threads=0)
+                    .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=self.rate)
+                    .run_async(pipe_stdout=True, pipe_stderr=True)
+                )
+            else:
+                input = ffmpeg.input(hls_url, threads=0)
+                output_file = input.output(save_file, acodec='copy', vcodec='copy').global_args('-loglevel', 'quiet')
+                output_std = input.output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=self.rate)
+                process = (
+                    ffmpeg.merge_outputs(output_file, output_std)
+                    .run_async(pipe_stdout=True, pipe_stderr=True)
+                )
 
             # Process the stream
             while True:
@@ -428,6 +438,8 @@ class TranscriptionTeeClient:
         except Exception as e:
             print(f"[ERROR]: Failed to connect to HLS stream: {e}")
         finally:
+            self.close_all_clients() 
+            self.write_all_clients_srt()
             if process:
                 process.kill()
 
