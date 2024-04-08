@@ -812,7 +812,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         if info is not None:
             if (self.language is None) or (self.language != info.language):
                 self.set_language(info)
-        
+
         return result
 
     def get_previous_output(self):
