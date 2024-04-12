@@ -287,6 +287,7 @@ class TranscriptionTeeClient:
         self.rate = 16000
         self.record_seconds = 60000
         self.frames = b""
+        self.paused = False
         self.p = pyaudio.PyAudio()
         try:
             self.stream = self.p.open(
@@ -460,29 +461,30 @@ class TranscriptionTeeClient:
         if not os.path.exists("chunks"):
             os.makedirs("chunks", exist_ok=True)
         try:
-            for _ in range(0, int(self.rate / self.chunk * self.record_seconds)):
-                if not any(client.recording for client in self.clients):
-                    break
-                data = self.stream.read(self.chunk, exception_on_overflow=False)
-                self.frames += data
+                for _ in range(0, int(self.rate / self.chunk * self.record_seconds)):
+                    if not self.paused:
+                        if not any(client.recording for client in self.clients):
+                            break
+                        data = self.stream.read(self.chunk, exception_on_overflow=False)
+                        self.frames += data
 
-                audio_array = self.bytes_to_float_array(data)
+                        audio_array = self.bytes_to_float_array(data)
 
-                self.multicast_packet(audio_array.tobytes())
+                        self.multicast_packet(audio_array.tobytes())
 
-                # save frames if more than a minute
-                if len(self.frames) > 60 * self.rate:
-                    t = threading.Thread(
-                        target=self.write_audio_frames_to_file,
-                        args=(
-                            self.frames[:],
-                            f"chunks/{n_audio_file}.wav",
-                        ),
-                    )
-                    t.start()
-                    n_audio_file += 1
-                    self.frames = b""
-            self.write_all_clients_srt()
+                        # save frames if more than a minute
+                        if len(self.frames) > 60 * self.rate:
+                            t = threading.Thread(
+                                target=self.write_audio_frames_to_file,
+                                args=(
+                                    self.frames[:],
+                                    f"chunks/{n_audio_file}.wav",
+                                ),
+                            )
+                            t.start()
+                            n_audio_file += 1
+                            self.frames = b""
+                    self.write_all_clients_srt()
 
         except KeyboardInterrupt:
             if len(self.frames):
