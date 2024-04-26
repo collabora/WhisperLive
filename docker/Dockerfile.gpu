@@ -1,33 +1,26 @@
-FROM nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04
+FROM python:3.10-bookworm
+
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Remove any third-party apt sources to avoid issues with expiring keys.
-RUN rm -f /etc/apt/sources.list.d/*.list
+# install lib required for pyaudio
+RUN apt update && apt install -y portaudio19-dev && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install some basic utilities.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    ca-certificates \
-    sudo \
-    git \
-    bzip2 \
-    libx11-6 \
-    python3-dev \
-    python3-pip \
-    && python3 -m pip install --upgrade pip \
-    && rm -rf /var/lib/apt/lists/*
+# update pip to support for whl.metadata -> less downloading
+RUN pip install --no-cache-dir -U "pip>=24"
 
-# Create a working directory.
+# create a working directory
 RUN mkdir /app
 WORKDIR /app
 
-COPY scripts/setup.sh requirements/server.txt /app
+# install the requirements for running the whisper-live server
+COPY requirements/server.txt /app/
+RUN pip install --no-cache-dir -r server.txt && rm server.txt
 
-RUN apt update && bash setup.sh && rm setup.sh
-RUN pip install -r server.txt && rm server.txt
+# make the paths of the nvidia libs installed as wheels visible. equivalent to:
+# export LD_LIBRARY_PATH=`python3 -c 'import os; import nvidia.cublas.lib; import nvidia.cudnn.lib; print(os.path.dirname(nvidia.cublas.lib.__file__) + ":" + os.path.dirname(nvidia.cudnn.lib.__file__))'`
+ENV LD_LIBRARY_PATH="/usr/local/lib/python3.10/site-packages/nvidia/cublas/lib:/usr/local/lib/python3.10/site-packages/nvidia/cudnn/lib"
 
 COPY whisper_live /app/whisper_live
-
 COPY run_server.py /app
 
-CMD ["python3", "run_server.py"]
+CMD ["python", "run_server.py"]
