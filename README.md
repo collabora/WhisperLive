@@ -80,9 +80,14 @@ client("tests/jfk.wav")
 client()
 ```
 
+- TO transcribe from a RTSP stream:
+```python
+client(rtsp_url="rtsp://admin:admin@192.168.0.1/rtsp")
+```
+
 - To transcribe from a HLS stream:
 ```python
-client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/bbc_1xtra.isml/bbc_1xtra-audio%3d96000.norewind.m3u8") 
+client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/bbc_1xtra.isml/bbc_1xtra-audio%3d96000.norewind.m3u8")
 ```
 
 ## Browser Extensions
