@@ -53,7 +53,13 @@ python3 run_server.py -p 9090 \
                       -trt /home/TensorRT-LLM/examples/whisper/whisper_small \
                       -m
 ```
-
+#### Controlling OpenMP Threads
+To control the number of threads used by OpenMP, you can set the `OMP_NUM_THREADS` environment variable. This is useful for managing CPU resources and ensuring consistent performance. If not specified, `OMP_NUM_THREADS` is set to `1` by default. You can change this by using the `--omp_num_threads` argument:
+```bash
+python3 run_server.py --port 9090 \
+                      --backend faster_whisper \
+                      --omp_num_threads 4
+```
 
 ### Running the Client
 - Initializing the client:
