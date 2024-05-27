@@ -62,7 +62,13 @@ python3 run_server.py --port 9090 \
 ```
 
 ### Running the Client
-- Initializing the client:
+- Initializing the client with below parameters:
+  - `lang`: Language of the input audio, applicable only if using a multilingual model.
+  - `translate`: If set to `True` then translate from any language to `en`.
+  - `model`: Whisper model size.
+  - `use_vad`: Whether to use `Voice Activity Detecion` on the server.
+  - `save_output_recording`: Set to True to save the microphone input as a `.wav` file during live transcription. This option is helpful for recording sessions for later playback or analysis. Defaults to `False`. 
+  - `output_recording_filename`: Specifies the `.wav` file path where the microphone input will be saved if `save_output_recording` is set to `True`.
 ```python
 from whisper_live.client import TranscriptionClient
 client = TranscriptionClient(
@@ -72,6 +78,8 @@ client = TranscriptionClient(
   translate=False,
   model="small",
   use_vad=False,
+  save_output_recording=True,                         # Only used for microphone input, False by Default
+  output_recording_filename="./output_recording.wav"  # Only used for microphone input
 )
 ```
 It connects to the server running on localhost at port 9090. Using a multilingual model, language for the transcription will be automatically detected. You can also use the language option to specify the target language for the transcription, in this case, English ("en"). The translate option should be set to `True` if we want to translate from the source language to English and `False` if we want to transcribe in the source language.
