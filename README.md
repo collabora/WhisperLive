@@ -84,7 +84,7 @@ client = TranscriptionClient(
 ```
 It connects to the server running on localhost at port 9090. Using a multilingual model, language for the transcription will be automatically detected. You can also use the language option to specify the target language for the transcription, in this case, English ("en"). The translate option should be set to `True` if we want to translate from the source language to English and `False` if we want to transcribe in the source language.
 
-- Trancribe an audio file:
+- Transcribe an audio file:
 ```python
 client("tests/jfk.wav")
 ```
@@ -94,7 +94,7 @@ client("tests/jfk.wav")
 client()
 ```
 
-- TO transcribe from a RTSP stream:
+- To transcribe from a RTSP stream:
 ```python
 client(rtsp_url="rtsp://admin:admin@192.168.0.1/rtsp")
 ```
