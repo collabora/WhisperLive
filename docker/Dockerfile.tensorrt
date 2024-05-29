@@ -1,0 +1,42 @@
+FROM python:3.10-bookworm
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+# install libs required for pyaudio and tensorrt
+RUN apt update && apt install -y openmpi-bin libopenmpi-dev portaudio19-dev ffmpeg wget && apt-get clean && rm -rf /var/lib/apt/lists/*
+# update pip to support for whl.metadata -> less downloading
+RUN pip install --no-cache-dir -U "pip>=24"
+# install tensorrt wheels from nvidia
+RUN pip install --no-cache-dir tensorrt_llm==0.7.1 -U --extra-index-url https://pypi.nvidia.com
+# install package required by tensorrt for monitoring the device memory usage
+RUN pip install --no-cache-dir pynvml>=11.5.0
+# install specific torch versions, overwriting the torch version installed before
+# see workaround https://github.com/NVIDIA/TensorRT-LLM/issues/808#issuecomment-1880603548
+RUN pip install --no-cache-dir torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu121
+
+# add TensorRT LLM example files, i.e. the script to compile the whisper model
+RUN wget https://github.com/NVIDIA/TensorRT-LLM/archive/refs/tags/v0.7.1.zip -O /v0.7.1.zip && unzip /v0.7.1.zip 'TensorRT-LLM-0.7.1/examples/*' && rm /v0.7.1.zip
+
+# create a working directory
+RUN mkdir /app
+WORKDIR /app
+
+# install the requirements for running the whisper-live server
+COPY requirements/server.txt /app/
+RUN pip install --no-cache-dir -r server.txt && rm server.txt
+
+# this resolves OSError: libnccl.so.2: cannot open shared object file: No such file or directory
+ENV LD_LIBRARY_PATH="/usr/local/lib/python3.10/site-packages/nvidia/nccl/lib"
+
+# install assets
+COPY assets /app/assets
+RUN wget https://raw.githubusercontent.com/openai/whisper/main/whisper/assets/mel_filters.npz -O /app/assets/mel_filters.npz
+RUN mkdir -p /root/.cache/whisper-live/
+RUN wget https://github.com/snakers4/silero-vad/raw/master/files/silero_vad.onnx -O /root/.cache/whisper-live/silero_vad.onnx
+
+# add the actual application code
+COPY whisper_live /app/whisper_live
+COPY run_server.py /app
+
+# You will have to add --trt_model_path /models/yourmodel and --trt_multilingual if you use a multilingual model
+CMD ["python", "run_server.py", "--backend", "tensorrt"]
