@@ -496,7 +496,7 @@ class WhisperModel:
                 content_frames - seek,
                 seek_clip_end - seek,
             )
-            segment = features[:, seek : seek + segment_size]
+            segment = features[:, seek:seek + segment_size]
             segment_duration = segment_size * self.feature_extractor.time_per_frame
             segment = pad_or_trim(segment, self.feature_extractor.nb_max_frames)
 
@@ -685,7 +685,7 @@ class WhisperModel:
                             continue
                         if is_segment_anomaly(segment):
                             next_segment = next_words_segment(
-                                current_segments[si + 1 :]
+                                current_segments[si + 1:]
                             )
                             if next_segment is not None:
                                 hal_next_start = next_segment["words"][0]["start"]
@@ -909,7 +909,7 @@ class WhisperModel:
 
         if previous_tokens:
             prompt.append(tokenizer.sot_prev)
-            prompt.extend(previous_tokens[-(self.max_length // 2 - 1) :])
+            prompt.extend(previous_tokens[-(self.max_length // 2 - 1):])
 
         prompt.extend(tokenizer.sot_sequence)
 
@@ -926,7 +926,7 @@ class WhisperModel:
 
         return prompt
 
-    def add_word_timestamps(                                                    # noqa: C901
+    def add_word_timestamps(
         self,
         segments: List[dict],
         tokenizer: Tokenizer,

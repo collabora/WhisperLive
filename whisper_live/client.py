@@ -1,4 +1,5 @@
 import os
+import shutil
 import wave
 
 import numpy as np
@@ -259,6 +260,7 @@ class Client:
         while time.time() - self.last_response_received < self.disconnect_if_no_response_for:
             continue
 
+
 class TranscriptionTeeClient:
     """
     Client for handling audio recording, streaming, and transcription tasks via one or more
@@ -272,7 +274,7 @@ class TranscriptionTeeClient:
     Attributes:
         clients (list): the underlying Client instances responsible for handling WebSocket connections.
     """
-    def __init__(self, clients):
+    def __init__(self, clients, save_output_recording=False, output_recording_filename="./output_recording.wav"):
         self.clients = clients
         if not self.clients:
             raise Exception("At least one client is required.")
@@ -281,6 +283,8 @@ class TranscriptionTeeClient:
         self.channels = 1
         self.rate = 16000
         self.record_seconds = 60000
+        self.save_output_recording = save_output_recording
+        self.output_recording_filename = output_recording_filename
         self.frames = b""
         self.p = pyaudio.PyAudio()
         try:
@@ -473,7 +477,43 @@ class TranscriptionTeeClient:
 
         return process
 
-    def record(self, out_file="output_recording.wav"):
+    def save_chunk(self, n_audio_file):
+        """
+        Saves the current audio frames to a WAV file in a separate thread.
+
+        Args:
+        n_audio_file (int): The index of the audio file which determines the filename.
+                            This helps in maintaining the order and uniqueness of each chunk.
+        """
+        t = threading.Thread(
+            target=self.write_audio_frames_to_file,
+            args=(self.frames[:], f"chunks/{n_audio_file}.wav",),
+        )
+        t.start()
+
+    def finalize_recording(self, n_audio_file):
+        """
+        Finalizes the recording process by saving any remaining audio frames,
+        closing the audio stream, and terminating the process.
+
+        Args:
+        n_audio_file (int): The file index to be used if there are remaining audio frames to be saved.
+                            This index is incremented before use if the last chunk is saved.
+        """
+        if self.save_output_recording and len(self.frames):
+            self.write_audio_frames_to_file(
+                self.frames[:], f"chunks/{n_audio_file}.wav"
+            )
+            n_audio_file += 1
+        self.stream.stop_stream()
+        self.stream.close()
+        self.p.terminate()
+        self.close_all_clients()
+        if self.save_output_recording:
+            self.write_output_recording(n_audio_file)
+        self.write_all_clients_srt()
+
+    def record(self):
         """
         Record audio data from the input stream and save it to a WAV file.
 
@@ -485,15 +525,12 @@ class TranscriptionTeeClient:
         The recording will continue until the specified duration is reached or until the `RECORDING` flag is set to `False`.
         The recording process can be interrupted by sending a KeyboardInterrupt (e.g., pressing Ctrl+C). After recording,
         the method combines all the saved audio chunks into the specified `out_file`.
-
-        Args:
-            out_file (str, optional): The name of the output WAV file to save the entire recording.
-                                      Default is "output_recording.wav".
-
         """
         n_audio_file = 0
-        if not os.path.exists("chunks"):
-            os.makedirs("chunks", exist_ok=True)
+        if self.save_output_recording:
+            if os.path.exists("chunks"):
+                shutil.rmtree("chunks")
+            os.makedirs("chunks")
         try:
             for _ in range(0, int(self.rate / self.chunk * self.record_seconds)):
                 if not any(client.recording for client in self.clients):
@@ -507,31 +544,14 @@ class TranscriptionTeeClient:
 
                 # save frames if more than a minute
                 if len(self.frames) > 60 * self.rate:
-                    t = threading.Thread(
-                        target=self.write_audio_frames_to_file,
-                        args=(
-                            self.frames[:],
-                            f"chunks/{n_audio_file}.wav",
-                        ),
-                    )
-                    t.start()
-                    n_audio_file += 1
+                    if self.save_output_recording:
+                        self.save_chunk(n_audio_file)
+                        n_audio_file += 1
                     self.frames = b""
             self.write_all_clients_srt()
 
         except KeyboardInterrupt:
-            if len(self.frames):
-                self.write_audio_frames_to_file(
-                    self.frames[:], f"chunks/{n_audio_file}.wav"
-                )
-                n_audio_file += 1
-            self.stream.stop_stream()
-            self.stream.close()
-            self.p.terminate()
-            self.close_all_clients()
-
-            self.write_output_recording(n_audio_file, out_file)
-            self.write_all_clients_srt()
+            self.finalize_recording(n_audio_file)
 
     def write_audio_frames_to_file(self, frames, file_name):
         """
@@ -552,7 +572,7 @@ class TranscriptionTeeClient:
             wavfile.setframerate(self.rate)
             wavfile.writeframes(frames)
 
-    def write_output_recording(self, n_audio_file, out_file):
+    def write_output_recording(self, n_audio_file):
         """
         Combine and save recorded audio chunks into a single WAV file.
 
@@ -571,7 +591,7 @@ class TranscriptionTeeClient:
             for i in range(n_audio_file)
             if os.path.exists(f"chunks/{i}.wav")
         ]
-        with wave.open(out_file, "wb") as wavfile:
+        with wave.open(self.output_recording_filename, "wb") as wavfile:
             wavfile: wave.Wave_write
             wavfile.setnchannels(self.channels)
             wavfile.setsampwidth(2)
@@ -586,6 +606,9 @@ class TranscriptionTeeClient:
                 # remove this file
                 os.remove(in_file)
         wavfile.close()
+        # clean up temporary directory to store chunks
+        if os.path.exists("chunks"):
+            shutil.rmtree("chunks")
 
     @staticmethod
     def bytes_to_float_array(audio_bytes):
@@ -604,6 +627,7 @@ class TranscriptionTeeClient:
         raw_data = np.frombuffer(buffer=audio_bytes, dtype=np.int16)
         return raw_data.astype(np.float32) / 32768.0
 
+
 class TranscriptionClient(TranscriptionTeeClient):
     """
     Client for handling audio transcription tasks via a single WebSocket connection.
@@ -616,6 +640,8 @@ class TranscriptionClient(TranscriptionTeeClient):
         port (int): The port number to connect to on the server.
         lang (str, optional): The primary language for transcription. Default is None, which defaults to English ('en').
         translate (bool, optional): Indicates whether translation tasks are required (default is False).
+        save_output_recording (bool, optional): Indicates whether to save recording from microphone.
+        output_recording_filename (str, optional): File to save the output recording.
 
     Attributes:
         client (Client): An instance of the underlying Client class responsible for handling the WebSocket connection.
@@ -627,6 +653,23 @@ class TranscriptionClient(TranscriptionTeeClient):
         transcription_client()
         ```
     """
-    def __init__(self, host, port, lang=None, translate=False, model="small", use_vad=True):
+    def __init__(
+        self,
+        host,
+        port,
+        lang=None,
+        translate=False,
+        model="small",
+        use_vad=True,
+        save_output_recording=False,
+        output_recording_filename="./output_recording.wav"
+    ):
         self.client = Client(host, port, lang, translate, model, srt_file_path="output.srt", use_vad=use_vad)
-        TranscriptionTeeClient.__init__(self, [self.client])
+        if save_output_recording and not output_recording_filename.endswith(".wav"):
+            raise ValueError(f"Please provide a valid `output_recording_filename`: {output_recording_filename}")
+        TranscriptionTeeClient.__init__(
+            self,
+            [self.client],
+            save_output_recording=save_output_recording,
+            output_recording_filename=output_recording_filename
+        )
