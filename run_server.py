@@ -25,6 +25,9 @@ if __name__ == "__main__":
                         type=int,
                         default=1,
                         help="Number of threads to use for OpenMP")
+    parser.add_argument('--single_model', '-sm',
+                        action="store_true",
+                        help='Set to true if only one (custom) model instance should be served.')
     args = parser.parse_args()
 
     if args.backend == "tensorrt":
@@ -42,5 +45,6 @@ if __name__ == "__main__":
         backend=args.backend,
         faster_whisper_custom_model_path=args.faster_whisper_custom_model_path,
         whisper_tensorrt_path=args.trt_model_path,
-        trt_multilingual=args.trt_multilingual
+        trt_multilingual=args.trt_multilingual,
+        single_model=args.single_model,
     )
