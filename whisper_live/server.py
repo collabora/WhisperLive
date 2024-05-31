@@ -300,11 +300,15 @@ class TranscriptionServer:
             host (str): The host address to bind the server.
             port (int): The port number to bind the server.
         """
+        if faster_whisper_custom_model_path is not None and not os.path.exists(faster_whisper_custom_model_path):
+            raise ValueError(f"Custom faster_whisper model '{faster_whisper_custom_model_path}' is not a valid path.")
+        if whisper_tensorrt_path is not None and not os.path.exists(whisper_tensorrt_path):
+            raise ValueError(f"TensorRT model '{whisper_tensorrt_path}' is not a valid path.")
         if single_model:
             if faster_whisper_custom_model_path or whisper_tensorrt_path:
                 logging.info("Custom model option was provided. Switching to single model mode.")
                 self.single_model = True
-                # TODO: load models initially
+                # TODO: load model initially
             else:
                 logging.info("Single model mode currently only works with custom models.")
         with serve(
