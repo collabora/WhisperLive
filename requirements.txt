@@ -1,4 +1,4 @@
-pyaudio
+PyAudio
 faster-whisper
 torch
 torchaudio
@@ -8,6 +8,7 @@ ffmpeg-python
 scipy
 websocket-client
 numba
+numpy
 openai-whisper
 kaldialign
 soundfile
