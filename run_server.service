@@ -1,0 +1,13 @@
+[Unit]
+Description=run_server
+
+[Service]
+ExecStart=/usr/bin/python3 /home/ubuntu/whisper-live/run_server.py
+Restart=always
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/whisper-live
+Environment="LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/lib64"
+
+[Install]
+WantedBy=multi-user.target

@@ -7,5 +7,5 @@ if "OMP_NUM_THREADS" not in os.environ:
 
 if __name__ == "__main__":
     server = TranscriptionServer()
-    server.run("localhost", port=9090, backend="faster_whisper",
+    server.run("0.0.0.0", port=9090, backend="faster_whisper",
                faster_whisper_custom_model_path="/Users/aliuspetraska/Documents/Git/faster-whisper-large-v2")
