@@ -1,0 +1,13 @@
+pyaudio
+faster-whisper
+torch
+torchaudio
+websockets
+onnxruntime
+ffmpeg-python
+scipy
+websocket-client
+numba
+openai-whisper
+kaldialign
+soundfile
