@@ -642,6 +642,7 @@ class TranscriptionClient(TranscriptionTeeClient):
         translate (bool, optional): Indicates whether translation tasks are required (default is False).
         save_output_recording (bool, optional): Indicates whether to save recording from microphone.
         output_recording_filename (str, optional): File to save the output recording.
+        output_transcription_path (str, optional): File to save the output transcription.
 
     Attributes:
         client (Client): An instance of the underlying Client class responsible for handling the WebSocket connection.
@@ -662,11 +663,14 @@ class TranscriptionClient(TranscriptionTeeClient):
         model="small",
         use_vad=True,
         save_output_recording=False,
-        output_recording_filename="./output_recording.wav"
+        output_recording_filename="./output_recording.wav",
+        output_transcription_path="./output.srt"
     ):
-        self.client = Client(host, port, lang, translate, model, srt_file_path="output.srt", use_vad=use_vad)
+        self.client = Client(host, port, lang, translate, model, srt_file_path=output_transcription_path, use_vad=use_vad)
         if save_output_recording and not output_recording_filename.endswith(".wav"):
             raise ValueError(f"Please provide a valid `output_recording_filename`: {output_recording_filename}")
+        if not output_transcription_path.endswith(".srt"):
+            raise ValueError(f"Please provide a valid `output_transcription_path`: {output_transcription_path}. The file extension should be `.srt`.")
         TranscriptionTeeClient.__init__(
             self,
             [self.client],
