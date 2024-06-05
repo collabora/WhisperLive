@@ -115,7 +115,18 @@ client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/b
   docker run -it --gpus all -p 9090:9090 ghcr.io/collabora/whisperlive-gpu:latest
   ```
 
-  - TensorRT. Follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) in order to setup docker and use TensorRT backend. We provide a pre-built docker image which has TensorRT-LLM built and ready to use.
+  - TensorRT. 
+  ```bash
+  docker run -p 9090:9090 --runtime=nvidia --gpus all --entrypoint /bin/bash -it ghcr.io/collabora/whisperlive-tensorrt
+
+  # Build tiny.en engine
+  bash build_whisper_tensorrt.sh /app/TensorRT-LLM-examples small.en
+
+  # Run server with tiny.en
+  python3 run_server.py --port 9090 \
+                        --backend tensorrt \
+                        --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_en"
+  ```
 
 - CPU
 ```bash

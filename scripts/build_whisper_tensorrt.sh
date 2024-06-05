@@ -57,7 +57,7 @@ download_and_build_model() {
     local output_dir="whisper_${model_name//./_}"
     echo "$output_dir"
     echo "Running build script for $model_name with output directory $output_dir"
-    python3 build.py --output_dir "$output_dir" --use_gpt_attention_plugin --use_gemm_plugin --use_bert_attention_plugin --model_name "$model_name"
+    python3 build.py --output_dir "$output_dir" --use_gpt_attention_plugin --use_gemm_plugin  --use_bert_attention_plugin --enable_context_fmha --model_name "$model_name"
     echo "Whisper $model_name TensorRT engine built."
     echo "========================================="
     echo "Model is located at: $(pwd)/$output_dir"
