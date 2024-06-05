@@ -26,8 +26,9 @@ if __name__ == "__main__":
                         default=1,
                         help="Number of threads to use for OpenMP")
     parser.add_argument('--single_model', '-sm',
-                        action="store_true",
-                        help='Set to true if only one (custom) model instance should be served.')
+                        type=bool,
+                        default=True,
+                        help='Set to false if every connection should instantiate its own model. Only relevant for custom model, passed using -trt or -fw.')
     args = parser.parse_args()
 
     if args.backend == "tensorrt":

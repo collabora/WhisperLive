@@ -62,16 +62,12 @@ python3 run_server.py --port 9090 \
 ```
 
 #### Single model mode
-By default, the server will instantiate a new whisper model for every client connection. I.e. for 4 concurrent connections, you need to have (V)RAM for 4x the model. Also, the connection will have to wait until the model is loaded, which might take a few seconds.
+By default, when running the server without specifying a model, the server will instantiate a new whisper model for every client connection. This has the advantage, that the server can use different model sizes, based on the client's requested model size. On the other hand, it also means you have to wait for the model to be loaded upon client connection and you will have increased (V)RAM usage.
 
-If you use a TensorRT or a custom faster_whisper model, you also set the server to instantiate the model only once and use the single on for all client connections, using the `--single-model` or `-sm` option:
-```bash
-python3 run_server.py -p 9090 \
-                      -b tensorrt \
-                      -trt /home/TensorRT-LLM/examples/whisper/whisper_large_v3 \
-                      -m \
-                      --single_model
-```
+When serving a custom TensorRT model using the `-trt` or a custom faster_whisper model using the `-fw` option, the server will instead make use of the `--single_model true` option: It will only instantiate the custom model once and reuse that for all client connections.
+
+If you don't want this, set `--single_model false`.
+
 
 ### Running the Client
 - Initializing the client with below parameters:
