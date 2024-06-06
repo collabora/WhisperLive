@@ -66,7 +66,7 @@ python3 run_server.py --port 9090 \
   - `lang`: Language of the input audio, applicable only if using a multilingual model.
   - `translate`: If set to `True` then translate from any language to `en`.
   - `model`: Whisper model size.
-  - `use_vad`: Whether to use `Voice Activity Detecion` on the server.
+  - `use_vad`: Whether to use `Voice Activity Detection` on the server.
   - `save_output_recording`: Set to True to save the microphone input as a `.wav` file during live transcription. This option is helpful for recording sessions for later playback or analysis. Defaults to `False`. 
   - `output_recording_filename`: Specifies the `.wav` file path where the microphone input will be saved if `save_output_recording` is set to `True`.
 ```python
