@@ -187,6 +187,7 @@ class WhisperModel:
         self,
         audio: Union[str, BinaryIO, np.ndarray],
         language: Optional[str] = None,
+        lang_filter : List[str] = None,
         task: str = "transcribe",
         beam_size: int = 5,
         best_of: int = 5,
@@ -352,8 +353,12 @@ class WhisperModel:
                 results = self.model.detect_language(encoder_output)[0]
                 # Parse language names to strip out markers
                 all_language_probs = [(token[2:-2], prob) for (token, prob) in results]
+                filtered_language_probs = all_language_probs
+                if lang_filter:
+                    filtered_language_probs = [p for p in all_language_probs
+                                               if p[0] in lang_filter]
                 # Get top language token and probability
-                language, language_probability = all_language_probs[0]
+                language, language_probability = filtered_language_probs[0]
 
                 self.logger.info(
                     "Detected language '%s' with probability %.2f",

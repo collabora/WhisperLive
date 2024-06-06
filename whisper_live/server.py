@@ -165,6 +165,8 @@ class TranscriptionServer:
                 task=options["task"],
                 client_uid=options["uid"],
                 model=options["model"],
+                multilingual_input=options.get("multilingual_input"),
+                lang_filter=options.get("lang_filter"),
                 initial_prompt=options.get("initial_prompt"),
                 vad_parameters=options.get("vad_parameters"),
                 use_vad=self.use_vad,
@@ -681,7 +683,7 @@ class ServeClientTensorRT(ServeClientBase):
 
 
 class ServeClientFasterWhisper(ServeClientBase):
-    def __init__(self, websocket, task="transcribe", device=None, language=None, client_uid=None, model="small.en",
+    def __init__(self, websocket, task="transcribe", device=None, language=None, lang_filter=None, client_uid=None, model="small.en", multilingual_input=False,
                  initial_prompt=None, vad_parameters=None, use_vad=True):
         """
         Initialize a ServeClient instance.
@@ -694,6 +696,8 @@ class ServeClientFasterWhisper(ServeClientBase):
             task (str, optional): The task type, e.g., "transcribe." Defaults to "transcribe".
             device (str, optional): The device type for Whisper, "cuda" or "cpu". Defaults to None.
             language (str, optional): The language for transcription. Defaults to None.
+            lang_filter (List[str], optional): List of candidate languages to listen for.  Defaults to None, meaning listen for all known languages.
+            multilingual_input (bool, optional): True means the input stream may contain more than one language.  Defaults to False.
             client_uid (str, optional): A unique identifier for the client. Defaults to None.
             model (str, optional): The whisper model size. Defaults to 'small.en'
             initial_prompt (str, optional): Prompt for whisper inference. Defaults to None.
@@ -708,6 +712,8 @@ class ServeClientFasterWhisper(ServeClientBase):
         else:
             self.model_size_or_path = model
         self.language = "en" if self.model_size_or_path.endswith("en") else language
+        self.lang_filter = lang_filter
+        self.multilingual_input = multilingual_input
         self.task = task
         self.initial_prompt = initial_prompt
         self.vad_parameters = vad_parameters or {"threshold": 0.5}
@@ -797,13 +803,16 @@ class ServeClientFasterWhisper(ServeClientBase):
         result, info = self.transcriber.transcribe(
             input_sample,
             initial_prompt=self.initial_prompt,
-            language=self.language,
+            language=self.language if not self.multilingual_input else None,
+            lang_filter=self.lang_filter,
             task=self.task,
             vad_filter=self.use_vad,
             vad_parameters=self.vad_parameters if self.use_vad else None)
 
-        if self.language is None and info is not None:
-            self.set_language(info)
+        if info is not None:
+            if (self.language is None) or (self.language != info.language):
+                self.set_language(info)
+
         return result
 
     def get_previous_output(self):
