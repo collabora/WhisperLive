@@ -25,6 +25,9 @@ if __name__ == "__main__":
                         type=int,
                         default=1,
                         help="Number of threads to use for OpenMP")
+    parser.add_argument('--no_single_model', '-nsm',
+                        action='store_true',
+                        help='Set this if every connection should instantiate its own model. Only relevant for custom model, passed using -trt or -fw.')
     args = parser.parse_args()
 
     if args.backend == "tensorrt":
@@ -42,5 +45,6 @@ if __name__ == "__main__":
         backend=args.backend,
         faster_whisper_custom_model_path=args.faster_whisper_custom_model_path,
         whisper_tensorrt_path=args.trt_model_path,
-        trt_multilingual=args.trt_multilingual
+        trt_multilingual=args.trt_multilingual,
+        single_model=not args.no_single_model,
     )
