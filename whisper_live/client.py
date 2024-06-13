@@ -72,7 +72,7 @@ class Client:
                 on_error=lambda ws, error: self.on_error(ws, error),
                 on_close=lambda ws, close_status_code, close_msg: self.on_close(
                     ws, close_status_code, close_msg
-                ),
+                )
             )
         else:
             print("[ERROR]: No host or port specified.")
@@ -81,11 +81,12 @@ class Client:
         Client.INSTANCES[self.uid] = self
 
         # start websocket client in a thread
-        self.ws_thread = threading.Thread(target=self.client_socket.run_forever)
-        self.ws_thread.setDaemon(True)
+        self.ws_thread = threading.Thread(target=self.client_socket.run_forever, daemon=True)
+        # self.ws_thread.setDaemon(True)
         self.ws_thread.start()
 
         self.transcript = []
+
         print("[INFO]: * recording")
 
     def handle_status_messages(self, message_data):
@@ -112,6 +113,7 @@ class Client:
                       (not self.transcript or
                         float(seg['start']) >= float(self.transcript[-1]['end']))):
                     self.transcript.append(seg)
+                    print(seg)
         # update last received segment and last valid response time
         if self.last_received_segment is None or self.last_received_segment != segments[-1]["text"]:
             self.last_response_received = time.time()
@@ -119,8 +121,12 @@ class Client:
 
         # Truncate to last 3 entries for brevity.
         text = text[-3:]
-        utils.clear_screen()
-        utils.print_transcript(text)
+
+        # utils.clear_screen()
+
+        # print(" ".join(text).strip())
+
+        # utils.print_transcript(text)
 
     def on_message(self, ws, message):
         """

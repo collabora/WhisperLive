@@ -1,15 +1,18 @@
-import os
-import time
-import threading
-import json
 import functools
+import json
 import logging
-import torch
+import os
+import threading
+import time
+
 import numpy as np
-from websockets.sync.server import serve
+import torch
 from websockets.exceptions import ConnectionClosed
-from whisper_live.vad import VoiceActivityDetector
+from websockets.sync.server import serve
+
 from whisper_live.transcriber import WhisperModel
+from whisper_live.vad import VoiceActivityDetector
+
 try:
     from whisper_live.transcriber_tensorrt import WhisperTRTLLM
 except Exception:
@@ -125,7 +128,7 @@ class TranscriptionServer:
     RATE = 16000
 
     def __init__(self):
-        self.client_manager = ClientManager()
+        self.client_manager = ClientManager(max_clients=4, max_connection_time=None)
         self.no_voice_activity_chunks = 0
         self.use_vad = True
 
@@ -264,6 +267,7 @@ class TranscriptionServer:
             Exception: If there is an error during the audio frame processing.
         """
         self.backend = backend
+
         if not self.handle_new_connection(websocket, faster_whisper_custom_model_path,
                                           whisper_tensorrt_path, trt_multilingual):
             return
@@ -305,7 +309,7 @@ class TranscriptionServer:
                 trt_multilingual=trt_multilingual
             ),
             host,
-            port
+            port,
         ) as server:
             server.serve_forever()
 
