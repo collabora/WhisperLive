@@ -36,7 +36,7 @@ python3 run_server.py --port 9090 \
   
 # running with custom model
 python3 run_server.py --port 9090 \
-                      --backend faster_whisper
+                      --backend faster_whisper \
                       -fw "/path/to/custom/faster/whisper/model"
 ```
 
