@@ -4,6 +4,9 @@ import threading
 import json
 import functools
 import logging
+from enum import Enum
+from typing import List
+
 import torch
 import numpy as np
 from websockets.sync.server import serve
@@ -119,6 +122,25 @@ class ClientManager:
             logging.warning(f"Client with uid '{self.clients[websocket].client_uid}' disconnected due to overtime.")
             return True
         return False
+
+
+class BackendType(Enum):
+    FASTER_WHISPER = "faster_whisper"
+    TENSORRT = "tensorrt"
+
+    @staticmethod
+    def valid_types() -> List[str]:
+        return [backend_type.value for backend_type in BackendType]
+
+    @staticmethod
+    def check_validity_of(backend: str) -> bool:
+        return backend in BackendType.valid_types()
+
+    def is_faster_whisper(self) -> bool:
+        return self == BackendType.FASTER_WHISPER
+
+    def is_tensorrt(self) -> bool:
+        return self == BackendType.TENSORRT
 
 
 class TranscriptionServer:
@@ -311,6 +333,8 @@ class TranscriptionServer:
                 # TODO: load model initially
             else:
                 logging.info("Single model mode currently only works with custom models.")
+        if BackendType.check_validity_of(backend):
+            raise ValueError(f"{backend} is not a valid backend type. Choose backend from {BackendType.valid_types()}")
         with serve(
             functools.partial(
                 self.recv_audio,
