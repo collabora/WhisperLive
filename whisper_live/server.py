@@ -5,7 +5,7 @@ import json
 import functools
 import logging
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 import torch
 import numpy as np
@@ -156,6 +156,8 @@ class TranscriptionServer:
         self, websocket, options, faster_whisper_custom_model_path,
         whisper_tensorrt_path, trt_multilingual
     ):
+        client: Optional[ServeClientBase] = None
+
         if self.backend == "tensorrt":
             try:
                 client = ServeClientTensorRT(
@@ -195,6 +197,9 @@ class TranscriptionServer:
                 single_model=self.single_model,
             )
             logging.info("Running faster_whisper backend.")
+
+        if client is None:
+            raise ValueError(f"Backend type {self.backend} not recognised or not handled.")
 
         self.client_manager.add_client(websocket, client)
 
