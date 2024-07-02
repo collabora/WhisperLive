@@ -10,3 +10,4 @@ ffmpeg-python
 scipy
 jiwer
 evaluate
+numpy<2
