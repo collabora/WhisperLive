@@ -28,7 +28,8 @@ class Client:
         translate=False,
         model="small",
         srt_file_path="output.srt",
-        use_vad=True
+        use_vad=True,
+        secure_connection=False
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -63,8 +64,10 @@ class Client:
         self.timestamp_offset = 0.0
         self.audio_bytes = None
 
-        if host is not None and port is not None:
-            socket_url = f"ws://{host}:{port}"
+        if host is not None:
+            protocol = "wss" if secure_connection else "ws"
+            port = f":{port}" if port else ""
+            socket_url = f"{protocol}{host}{port}"
             self.client_socket = websocket.WebSocketApp(
                 socket_url,
                 on_open=lambda ws: self.on_open(ws),
@@ -75,7 +78,7 @@ class Client:
                 ),
             )
         else:
-            print("[ERROR]: No host or port specified.")
+            print("[ERROR]: No host specified.")
             return
 
         Client.INSTANCES[self.uid] = self
