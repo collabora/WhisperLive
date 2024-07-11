@@ -2,6 +2,7 @@ import os
 import shutil
 import wave
 
+import logging
 import numpy as np
 import pyaudio
 import threading
@@ -431,6 +432,8 @@ class TranscriptionTeeClient:
 
     def handle_ffmpeg_process(self, process, stream_type):
         print(f"[INFO]: Connecting to {stream_type} stream...")
+        stderr_thread = threading.Thread(target=self.consume_stderr, args=(process,))
+        stderr_thread.start()
         try:
             # Process the stream
             while True:
@@ -476,6 +479,16 @@ class TranscriptionTeeClient:
             )
 
         return process
+
+    def consume_stderr(self, process):
+        """
+        Consume and log the stderr output of a process in a separate thread.
+
+        Args:
+            process (subprocess.Popen): The process whose stderr output will be logged.
+        """
+        for line in iter(process.stderr.readline, b""):
+            logging.debug(f'[STDERR]: {line.decode()}')
 
     def save_chunk(self, n_audio_file):
         """
