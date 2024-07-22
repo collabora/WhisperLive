@@ -8,7 +8,7 @@ import numpy as np
 import evaluate
 
 from websockets.exceptions import ConnectionClosed
-from whisper_live.server import TranscriptionServer
+from whisper_live.server import TranscriptionServer, BackendType
 from whisper_live.client import Client, TranscriptionClient, TranscriptionTeeClient
 from whisper.normalizers import EnglishTextNormalizer
 
@@ -49,7 +49,7 @@ class TestServerConnection(unittest.TestCase):
             'task': 'transcribe',
             'model': 'tiny.en'
         })
-        self.server.recv_audio(mock_websocket, "faster_whisper")
+        self.server.recv_audio(mock_websocket, BackendType.FASTER_WHISPER)
 
     @mock.patch('websockets.WebSocketCommonProtocol')
     def test_recv_audio_exception_handling(self, mock_websocket):
@@ -61,7 +61,7 @@ class TestServerConnection(unittest.TestCase):
         }),  np.array([1, 2, 3]).tobytes()]
 
         with self.assertLogs(level="ERROR"):
-            self.server.recv_audio(mock_websocket, "faster_whisper")
+            self.server.recv_audio(mock_websocket, BackendType.FASTER_WHISPER)
 
         self.assertNotIn(mock_websocket, self.server.client_manager.clients)
 
@@ -127,7 +127,7 @@ class TestExceptionHandling(unittest.TestCase):
         mock_websocket.recv.side_effect = ConnectionClosed(1001, "testing connection closed")
 
         with self.assertLogs(level="INFO") as log:
-            self.server.recv_audio(mock_websocket, "faster_whisper")
+            self.server.recv_audio(mock_websocket, BackendType.FASTER_WHISPER)
             self.assertTrue(any("Connection closed by client" in message for message in log.output))
 
     @mock.patch('websockets.WebSocketCommonProtocol')
@@ -135,7 +135,7 @@ class TestExceptionHandling(unittest.TestCase):
         mock_websocket.recv.return_value = "invalid json"
 
         with self.assertLogs(level="ERROR") as log:
-            self.server.recv_audio(mock_websocket, "faster_whisper")
+            self.server.recv_audio(mock_websocket, BackendType.FASTER_WHISPER)
             self.assertTrue(any("Failed to decode JSON from client" in message for message in log.output))
 
     @mock.patch('websockets.WebSocketCommonProtocol')
@@ -143,7 +143,7 @@ class TestExceptionHandling(unittest.TestCase):
         mock_websocket.recv.side_effect = RuntimeError("Unexpected error")
 
         with self.assertLogs(level="ERROR") as log:
-            self.server.recv_audio(mock_websocket, "faster_whisper")
+            self.server.recv_audio(mock_websocket, BackendType.FASTER_WHISPER)
             for message in log.output:
                 print(message)
             print()
