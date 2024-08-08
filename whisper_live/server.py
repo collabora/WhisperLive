@@ -973,6 +973,7 @@ class ServeClientFasterWhisper(ServeClientBase):
 
             input_bytes, duration = self.get_audio_chunk_for_processing()
             if duration < 1.0:
+                time.sleep(0.1)     # wait for audio chunks to arrive
                 continue
             try:
                 input_sample = input_bytes.copy()
@@ -1046,12 +1047,14 @@ class ServeClientFasterWhisper(ServeClientBase):
                 self.transcript.append(self.format_segment(start, end, text_))
                 offset = min(duration, s.end)
 
-        self.current_out += segments[-1].text
-        last_segment = self.format_segment(
-            self.timestamp_offset + segments[-1].start,
-            self.timestamp_offset + min(duration, segments[-1].end),
-            self.current_out
-        )
+        # only process the segments if it satisfies the no_speech_thresh
+        if segments[-1].no_speech_prob <= self.no_speech_thresh:
+            self.current_out += segments[-1].text
+            last_segment = self.format_segment(
+                self.timestamp_offset + segments[-1].start,
+                self.timestamp_offset + min(duration, segments[-1].end),
+                self.current_out
+            )
 
         # if same incomplete segment is seen multiple times then update the offset
         # and append the segment to the list
