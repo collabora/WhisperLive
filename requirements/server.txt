@@ -1,5 +1,5 @@
 faster-whisper==1.0.1
-torch
+torch==2.3.0
 websockets
 onnxruntime==1.16.0
 numba

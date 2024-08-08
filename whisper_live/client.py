@@ -29,7 +29,8 @@ class Client:
         translate=False,
         model="small",
         srt_file_path="output.srt",
-        use_vad=True
+        use_vad=True,
+        log_transcription=True
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -57,11 +58,11 @@ class Client:
         self.use_vad = use_vad
         self.last_segment = None
         self.last_received_segment = None
+        self.log_transcription = log_transcription
 
         if translate:
             self.task = "translate"
 
-        self.timestamp_offset = 0.0
         self.audio_bytes = None
 
         if host is not None and port is not None:
@@ -118,10 +119,11 @@ class Client:
             self.last_response_received = time.time()
             self.last_received_segment = segments[-1]["text"]
 
-        # Truncate to last 3 entries for brevity.
-        text = text[-3:]
-        utils.clear_screen()
-        utils.print_transcript(text)
+        if self.log_transcription:
+            # Truncate to last 3 entries for brevity.
+            text = text[-3:]
+            utils.clear_screen()
+            utils.print_transcript(text)
 
     def on_message(self, ws, message):
         """
@@ -677,9 +679,10 @@ class TranscriptionClient(TranscriptionTeeClient):
         use_vad=True,
         save_output_recording=False,
         output_recording_filename="./output_recording.wav",
-        output_transcription_path="./output.srt"
+        output_transcription_path="./output.srt",
+        log_transcription=True,
     ):
-        self.client = Client(host, port, lang, translate, model, srt_file_path=output_transcription_path, use_vad=use_vad)
+        self.client = Client(host, port, lang, translate, model, srt_file_path=output_transcription_path, use_vad=use_vad, log_transcription=log_transcription)
         if save_output_recording and not output_recording_filename.endswith(".wav"):
             raise ValueError(f"Please provide a valid `output_recording_filename`: {output_recording_filename}")
         if not output_transcription_path.endswith(".srt"):
