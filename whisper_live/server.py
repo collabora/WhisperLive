@@ -1032,6 +1032,8 @@ class ServeClientFasterWhisper(ServeClientBase):
         """
         offset = None
         self.current_out = ''
+        last_segment = None
+
         # process complete segments
         if len(segments) > 1:
             for i, s in enumerate(segments[:-1]):
