@@ -31,34 +31,37 @@ The server supports two backends `faster_whisper` and `tensorrt`. If running `te
 ### Running the Server
 - [Faster Whisper](https://github.com/SYSTRAN/faster-whisper) backend
 ```bash
-python3 run_server.py --port 9090 \
-                      --backend faster_whisper
+python3 -m whisper_live.server --port 9090 --backend faster_whisper
   
 # running with custom model
-python3 run_server.py --port 9090 \
-                      --backend faster_whisper \
-                      -fw "/path/to/custom/faster/whisper/model"
+python3 -m whisper_live.server \
+        -p 9090 \
+        --backend faster_whisper \
+        -fw "/path/to/custom/faster/whisper/model"
 ```
 
 - TensorRT backend. Currently, we recommend to only use the docker setup for TensorRT. Follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) which works as expected. Make sure to build your TensorRT Engines before running the server with TensorRT backend.
 ```bash
 # Run English only model
-python3 run_server.py -p 9090 \
-                      -b tensorrt \
-                      -trt /home/TensorRT-LLM/examples/whisper/whisper_small_en
+python3 -m whisper_live.server \
+        -p 9090 \
+        -b tensorrt \
+        -trt /home/TensorRT-LLM/examples/whisper/whisper_small_en
 
 # Run Multilingual model
-python3 run_server.py -p 9090 \
-                      -b tensorrt \
-                      -trt /home/TensorRT-LLM/examples/whisper/whisper_small \
-                      -m
+python3 -m whisper_live.server \
+        -p 9090 \
+        -b tensorrt \
+        -trt /home/TensorRT-LLM/examples/whisper/whisper_small \
+        -m
 ```
 #### Controlling OpenMP Threads
 To control the number of threads used by OpenMP, you can set the `OMP_NUM_THREADS` environment variable. This is useful for managing CPU resources and ensuring consistent performance. If not specified, `OMP_NUM_THREADS` is set to `1` by default. You can change this by using the `--omp_num_threads` argument:
 ```bash
-python3 run_server.py --port 9090 \
-                      --backend faster_whisper \
-                      --omp_num_threads 4
+python3 -m whisper_live.server \
+        -p 9090 \
+        --backend faster_whisper \
+        --omp_num_threads 4
 ```
 
 #### Single model mode
@@ -131,9 +134,10 @@ client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/b
   bash build_whisper_tensorrt.sh /app/TensorRT-LLM-examples small.en
 
   # Run server with tiny.en
-  python3 run_server.py --port 9090 \
-                        --backend tensorrt \
-                        --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_en"
+  python3 -m whisper_live.server \
+          -p 9090 \
+          --backend tensorrt \
+          --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_en"
   ```
 
 - CPU
