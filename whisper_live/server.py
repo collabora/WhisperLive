@@ -191,8 +191,8 @@ class TranscriptionServer:
                 task=options["task"],
                 client_uid=options["uid"],
                 model=options["model"],
-                initial_prompt=options.get("initial_prompt"),
-                vad_parameters=options.get("vad_parameters"),
+                initial_prompt=options["options"].get("initial_prompt"),
+                vad_parameters=options["options"].get("vad_parameters"),
                 use_vad=self.use_vad,
                 single_model=self.single_model,
             )

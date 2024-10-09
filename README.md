@@ -88,6 +88,9 @@ client = TranscriptionClient(
   use_vad=False,
   save_output_recording=True,                         # Only used for microphone input, False by Default
   output_recording_filename="./output_recording.wav"  # Only used for microphone input
+  options={
+    'initial_prompt': None,                           #To add context replace None with any context for the model like this: 'Jane Doe context'
+  }
 )
 ```
 It connects to the server running on localhost at port 9090. Using a multilingual model, language for the transcription will be automatically detected. You can also use the language option to specify the target language for the transcription, in this case, English ("en"). The translate option should be set to `True` if we want to translate from the source language to English and `False` if we want to transcribe in the source language.
