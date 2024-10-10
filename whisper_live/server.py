@@ -147,7 +147,7 @@ class TranscriptionServer:
     RATE = 16000
 
     def __init__(self):
-        self.client_manager = ClientManager()
+        self.client_manager = None
         self.no_voice_activity_chunks = 0
         self.use_vad = True
         self.single_model = False
@@ -224,6 +224,12 @@ class TranscriptionServer:
             logging.info("New client connected")
             options = websocket.recv()
             options = json.loads(options)
+            
+            if self.client_manager is None:
+                max_clients = options.get('max_clients', 4)
+                max_connection_time = options.get('max_connection_time', 600)
+                self.client_manager = ClientManager(max_clients, max_connection_time)
+
             self.use_vad = options.get('use_vad')
             if self.client_manager.is_server_full(websocket, options):
                 websocket.close()
