@@ -10,4 +10,4 @@ jiwer
 evaluate
 numpy<2
 tiktoken==0.3.3
-openai-whisper
+openai-whisper==20231117
