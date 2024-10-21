@@ -22,7 +22,7 @@ SAMPLE_RATE = 16000
 N_FFT = 400
 HOP_LENGTH = 160
 CHUNK_LENGTH = 30
-N_SAMPLES = CHUNK_LENGTH * SAMPLE_RATE  # 480000 samples in a 30-second chunk
+N_SAMPLES = CHUNK_LENGTH * SAMPLE RATE  # 480000 samples in a 30-second chunk
 
 
 class WhisperEncoding:

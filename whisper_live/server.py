@@ -302,6 +302,7 @@ class TranscriptionServer:
             while not self.client_manager.is_client_timeout(websocket):
                 if not self.process_audio_frames(websocket):
                     break
+                self.handle_translation(websocket)  # Handle translation requests
         except ConnectionClosed:
             logging.info("Connection closed by client")
         except Exception as e:
@@ -311,6 +312,30 @@ class TranscriptionServer:
                 self.cleanup(websocket)
                 websocket.close()
             del websocket
+
+    def handle_translation(self, websocket):
+        """
+        Handle translation requests from the client.
+
+        Args:
+            websocket (WebSocket): The WebSocket connection for the client.
+        """
+        client = self.client_manager.get_client(websocket)
+        if client:
+            while True:
+                message = websocket.recv()
+                if message == "END_OF_TRANSLATION":
+                    break
+                data = json.loads(message)
+                text = data.get("text")
+                target_language = data.get("target_language")
+                if text and target_language:
+                    translated_text = client.transcriber.translate(text, target_language)
+                    response = {
+                        "uid": client.client_uid,
+                        "translated_text": translated_text
+                    }
+                    websocket.send(json.dumps(response))
 
     def run(self,
             host,
