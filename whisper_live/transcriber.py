@@ -474,7 +474,6 @@ class WhisperModel:
         # NOTE: This loop is obscurely flattened to make the diff readable.
         # A later commit should turn this into a simpler nested loop.
         # for seek_clip_start, seek_clip_end in seek_clips:
-        #     while seek < seek_clip_end
         while clip_idx < len(seek_clips):
             seek_clip_start, seek_clip_end = seek_clips[clip_idx]
             if seek_clip_end > content_frames:
@@ -1025,7 +1024,7 @@ class WhisperModel:
                     and segment["start"] - 0.5 > words[0]["start"]
                 ):
                     words[0]["start"] = max(
-                        0, min(words[0]["end"] - median_duration, segment["start"])
+                        0, min(words[0]["end"] - max_duration, segment["start"])
                     )
                 else:
                     segment["start"] = words[0]["start"]
@@ -1040,8 +1039,6 @@ class WhisperModel:
                     )
                 else:
                     segment["end"] = words[-1]["end"]
-
-                last_speech_timestamp = segment["end"]
 
             segment["words"] = words
 
@@ -1101,6 +1098,22 @@ class WhisperModel:
                 words, word_tokens, start_times, end_times, word_probabilities
             )
         ]
+
+    def translate(
+        self,
+        text: str,
+        target_language: str,
+        model: str = "Helsinki-NLP/opus-mt-en-ROMANCE",
+    ) -> str:
+        from transformers import MarianMTModel, MarianTokenizer
+
+        tokenizer = MarianTokenizer.from_pretrained(model)
+        model = MarianMTModel.from_pretrained(model)
+
+        translated = model.generate(**tokenizer(text, return_tensors="pt", padding=True))
+        translated_text = tokenizer.decode(translated[0], skip_special_tokens=True)
+
+        return translated_text
 
 
 def restore_speech_timestamps(

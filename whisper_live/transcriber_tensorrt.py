@@ -312,6 +312,11 @@ class WhisperTRTLLM(object):
         prediction = re.sub(r'<\|.*?\|>', '', prediction)
         return prediction.strip()
 
+    def translate(self, text, target_language):
+        # Placeholder function for sending transcribed text to a large model for translation
+        # Implement the actual translation logic here
+        return f"Translated ({target_language}): {text}"
+
 
 def decode_wav_file(
         model,
