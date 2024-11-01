@@ -159,6 +159,7 @@ async function startCapture(options) {
           task: options.task,
           modelSize: options.modelSize,
           useVad: options.useVad,
+          targetLanguage: options.targetLanguage, // Added target language for translation
         },
       });
     } else {
@@ -189,6 +190,25 @@ async function stopCapture() {
 
 
 /**
+ * Sends transcribed text to a large model for translation and sends the translated text to the client.
+ * @param {string} text - The transcribed text to be translated.
+ * @param {string} targetLanguage - The target language for translation.
+ * @returns {Promise<string>} - A Promise that resolves to the translated text.
+ */
+async function translateText(text, targetLanguage) {
+  // Placeholder function for sending transcribed text to a large model for translation
+  // Implement the actual translation logic here
+  return new Promise((resolve) => {
+    // Simulate translation delay
+    setTimeout(() => {
+      const translatedText = `Translated (${targetLanguage}): ${text}`;
+      resolve(translatedText);
+    }, 1000);
+  });
+}
+
+
+/**
  * Listens for messages from the runtime and performs corresponding actions.
  * @param {Object} message - The message received from the runtime.
  */
@@ -205,6 +225,10 @@ chrome.runtime.onMessage.addListener(async (message) => {
     chrome.runtime.sendMessage({ action: "toggleCaptureButtons", data: false });
     chrome.storage.local.set({ capturingState: { isCapturing: false } })
     stopCapture();
+  } else if (message.action === "translateText") {
+    const { text, targetLanguage } = message;
+    const translatedText = await translateText(text, targetLanguage);
+    chrome.runtime.sendMessage({ action: "translatedText", translatedText });
   }
 });
 

@@ -100,7 +100,8 @@ async function startRecord(option) {
           language: option.language,
           task: option.task,
           model: option.modelSize,
-          use_vad: option.useVad
+          use_vad: option.useVad,
+          targetLanguage: option.targetLanguage, // Added target language for translation
         })
       );
     };
