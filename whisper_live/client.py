@@ -112,9 +112,9 @@ class Client:
         for i, seg in enumerate(segments):
             if not text or text[-1] != seg["text"]:
                 text.append(seg["text"])
-                if i == len(segments) - 1:
+                if i == len(segments) - 1 and not seg["completed"]:
                     self.last_segment = seg
-                elif (self.server_backend == "faster_whisper" and
+                elif (self.server_backend == "faster_whisper" and seg["completed"] and
                       (not self.transcript or
                         float(seg['start']) >= float(self.transcript[-1]['end']))):
                     self.transcript.append(seg)
@@ -259,7 +259,7 @@ class Client:
 
         """
         if self.server_backend == "faster_whisper":
-            if (self.last_segment):
+            if (self.last_segment) and self.transcript[-1]["text"] != self.last_segment["text"]:
                 self.transcript.append(self.last_segment)
             utils.create_srt_file(self.transcript, output_path)
 
