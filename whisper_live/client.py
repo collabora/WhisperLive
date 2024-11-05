@@ -32,6 +32,8 @@ class Client:
         use_vad=True,
         log_transcription=True,
         options=None
+        max_clients=4,
+        max_connection_time=600,
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -61,6 +63,9 @@ class Client:
         self.last_received_segment = None
         self.log_transcription = log_transcription
         self.options = options
+        self.max_clients = max_clients
+        self.max_connection_time = max_connection_time
+
 
         if translate:
             self.task = "translate"
@@ -110,9 +115,9 @@ class Client:
         for i, seg in enumerate(segments):
             if not text or text[-1] != seg["text"]:
                 text.append(seg["text"])
-                if i == len(segments) - 1:
+                if i == len(segments) - 1 and not seg["completed"]:
                     self.last_segment = seg
-                elif (self.server_backend == "faster_whisper" and
+                elif (self.server_backend == "faster_whisper" and seg["completed"] and
                       (not self.transcript or
                         float(seg['start']) >= float(self.transcript[-1]['end']))):
                     self.transcript.append(seg)
@@ -203,6 +208,8 @@ class Client:
                     "model": self.model,
                     "use_vad": self.use_vad,
                     "options": self.options
+                    "max_clients": self.max_clients,
+                    "max_connection_time": self.max_connection_time,
                 }
             )
         )
@@ -256,7 +263,7 @@ class Client:
 
         """
         if self.server_backend == "faster_whisper":
-            if (self.last_segment):
+            if (self.last_segment) and self.transcript[-1]["text"] != self.last_segment["text"]:
                 self.transcript.append(self.last_segment)
             utils.create_srt_file(self.transcript, output_path)
 
@@ -685,8 +692,15 @@ class TranscriptionClient(TranscriptionTeeClient):
         output_transcription_path="./output.srt",
         log_transcription=True,
         options=None,
+        max_clients=4,
+        max_connection_time=600,
     ):
-        self.client = Client(host, port, lang, translate, model, srt_file_path=output_transcription_path, use_vad=use_vad, log_transcription=log_transcription, options=options)
+        self.client = Client(
+            host, port, lang, translate, model, srt_file_path=output_transcription_path,
+            use_vad=use_vad, log_transcription=log_transcription, options=options, max_clients=max_clients,
+            max_connection_time=max_connection_time
+        )
+
         if save_output_recording and not output_recording_filename.endswith(".wav"):
             raise ValueError(f"Please provide a valid `output_recording_filename`: {output_recording_filename}")
         if not output_transcription_path.endswith(".srt"):

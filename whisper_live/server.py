@@ -147,7 +147,7 @@ class TranscriptionServer:
     RATE = 16000
 
     def __init__(self):
-        self.client_manager = ClientManager()
+        self.client_manager = None
         self.no_voice_activity_chunks = 0
         self.use_vad = True
         self.single_model = False
@@ -224,6 +224,12 @@ class TranscriptionServer:
             logging.info("New client connected")
             options = websocket.recv()
             options = json.loads(options)
+            
+            if self.client_manager is None:
+                max_clients = options.get('max_clients', 4)
+                max_connection_time = options.get('max_connection_time', 600)
+                self.client_manager = ClientManager(max_clients, max_connection_time)
+
             self.use_vad = options.get('use_vad')
             if self.client_manager.is_server_full(websocket, options):
                 websocket.close()
@@ -995,7 +1001,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
                 time.sleep(0.01)
 
-    def format_segment(self, start, end, text):
+    def format_segment(self, start, end, text, completed=False):
         """
         Formats a transcription segment with precise start and end times alongside the transcribed text.
 
@@ -1012,7 +1018,8 @@ class ServeClientFasterWhisper(ServeClientBase):
         return {
             'start': "{:.3f}".format(start),
             'end': "{:.3f}".format(end),
-            'text': text
+            'text': text,
+            'completed': completed
         }
 
     def update_segments(self, segments, duration):
@@ -1052,7 +1059,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 if s.no_speech_prob > self.no_speech_thresh:
                     continue
 
-                self.transcript.append(self.format_segment(start, end, text_))
+                self.transcript.append(self.format_segment(start, end, text_, completed=True))
                 offset = min(duration, s.end)
 
         # only process the segments if it satisfies the no_speech_thresh
@@ -1061,7 +1068,8 @@ class ServeClientFasterWhisper(ServeClientBase):
             last_segment = self.format_segment(
                 self.timestamp_offset + segments[-1].start,
                 self.timestamp_offset + min(duration, segments[-1].end),
-                self.current_out
+                self.current_out,
+                completed=False
             )
 
         # if same incomplete segment is seen multiple times then update the offset
@@ -1077,7 +1085,8 @@ class ServeClientFasterWhisper(ServeClientBase):
                 self.transcript.append(self.format_segment(
                     self.timestamp_offset,
                     self.timestamp_offset + duration,
-                    self.current_out
+                    self.current_out,
+                    completed=True
                 ))
             self.current_out = ''
             offset = duration
