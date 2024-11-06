@@ -1,0 +1,13 @@
+PyAudio
+faster-whisper==1.0.1
+torch
+torchaudio
+websockets
+onnxruntime==1.16.0
+ffmpeg-python
+scipy
+websocket-client
+numba
+openai-whisper
+kaldialign
+soundfile

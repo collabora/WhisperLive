@@ -22,7 +22,7 @@ SAMPLE_RATE = 16000
 N_FFT = 400
 HOP_LENGTH = 160
 CHUNK_LENGTH = 30
-N_SAMPLES = CHUNK_LENGTH * SAMPLE_RATE  # 480000 samples in a 30-second chunk
+N_SAMPLES = CHUNK_LENGTH * SAMPLE RATE  # 480000 samples in a 30-second chunk
 
 
 class WhisperEncoding:
@@ -311,6 +311,11 @@ class WhisperTRTLLM(object):
         # remove all special tokens in the prediction
         prediction = re.sub(r'<\|.*?\|>', '', prediction)
         return prediction.strip()
+
+    def translate(self, text, target_language):
+        # Placeholder function for sending transcribed text to a large model for translation
+        # Implement the actual translation logic here
+        return f"Translated ({target_language}): {text}"
 
 
 def decode_wav_file(
