@@ -31,7 +31,7 @@ class Client:
         srt_file_path="output.srt",
         use_vad=True,
         log_transcription=True,
-        options=None
+        options=None,
         max_clients=4,
         max_connection_time=600,
     ):
@@ -207,7 +207,7 @@ class Client:
                     "task": self.task,
                     "model": self.model,
                     "use_vad": self.use_vad,
-                    "options": self.options
+                    "options": self.options,
                     "max_clients": self.max_clients,
                     "max_connection_time": self.max_connection_time,
                 }
