@@ -780,8 +780,11 @@ class ServeClientFasterWhisper(ServeClientBase):
         super().__init__(client_uid, websocket)
         self.model_sizes = [
             "tiny", "tiny.en", "base", "base.en", "small", "small.en",
-            "medium", "medium.en", "large-v2", "large-v3",
+            "medium", "medium.en", "large-v2", "large-v3", "distil-small.en",
+            "distil-medium.en", "distil-large-v2", "distil-large-v3",
+            "large-v3-turbo", "turbo"
         ]
+
         if not os.path.exists(model):
             self.model_size_or_path = self.check_valid_model(model)
         else:
@@ -789,7 +792,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         self.language = "en" if self.model_size_or_path.endswith("en") else language
         self.task = task
         self.initial_prompt = initial_prompt
-        self.vad_parameters = vad_parameters or {"threshold": 0.5}
+        self.vad_parameters = vad_parameters or {"onset": 0.5}
         self.no_speech_thresh = 0.45
 
         device = "cuda" if torch.cuda.is_available() else "cpu"

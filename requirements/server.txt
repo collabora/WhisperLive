@@ -1,4 +1,4 @@
-faster-whisper==1.0.1
+faster-whisper @ https://github.com/SYSTRAN/faster-whisper/archive/8f01aee36b562e6be537e0341cdd40dc8bed33a7.tar.gz
 websockets
 onnxruntime==1.16.0
 numba
@@ -9,5 +9,5 @@ scipy
 jiwer
 evaluate
 numpy<2
-tiktoken==0.3.3
-openai-whisper==20231117
+tiktoken==0.8.0
+openai-whisper==20240930
