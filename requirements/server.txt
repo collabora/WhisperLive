@@ -9,5 +9,4 @@ scipy
 jiwer
 evaluate
 numpy<2
-tiktoken==0.8.0
 openai-whisper==20240930
