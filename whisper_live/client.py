@@ -259,7 +259,9 @@ class Client:
 
         """
         if self.server_backend == "faster_whisper":
-            if (self.last_segment) and self.transcript[-1]["text"] != self.last_segment["text"]:
+            if not self.transcript and self.last_segment is not None:
+                self.transcript.append(self.last_segment)
+            elif self.last_segment and self.transcript[-1]["text"] != self.last_segment["text"]:
                 self.transcript.append(self.last_segment)
             utils.create_srt_file(self.transcript, output_path)
 
