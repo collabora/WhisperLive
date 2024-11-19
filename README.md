@@ -91,6 +91,9 @@ client = TranscriptionClient(
   use_vad=False,
   save_output_recording=True,                         # Only used for microphone input, False by Default
   output_recording_filename="./output_recording.wav", # Only used for microphone input
+  options={
+    'initial_prompt': None,                           #To add context replace None with any context for the model like this: 'Jane Doe context'
+  },
   max_clients=4,
   max_connection_time=600
 )
