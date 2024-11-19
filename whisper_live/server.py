@@ -417,7 +417,7 @@ class ServeClientBase(object):
         self.prev_out = ''
         self.t_start = None
         self.exit = False
-        self.same_output_threshold = 0
+        self.same_output_count = 0
         self.show_prev_out_thresh = 5   # if pause(no output from whisper) show previous output for 5 seconds
         self.add_pause_thresh = 3       # add a blank to segment list as a pause(no speech) for 3 seconds
         self.transcript = []
@@ -794,6 +794,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         self.initial_prompt = initial_prompt
         self.vad_parameters = vad_parameters or {"onset": 0.5}
         self.no_speech_thresh = 0.45
+        self.same_output_threshold = 10
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         if device == "cuda":
@@ -1051,7 +1052,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         last_segment = None
 
         # process complete segments
-        if len(segments) > 1:
+        if len(segments) > 1 and segments[-1].no_speech_prob <= self.no_speech_thresh:
             for i, s in enumerate(segments[:-1]):
                 text_ = s.text
                 self.text.append(text_)
@@ -1065,7 +1066,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 self.transcript.append(self.format_segment(start, end, text_, completed=True))
                 offset = min(duration, s.end)
 
-        # only process the segments if it satisfies the no_speech_thresh
+        # only process the last segment if it satisfies the no_speech_thresh
         if segments[-1].no_speech_prob <= self.no_speech_thresh:
             self.current_out += segments[-1].text
             last_segment = self.format_segment(
@@ -1075,14 +1076,15 @@ class ServeClientFasterWhisper(ServeClientBase):
                 completed=False
             )
 
+        if self.current_out.strip() == self.prev_out.strip() and self.current_out != '':
+            self.same_output_count += 1
+            time.sleep(0.1)     # wait for some voice activity just in case there is an unitended pause from the speaker for better punctuations.
+        else:
+            self.same_output_count = 0
+        
         # if same incomplete segment is seen multiple times then update the offset
         # and append the segment to the list
-        if self.current_out.strip() == self.prev_out.strip() and self.current_out != '':
-            self.same_output_threshold += 1
-        else:
-            self.same_output_threshold = 0
-
-        if self.same_output_threshold > 5:
+        if self.same_output_count > self.same_output_threshold:
             if not len(self.text) or self.text[-1].strip().lower() != self.current_out.strip().lower():
                 self.text.append(self.current_out)
                 self.transcript.append(self.format_segment(
@@ -1093,7 +1095,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 ))
             self.current_out = ''
             offset = duration
-            self.same_output_threshold = 0
+            self.same_output_count = 0
             last_segment = None
         else:
             self.prev_out = self.current_out
