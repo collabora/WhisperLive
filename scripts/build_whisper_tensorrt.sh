@@ -38,11 +38,23 @@ download_and_build_model() {
         "large-v3" | "large")
             model_url="https://openaipublic.azureedge.net/main/whisper/models/e5b1a55b89c1367dacf97e3e19bfd829a01529dbfdeefa8caeb59b3f1b81dadb/large-v3.pt"
             ;;
+        "large-v3-turbo" | "turbo")
+            model_url="https://openaipublic.azureedge.net/main/whisper/models/aff26ae408abcba5fbf8813c21e62b0941638c5f6eebfb145be0c9839262a19a/large-v3-turbo.pt"
+            ;;
         *)
             echo "Invalid model name: $model_name"
             exit 1
             ;;
     esac
+
+    if [ "$model_name" == "turbo" ]; then
+        model_name="large-v3-turbo"
+    fi
+
+    local inference_precision="float16"
+    local weight_only_precision="${2:-float16}"
+    local max_beam_width=4
+    local max_batch_size=1
 
     echo "Downloading $model_name..."
     # wget --directory-prefix=assets "$model_url"
@@ -54,11 +66,43 @@ download_and_build_model() {
         echo "${model_name}.pt already exists in assets directory."
     fi
 
-    local output_dir="whisper_${model_name//./_}"
+    local sanitized_model_name="${model_name//./_}"
+    local checkpoint_dir="whisper_${sanitized_model_name}_weights_${weight_only_precision}"
+    local output_dir="whisper_${sanitized_model_name}_${weight_only_precision}"
     echo "$output_dir"
-    echo "Running build script for $model_name with output directory $output_dir"
-    python3 build.py --output_dir "$output_dir" --use_gpt_attention_plugin --use_gemm_plugin  --use_bert_attention_plugin --enable_context_fmha --model_name "$model_name"
-    echo "Whisper $model_name TensorRT engine built."
+    echo "Converting model weights for $model_name..."
+    python3 convert_checkpoint.py \
+        $( [[ "$weight_only_precision" == "int8" || "$weight_only_precision" == "int4" ]] && echo "--use_weight_only --weight_only_precision $weight_only_precision" ) \
+        --output_dir "$checkpoint_dir" --model_name "$model_name"
+    
+    echo "Building encoder for $model_name..."
+    trtllm-build \
+        --checkpoint_dir "${checkpoint_dir}/encoder" \
+        --output_dir "${output_dir}/encoder" \
+        --moe_plugin disable \
+        --enable_xqa disable \
+        --max_batch_size "$max_batch_size" \
+        --gemm_plugin disable \
+        --bert_attention_plugin "$inference_precision" \
+        --max_input_len 3000 \
+        --max_seq_len 3000
+    
+    echo "Building decoder for $model_name..."
+    trtllm-build \
+        --checkpoint_dir "${checkpoint_dir}/decoder" \
+        --output_dir "${output_dir}/decoder" \
+        --moe_plugin disable \
+        --enable_xqa disable \
+        --max_beam_width "$max_beam_width" \
+        --max_batch_size "$max_batch_size" \
+        --max_seq_len 200 \
+        --max_input_len 14 \
+        --max_encoder_input_len 3000 \
+        --gemm_plugin "$inference_precision" \
+        --bert_attention_plugin "$inference_precision" \
+        --gpt_attention_plugin "$inference_precision"
+
+    echo "TensorRT LLM engine built for $model_name."
     echo "========================================="
     echo "Model is located at: $(pwd)/$output_dir"
 }
@@ -70,8 +114,9 @@ fi
 
 tensorrt_examples_dir="$1"
 model_name="${2:-small.en}"
+weight_only_precision="${3:-float16}"  # Default to float16 if not provided
 
-cd $1/whisper
+cd $tensorrt_examples_dir/whisper
 pip install --no-deps -r requirements.txt
 
-download_and_build_model "$model_name"
+download_and_build_model "$model_name" "$weight_only_precision"
