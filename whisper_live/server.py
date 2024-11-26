@@ -181,22 +181,26 @@ class TranscriptionServer:
                 }))
                 self.backend = BackendType.FASTER_WHISPER
 
-        if self.backend.is_faster_whisper():
-            if faster_whisper_custom_model_path is not None and os.path.exists(faster_whisper_custom_model_path):
-                logging.info(f"Using custom model {faster_whisper_custom_model_path}")
-                options["model"] = faster_whisper_custom_model_path
-            client = ServeClientFasterWhisper(
-                websocket,
-                language=options["language"],
-                task=options["task"],
-                client_uid=options["uid"],
-                model=options["model"],
-                initial_prompt=options.get("initial_prompt"),
-                vad_parameters=options.get("vad_parameters"),
-                use_vad=self.use_vad,
-                single_model=self.single_model,
-            )
-            logging.info("Running faster_whisper backend.")
+        try:
+            if self.backend.is_faster_whisper():
+                if faster_whisper_custom_model_path is not None and os.path.exists(faster_whisper_custom_model_path):
+                    logging.info(f"Using custom model {faster_whisper_custom_model_path}")
+                    options["model"] = faster_whisper_custom_model_path
+                client = ServeClientFasterWhisper(
+                    websocket,
+                    language=options["language"],
+                    task=options["task"],
+                    client_uid=options["uid"],
+                    model=options["model"],
+                    initial_prompt=options.get("initial_prompt"),
+                    vad_parameters=options.get("vad_parameters"),
+                    use_vad=self.use_vad,
+                    single_model=self.single_model,
+                )
+
+                logging.info("Running faster_whisper backend.")
+        except Exception as e:
+            return
 
         if client is None:
             raise ValueError(f"Backend type {self.backend.value} not recognised or not handled.")
@@ -224,7 +228,7 @@ class TranscriptionServer:
             logging.info("New client connected")
             options = websocket.recv()
             options = json.loads(options)
-            
+
             if self.client_manager is None:
                 max_clients = options.get('max_clients', 4)
                 max_connection_time = options.get('max_connection_time', 600)
@@ -785,10 +789,7 @@ class ServeClientFasterWhisper(ServeClientBase):
             "large-v3-turbo", "turbo"
         ]
 
-        if not os.path.exists(model):
-            self.model_size_or_path = self.check_valid_model(model)
-        else:
-            self.model_size_or_path = model
+        self.model_size_or_path = model
         self.language = "en" if self.model_size_or_path.endswith("en") else language
         self.task = task
         self.initial_prompt = initial_prompt
@@ -806,15 +807,25 @@ class ServeClientFasterWhisper(ServeClientBase):
         if self.model_size_or_path is None:
             return
         logging.info(f"Using Device={device} with precision {self.compute_type}")
-
-        if single_model:
-            if ServeClientFasterWhisper.SINGLE_MODEL is None:
-                self.create_model(device)
-                ServeClientFasterWhisper.SINGLE_MODEL = self.transcriber
+    
+        try:
+            if single_model:
+                if ServeClientFasterWhisper.SINGLE_MODEL is None:
+                    self.create_model(device)
+                    ServeClientFasterWhisper.SINGLE_MODEL = self.transcriber
+                else:
+                    self.transcriber = ServeClientFasterWhisper.SINGLE_MODEL
             else:
-                self.transcriber = ServeClientFasterWhisper.SINGLE_MODEL
-        else:
-            self.create_model(device)
+                self.create_model(device)
+        except Exception as e:
+            logging.error(f"Failed to load model: {e}")
+            self.websocket.send(json.dumps({
+                "uid": self.client_uid,
+                "status": "ERROR",
+                "message": f"Failed to load model: {str(self.model_size_or_path)}"
+            }))
+            self.websocket.close()
+            return
 
         self.use_vad = use_vad
 
