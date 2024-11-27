@@ -1,4 +1,4 @@
-faster-whisper @ https://github.com/SYSTRAN/faster-whisper/archive/8f01aee36b562e6be537e0341cdd40dc8bed33a7.tar.gz
+faster-whisper==1.1.0
 websockets
 onnxruntime==1.16.0
 numba
