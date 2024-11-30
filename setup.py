@@ -43,7 +43,7 @@ setup(
     ),
     install_requires=[
         "PyAudio",
-        "faster-whisper==1.0.1",
+        "faster-whisper==1.1.0",
         "torch",
         "torchaudio",
         "websockets",
