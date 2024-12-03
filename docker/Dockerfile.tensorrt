@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
 FROM base AS devel
 RUN pip3 install --no-cache-dir -U tensorrt_llm==0.15.0.dev2024111200 --extra-index-url https://pypi.nvidia.com
 WORKDIR /app
-RUN git clone --depth 1 https://github.com/NVIDIA/TensorRT-LLM.git && cd TensorRT-LLM && \
+RUN git clone https://github.com/NVIDIA/TensorRT-LLM.git && cd TensorRT-LLM && \
     git checkout c629546ce429623c8a163633095230154a6f0574 && cd ../ && \
     mv TensorRT-LLM/examples ./TensorRT-LLM-examples && \
     rm -rf TensorRT-LLM
