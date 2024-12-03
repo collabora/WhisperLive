@@ -1,0 +1,30 @@
+FROM nvidia/cuda:12.5.1-runtime-ubuntu22.04 AS base
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    python3.10 python3-pip openmpi-bin libopenmpi-dev git git-lfs wget \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM base AS devel
+RUN pip3 install --no-cache-dir -U tensorrt_llm==0.15.0.dev2024111200 --extra-index-url https://pypi.nvidia.com
+WORKDIR /app
+RUN git clone https://github.com/NVIDIA/TensorRT-LLM.git && cd TensorRT-LLM && \
+    git checkout c629546ce429623c8a163633095230154a6f0574 && cd ../ && \
+    mv TensorRT-LLM/examples ./TensorRT-LLM-examples && \
+    rm -rf TensorRT-LLM
+
+
+FROM devel AS release
+WORKDIR /app
+COPY assets/ ./assets
+RUN wget -nc -P assets/ https://raw.githubusercontent.com/openai/whisper/main/whisper/assets/mel_filters.npz
+
+COPY scripts/setup.sh ./
+RUN apt update && bash setup.sh && rm setup.sh
+
+COPY requirements/server.txt .
+RUN pip install --no-cache-dir -r server.txt && rm server.txt
+COPY whisper_live ./whisper_live
+COPY scripts/build_whisper_tensorrt.sh .
+COPY run_server.py .

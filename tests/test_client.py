@@ -48,7 +48,9 @@ class TestClientCallbacks(BaseTestCase):
             "language": self.client.language,
             "task": self.client.task,
             "model": self.client.model,
-            "use_vad": True
+            "use_vad": True,
+            "max_clients": 4,
+            "max_connection_time": 600,
         })
         self.client.on_open(self.mock_ws_app)
         self.mock_ws_app.send.assert_called_with(expected_message)
@@ -66,15 +68,15 @@ class TestClientCallbacks(BaseTestCase):
         message = json.dumps({
             "uid": self.client.uid,
             "segments": [
-                {"start": 0, "end": 1, "text": "Test transcript"},
-                {"start": 1, "end": 2, "text": "Test transcript 2"},
-                {"start": 2, "end": 3, "text": "Test transcript 3"}
+                {"start": 0, "end": 1, "text": "Test transcript", "completed": True},
+                {"start": 1, "end": 2, "text": "Test transcript 2", "completed": True},
+                {"start": 2, "end": 3, "text": "Test transcript 3", "completed": True}
             ]
         })
         self.client.on_message(self.mock_ws_app, message)
 
         # Assert that the transcript was updated correctly
-        self.assertEqual(len(self.client.transcript), 2)
+        self.assertEqual(len(self.client.transcript), 3)
         self.assertEqual(self.client.transcript[1]['text'], "Test transcript 2")
 
     def test_on_close(self):
