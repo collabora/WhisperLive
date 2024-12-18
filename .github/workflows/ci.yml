@@ -101,7 +101,7 @@ jobs:
   
   build-and-push-docker-tensorrt:
     needs: [run-tests, check-code-format]
-    timeout-minutes: 20
+    timeout-minutes: 60
     runs-on: ubuntu-22.04
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     steps:
