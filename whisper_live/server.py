@@ -479,9 +479,10 @@ class ServeClientBase(object):
         Clip audio if the current chunk exceeds 30 seconds, this basically implies that
         no valid segment for the last 30 seconds from whisper
         """
-        if self.frames_np[int((self.timestamp_offset - self.frames_offset)*self.RATE):].shape[0] > 25 * self.RATE:
-            duration = self.frames_np.shape[0] / self.RATE
-            self.timestamp_offset = self.frames_offset + duration - 5
+        with self.lock:
+            if self.frames_np[int((self.timestamp_offset - self.frames_offset)*self.RATE):].shape[0] > 25 * self.RATE:
+                duration = self.frames_np.shape[0] / self.RATE
+                self.timestamp_offset = self.frames_offset + duration - 5
 
     def get_audio_chunk_for_processing(self):
         """
@@ -497,8 +498,9 @@ class ServeClientBase(object):
                 - input_bytes (np.ndarray): The next chunk of audio data to be processed.
                 - duration (float): The duration of the audio chunk in seconds.
         """
-        samples_take = max(0, (self.timestamp_offset - self.frames_offset) * self.RATE)
-        input_bytes = self.frames_np[int(samples_take):].copy()
+        with self.lock:
+            samples_take = max(0, (self.timestamp_offset - self.frames_offset) * self.RATE)
+            input_bytes = self.frames_np[int(samples_take):].copy()
         duration = input_bytes.shape[0] / self.RATE
         return input_bytes, duration
 
@@ -715,7 +717,9 @@ class ServeClientTensorRT(ServeClientBase):
             self.transcript.append({"text": last_segment + " "})
         elif self.transcript[-1]["text"].strip() != last_segment:
             self.transcript.append({"text": last_segment + " "})
-        self.timestamp_offset += duration
+        
+        with self.lock():
+            self.timestamp_offset += duration
 
     def speech_to_text(self):
         """
@@ -1067,7 +1071,8 @@ class ServeClientFasterWhisper(ServeClientBase):
             for i, s in enumerate(segments[:-1]):
                 text_ = s.text
                 self.text.append(text_)
-                start, end = self.timestamp_offset + s.start, self.timestamp_offset + min(duration, s.end)
+                with self.lock:
+                    start, end = self.timestamp_offset + s.start, self.timestamp_offset + min(duration, s.end)
 
                 if start >= end:
                     continue
@@ -1080,12 +1085,13 @@ class ServeClientFasterWhisper(ServeClientBase):
         # only process the last segment if it satisfies the no_speech_thresh
         if segments[-1].no_speech_prob <= self.no_speech_thresh:
             self.current_out += segments[-1].text
-            last_segment = self.format_segment(
-                self.timestamp_offset + segments[-1].start,
-                self.timestamp_offset + min(duration, segments[-1].end),
-                self.current_out,
-                completed=False
-            )
+            with self.lock:
+                last_segment = self.format_segment(
+                    self.timestamp_offset + segments[-1].start,
+                    self.timestamp_offset + min(duration, segments[-1].end),
+                    self.current_out,
+                    completed=False
+                )
 
         if self.current_out.strip() == self.prev_out.strip() and self.current_out != '':
             self.same_output_count += 1
@@ -1098,12 +1104,13 @@ class ServeClientFasterWhisper(ServeClientBase):
         if self.same_output_count > self.same_output_threshold:
             if not len(self.text) or self.text[-1].strip().lower() != self.current_out.strip().lower():
                 self.text.append(self.current_out)
-                self.transcript.append(self.format_segment(
-                    self.timestamp_offset,
-                    self.timestamp_offset + duration,
-                    self.current_out,
-                    completed=True
-                ))
+                with self.lock:
+                    self.transcript.append(self.format_segment(
+                        self.timestamp_offset,
+                        self.timestamp_offset + duration,
+                        self.current_out,
+                        completed=True
+                    ))
             self.current_out = ''
             offset = duration
             self.same_output_count = 0
@@ -1113,6 +1120,7 @@ class ServeClientFasterWhisper(ServeClientBase):
 
         # update offset
         if offset is not None:
-            self.timestamp_offset += offset
+            with self.lock:
+                self.timestamp_offset += offset
 
         return last_segment
