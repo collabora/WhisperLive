@@ -43,7 +43,7 @@ setup(
     ),
     install_requires=[
         "PyAudio",
-        "faster-whisper==1.0.1",
+        "faster-whisper==1.1.0",
         "torch",
         "torchaudio",
         "websockets",
@@ -52,9 +52,10 @@ setup(
         "scipy",
         "websocket-client",
         "numba",
-        "openai-whisper",
+        "openai-whisper==20240930",
         "kaldialign",
         "soundfile",
+        "tokenizers==0.20.3"
     ],
     python_requires=">=3.8"
 )
