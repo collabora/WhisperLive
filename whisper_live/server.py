@@ -800,6 +800,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         self.vad_parameters = vad_parameters or {"onset": 0.5}
         self.no_speech_thresh = 0.45
         self.same_output_threshold = 10
+        self.end_time_for_same_output = None
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         if device == "cuda":
@@ -1095,10 +1096,16 @@ class ServeClientFasterWhisper(ServeClientBase):
 
         if self.current_out.strip() == self.prev_out.strip() and self.current_out != '':
             self.same_output_count += 1
+
+            # if we remove the audio because of same output on the nth reptition we might remove the 
+            # audio thats not yet transcribed so, capturing the time when it was repeated for the first time
+            if self.end_time_for_same_output is None:
+                self.end_time_for_same_output = segments[-1].end
             time.sleep(0.1)     # wait for some voice activity just in case there is an unitended pause from the speaker for better punctuations.
         else:
             self.same_output_count = 0
-        
+            self.end_time_for_same_output = None
+
         # if same incomplete segment is seen multiple times then update the offset
         # and append the segment to the list
         if self.same_output_count > self.same_output_threshold:
@@ -1107,14 +1114,15 @@ class ServeClientFasterWhisper(ServeClientBase):
                 with self.lock:
                     self.transcript.append(self.format_segment(
                         self.timestamp_offset,
-                        self.timestamp_offset + duration,
+                        self.timestamp_offset + min(duration, self.end_time_for_same_output),
                         self.current_out,
                         completed=True
                     ))
             self.current_out = ''
-            offset = duration
+            offset = min(duration, self.end_time_for_same_output)
             self.same_output_count = 0
             last_segment = None
+            self.end_time_for_same_output = None
         else:
             self.prev_out = self.current_out
 
