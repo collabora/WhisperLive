@@ -718,7 +718,7 @@ class ServeClientTensorRT(ServeClientBase):
         elif self.transcript[-1]["text"].strip() != last_segment:
             self.transcript.append({"text": last_segment + " "})
         
-        with self.lock():
+        with self.lock:
             self.timestamp_offset += duration
 
     def speech_to_text(self):
