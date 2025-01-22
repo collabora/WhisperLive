@@ -1,8 +1,9 @@
 import os
 import textwrap
 import scipy
-import ffmpeg
 import numpy as np
+import av
+from pathlib import Path
 
 
 def clear_screen():
@@ -26,8 +27,8 @@ def format_time(s):
     return f"{hours:02}:{minutes:02}:{seconds:02},{milliseconds:03}"
 
 
-def create_srt_file(segments, output_file):
-    with open(output_file, 'w', encoding='utf-8') as srt_file:
+def create_srt_file(segments, resampled_file):
+    with open(resampled_file, 'w', encoding='utf-8') as srt_file:
         segment_number = 1
         for segment in segments:
             start_time = format_time(float(segment['start']))
@@ -43,9 +44,7 @@ def create_srt_file(segments, output_file):
 
 def resample(file: str, sr: int = 16000):
     """
-    # https://github.com/openai/whisper/blob/7858aa9c08d98f75575035ecd6481f462d66ca27/whisper/audio.py#L22
-    Open an audio file and read as mono waveform, resampling as necessary,
-    save the resampled audio
+    Resample the audio file to 16kHz.
 
     Args:
         file (str): The audio file to open
@@ -54,18 +53,30 @@ def resample(file: str, sr: int = 16000):
     Returns:
         resampled_file (str): The resampled audio file
     """
-    try:
-        # This launches a subprocess to decode audio while down-mixing and resampling as necessary.
-        # Requires the ffmpeg CLI and `ffmpeg-python` package to be installed.
-        out, _ = (
-            ffmpeg.input(file, threads=0)
-            .output("-", format="s16le", acodec="pcm_s16le", ac=1, ar=sr)
-            .run(cmd=["ffmpeg", "-nostdin"], capture_stdout=True, capture_stderr=True)
-        )
-    except ffmpeg.Error as e:
-        raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
-    np_buffer = np.frombuffer(out, dtype=np.int16)
+    container = av.open(file)
+    stream = next(s for s in container.streams if s.type == 'audio')
 
-    resampled_file = f"{file.split('.')[0]}_resampled.wav"
-    scipy.io.wavfile.write(resampled_file, sr, np_buffer.astype(np.int16))
+    resampler = av.AudioResampler(
+        format='s16',
+        layout='mono',
+        rate=sr,
+    )
+
+    resampled_file = Path(file).stem + "_resampled.wav"
+    output_container = av.open(resampled_file, mode='w')
+    output_stream = output_container.add_stream('pcm_s16le', rate=sr)
+    output_stream.layout = 'mono'
+
+    for frame in container.decode(audio=0):
+        frame.pts = None
+        resampled_frames = resampler.resample(frame)
+        if resampled_frames is not None:
+            for resampled_frame in resampled_frames:
+                for packet in output_stream.encode(resampled_frame):
+                    output_container.mux(packet)
+
+    for packet in output_stream.encode(None):
+        output_container.mux(packet)
+
+    output_container.close()
     return resampled_file

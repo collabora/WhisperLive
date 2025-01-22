@@ -12,7 +12,7 @@ to convert speech input into text output. It can be used to transcribe both live
 input from microphone and pre-recorded audio files.
 
 ## Installation
-- Install PyAudio and ffmpeg
+- Install PyAudio
 ```bash
  bash scripts/setup.sh
 ```

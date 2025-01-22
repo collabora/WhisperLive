@@ -4,8 +4,8 @@ onnxruntime==1.16.0
 numba
 kaldialign
 soundfile
-ffmpeg-python
 scipy
+av
 jiwer
 evaluate
 numpy<2
