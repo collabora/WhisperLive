@@ -25,6 +25,7 @@ RUN apt update && bash setup.sh && rm setup.sh
 
 COPY requirements/server.txt .
 RUN pip install --no-cache-dir -r server.txt && rm server.txt
+RUN pip install pynvml==11.5.0
 COPY whisper_live ./whisper_live
 COPY scripts/build_whisper_tensorrt.sh .
 COPY run_server.py .

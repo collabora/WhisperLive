@@ -23,8 +23,12 @@ from typing import Dict, Iterable, List, Optional, TextIO, Tuple, Union
 import kaldialign
 import numpy as np
 import soundfile
+import av
+import wave
 import torch
 import torch.nn.functional as F
+from whisper_live.utils import resample
+
 
 Pathlike = Union[str, Path]
 
@@ -35,38 +39,33 @@ CHUNK_LENGTH = 30
 N_SAMPLES = CHUNK_LENGTH * SAMPLE_RATE  # 480000 samples in a 30-second chunk
 
 
-def load_audio(file: str, sr: int = SAMPLE_RATE):
+def load_audio(file: str, sr: int = 16000):
     """
-    Open an audio file and read as mono waveform, resampling as necessary
+    Open an audio file, resample it, and read as a mono waveform.
 
     Parameters
     ----------
     file: str
-        The audio file to open
+        The audio file to open.
 
     sr: int
-        The sample rate to resample the audio if necessary
+        The sample rate to resample the audio if necessary.
 
     Returns
     -------
     A NumPy array containing the audio waveform, in float32 dtype.
     """
+    resampled_file = resample(file, sr)
 
-    # This launches a subprocess to decode audio while down-mixing
-    # and resampling as necessary.  Requires the ffmpeg CLI in PATH.
-    # fmt: off
-    cmd = [
-        "ffmpeg", "-nostdin", "-threads", "0", "-i", file, "-f", "s16le", "-ac",
-        "1", "-acodec", "pcm_s16le", "-ar",
-        str(sr), "-"
-    ]
-    # fmt: on
-    try:
-        out = run(cmd, capture_output=True, check=True).stdout
-    except CalledProcessError as e:
-        raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
+    with wave.open(resampled_file, "rb") as wav_file:
+        num_frames = wav_file.getnframes()
+        raw_data = wav_file.readframes(num_frames)
 
-    return np.frombuffer(out, np.int16).flatten().astype(np.float32) / 32768.0
+        audio_data = np.frombuffer(raw_data, dtype=np.int16)
+
+    audio_data = audio_data.astype(np.float32) / 32768.0
+
+    return audio_data
 
 
 def load_audio_wav_format(wav_path):

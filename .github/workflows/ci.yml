@@ -35,7 +35,7 @@ jobs:
             ${{ runner.os }}-pip-${{ matrix.python-version }}-
       
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg portaudio19-dev
+        run: sudo apt-get update && sudo apt-get install -y portaudio19-dev
       
       - name: Install Python dependencies
         run: |
@@ -180,7 +180,7 @@ jobs:
             ubuntu-latest-pip-3.8-
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg portaudio19-dev
+        run: sudo apt-get update && sudo apt-get install -y portaudio19-dev
 
       - name: Install Python dependencies
         run: |
