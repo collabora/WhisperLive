@@ -46,6 +46,12 @@ class Client:
             port (int): The port number for the WebSocket server.
             lang (str, optional): The selected language for transcription. Default is None.
             translate (bool, optional): Specifies if the task is translation. Default is False.
+            model (str, optional): The whisper model to use (e.g., "small", "medium", "large"). Default is "small".
+            srt_file_path (str, optional): The file path to save the output SRT file. Default is "output.srt".
+            use_vad (bool, optional): Whether to enable voice activity detection. Default is True.
+            log_transcription (bool, optional): Whether to log transcription output to the console. Default is True.
+            max_clients (int, optional): Maximum number of client connections allowed. Default is 4.
+            max_connection_time (int, optional): Maximum allowed connection time in seconds. Default is 600.
         """
         self.recording = False
         self.task = "transcribe"
@@ -285,7 +291,7 @@ class TranscriptionTeeClient:
     Attributes:
         clients (list): the underlying Client instances responsible for handling WebSocket connections.
     """
-    def __init__(self, clients, save_output_recording=False, output_recording_filename="./output_recording.wav"):
+    def __init__(self, clients, save_output_recording=False, output_recording_filename="./output_recording.wav", mute_audio_playback=False):
         self.clients = clients
         if not self.clients:
             raise Exception("At least one client is required.")
@@ -296,6 +302,7 @@ class TranscriptionTeeClient:
         self.record_seconds = 60000
         self.save_output_recording = save_output_recording
         self.output_recording_filename = output_recording_filename
+        self.mute_audio_playback = mute_audio_playback
         self.frames = b""
         self.p = pyaudio.PyAudio()
         try:
@@ -391,6 +398,7 @@ class TranscriptionTeeClient:
                 output=True,
                 frames_per_buffer=self.chunk,
             )
+            chunk_duration = self.chunk / float(wavfile.getframerate())
             try:
                 while any(client.recording for client in self.clients):
                     data = wavfile.readframes(self.chunk)
@@ -399,8 +407,11 @@ class TranscriptionTeeClient:
 
                     audio_array = self.bytes_to_float_array(data)
                     self.multicast_packet(audio_array.tobytes())
-                    self.stream.write(data)
-
+                    if self.mute_audio_playback:
+                        time.sleep(chunk_duration)
+                    else:
+                        self.stream.write(data)
+    
                 wavfile.close()
 
                 for client in self.clients:
@@ -661,10 +672,16 @@ class TranscriptionClient(TranscriptionTeeClient):
         host (str): The hostname or IP address of the server.
         port (int): The port number to connect to on the server.
         lang (str, optional): The primary language for transcription. Default is None, which defaults to English ('en').
-        translate (bool, optional): Indicates whether translation tasks are required (default is False).
-        save_output_recording (bool, optional): Indicates whether to save recording from microphone.
-        output_recording_filename (str, optional): File to save the output recording.
-        output_transcription_path (str, optional): File to save the output transcription.
+        translate (bool, optional): If True, the task will be translation instead of transcription. Default is False.
+        model (str, optional): The whisper model to use (e.g., "small", "base"). Default is "small".
+        use_vad (bool, optional): Whether to enable voice activity detection. Default is True.
+        save_output_recording (bool, optional): Whether to save the microphone recording. Default is False.
+        output_recording_filename (str, optional): Path to save the output recording WAV file. Default is "./output_recording.wav".
+        output_transcription_path (str, optional): File path to save the output transcription (SRT file). Default is "./output.srt".
+        log_transcription (bool, optional): Whether to log transcription output to the console. Default is True.
+        max_clients (int, optional): Maximum number of client connections allowed. Default is 4.
+        max_connection_time (int, optional): Maximum allowed connection time in seconds. Default is 600.
+        mute_audio_playback (bool, optional): If True, mutes audio playback during file playback. Default is False.
 
     Attributes:
         client (Client): An instance of the underlying Client class responsible for handling the WebSocket connection.
@@ -690,6 +707,7 @@ class TranscriptionClient(TranscriptionTeeClient):
         log_transcription=True,
         max_clients=4,
         max_connection_time=600,
+        mute_audio_playback=False,
     ):
         self.client = Client(
             host, port, lang, translate, model, srt_file_path=output_transcription_path,
@@ -705,5 +723,6 @@ class TranscriptionClient(TranscriptionTeeClient):
             self,
             [self.client],
             save_output_recording=save_output_recording,
-            output_recording_filename=output_recording_filename
+            output_recording_filename=output_recording_filename,
+            mute_audio_playback=mute_audio_playback
         )

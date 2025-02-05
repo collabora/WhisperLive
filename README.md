@@ -79,6 +79,7 @@ If you don't want this, set `--no_single_model`.
   - `output_recording_filename`: Specifies the `.wav` file path where the microphone input will be saved if `save_output_recording` is set to `True`.
   - `max_clients`: Specifies the maximum number of clients the server should allow. Defaults to 4.
   - `max_connection_time`: Maximum connection time for each client in seconds. Defaults to 600.
+  - `mute_audio_playback`: Whether to mute audio playback when transcribing an audio file. Defaults to False.
 
 ```python
 from whisper_live.client import TranscriptionClient
@@ -92,7 +93,8 @@ client = TranscriptionClient(
   save_output_recording=True,                         # Only used for microphone input, False by Default
   output_recording_filename="./output_recording.wav", # Only used for microphone input
   max_clients=4,
-  max_connection_time=600
+  max_connection_time=600,
+  mute_audio_playback=False,                          # Only used for file input, False by Default
 )
 ```
 It connects to the server running on localhost at port 9090. Using a multilingual model, language for the transcription will be automatically detected. You can also use the language option to specify the target language for the transcription, in this case, English ("en"). The translate option should be set to `True` if we want to translate from the source language to English and `False` if we want to transcribe in the source language.
