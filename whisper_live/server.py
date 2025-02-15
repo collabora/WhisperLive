@@ -14,6 +14,7 @@ from websockets.sync.server import serve
 from websockets.exceptions import ConnectionClosed
 from whisper_live.vad import VoiceActivityDetector
 from whisper_live.transcriber import WhisperModel
+from whisper_live.translator import TranslatorAPI, TranslatorNN
 try:
     from whisper_live.transcriber_tensorrt import WhisperTRTLLM
 except Exception:
@@ -287,6 +288,14 @@ class TranscriptionServer:
         except Exception as e:
             return
 
+        if options.get("task") == "translate":
+            translator_method = options.get("translator_method", "api")
+            if translator_method == "api":
+                translator = TranslatorAPI(options["language"], options.get("language_to", "en"))
+            else:
+                translator = TranslatorNN(options["language"], options.get("language_to", "en"))
+            client.translator = translator
+
         if client is None:
             raise ValueError(f"Backend type {self.backend.value} not recognised or not handled.")
 
@@ -523,6 +532,7 @@ class ServeClientBase(object):
         self.lock = threading.Lock()
         self.manager = None
         self.conference_id = None
+        self.translator = None
 
     def speech_to_text(self):
         raise NotImplementedError
@@ -739,7 +749,6 @@ class ServeClientTensorRT(ServeClientBase):
             device="cuda",
             is_multilingual=multilingual,
             language=self.language,
-            task=self.task
         )
         if warmup:
             self.warmup()
@@ -776,7 +785,10 @@ class ServeClientTensorRT(ServeClientBase):
                                 of the possibility of word being truncated.
             duration (float): Duration of the transcribed audio chunk.
         """
+        translated_segment = self.translator.translate(last_segment["text"])
+        last_segment["text"] = translated_segment
         segments = self.prepare_segments({"text": last_segment})
+
         # Используем менеджер для рассылки транскрипции по всей конференции
         data = {
             "uid": self.client_uid,
@@ -797,13 +809,9 @@ class ServeClientTensorRT(ServeClientBase):
             ServeClientTensorRT.SINGLE_MODEL_LOCK.acquire()
         logging.info(f"[WhisperTensorRT:] Processing audio with duration: {input_bytes.shape[0] / self.RATE}")
         mel, duration = self.transcriber.log_mel_spectrogram(input_bytes)
-        if self.task == "translate":
-            text_prefix = f"<|startoftranscript|><|{self.language}|><|translate|><|{self.language_to}|><|notimestamps|>"
-        else:
-            text_prefix = f"<|startoftranscript|><|{self.language}|><|{self.task}|><|notimestamps|>"
         last_segment = self.transcriber.transcribe(
             mel,
-            text_prefix=text_prefix
+            text_prefix=f"<|startoftranscript|><|{self.language}|><|transcribe|><|notimestamps|>"
         )
         if ServeClientTensorRT.SINGLE_MODEL:
             ServeClientTensorRT.SINGLE_MODEL_LOCK.release()
@@ -1025,18 +1033,12 @@ class ServeClientFasterWhisper(ServeClientBase):
         """
         if ServeClientFasterWhisper.SINGLE_MODEL:
             ServeClientFasterWhisper.SINGLE_MODEL_LOCK.acquire()
-        if self.task == "translate":
-            text_prefix = f"<|startoftranscript|><|{self.language}|><|translate|><|{self.language_to}|><|notimestamps|>"
-        else:
-            text_prefix = f"<|startoftranscript|><|{self.language}|><|{self.task}|><|notimestamps|>"
         result, info = self.transcriber.transcribe(
             input_sample,
             initial_prompt=self.initial_prompt,
             language=self.language,
-            task=self.task,
             vad_filter=self.use_vad,
             vad_parameters=self.vad_parameters if self.use_vad else None,
-            hotwords=text_prefix  # передаём настроенный префикс
         )
         if ServeClientFasterWhisper.SINGLE_MODEL:
             ServeClientFasterWhisper.SINGLE_MODEL_LOCK.release()
@@ -1083,6 +1085,8 @@ class ServeClientFasterWhisper(ServeClientBase):
         if len(result):
             self.t_start = None
             last_segment = self.update_segments(result, duration)
+            translated_segment = self.translator.translate(last_segment["text"])
+            last_segment["text"] = translated_segment
             segments = self.prepare_segments(last_segment)
         else:
             # show previous output if there is pause i.e. no output from whisper
