@@ -62,13 +62,13 @@ let translateToggle = false;
 
 function speakText(text) {
     // stop any speaking in progress
-    if (translateToggle){
-        translateToggle = false;
-        window.speechSynthesis.cancel();
-        return;
-    }
+    // if (translateToggle){
+    //     translateToggle = false;
+    //     window.speechSynthesis.cancel();
+    //     return;
+    // }
 
-    translateToggle = true;
+    // translateToggle = true;
   
     // create new utterance with all the properties
     // const text = 'я@ты@я@ты@я@ты@я@ты@я@ты@';
@@ -106,6 +106,20 @@ function speechChunks(){
         // chunksToSpeech = [];
         speakText(text);
     }    
+}
+
+function speechChunksNew(chunks, tmp){
+    if (chunks.length === 0) return;
+    // console.log('speechChunksNew', window.speechSynthesis.speaking, tmp, chunks)
+    if (window.speechSynthesis.speaking){
+        setTimeout(() => speechChunksNew(chunks, tmp), 900);
+        return;
+    }
+    const text = chunks.map(s => s.trim()).join('. ').trim() + '.';
+    console.log('text', tmp, text)
+    
+    speakText(text);
+    
 }
 
 function updateVoices() {
@@ -312,6 +326,9 @@ const processor = new SentenceProcessor();
 // console.log(processor.processChunks(chunks2)); // ["Второе предложение начинается здесь."]
 // console.log(processor.processChunks(chunks3)); // ["Третье предложение заканчивается."]
 
+let superChunks = [];
+let cnt = 0;
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const { type, data } = request;
     
@@ -333,8 +350,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     message = message["segments"];
     console.log('message', message)
 
-    const ch = message.map(msg => msg.text)
-    console.log('processChunks', processor.processChunks(ch));
+    // const ch = message.map(msg => msg.text)
+    // console.log('processChunks', processor.processChunks(ch));
 
     var text = '';
     for (var i = 0; i < message.length; i++) {
@@ -342,8 +359,33 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     text = text.replace(/(\r\n|\n|\r)/gm, "");
     // console.log(text);
-    let chunks = text.split('. ');
+    // const chunks = text.split('. ').split('! ').split('? ').filter(Boolean);
+
+    const chunks = text.match( /[^\.!\?]+[\.!\?]+/g ).filter(Boolean).map(s => s.trim())
+
     let chunksNew = [];
+    console.log('chunks.length', chunks.length, chunks)
+    if (chunks.length > 3){
+        if (superChunks.length === 0){
+            superChunks = chunks.slice(0, -2);
+            cnt = superChunks.length;
+            speechChunksNew(superChunks, 'superChunks')
+        } else {
+            let varChunks = chunks.slice(1, -2)
+            let newSuper  = [];
+            varChunks.forEach(ch => {
+                if (!superChunks.includes(ch)){
+                    newSuper.push(ch);
+                }
+            })
+
+            superChunks = [...superChunks, ...newSuper]
+            // console.log('varChunks', varChunks)
+            speechChunksNew(newSuper, 'newSuper')
+        }        
+    } 
+
+    console.log('superChunks', superChunks.join('. ').trim() + '.')
 
     if (chunksOld.length === 0){
         chunksOld = chunks;

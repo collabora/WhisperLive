@@ -80,12 +80,12 @@ document.addEventListener("DOMContentLoaded", function () {
     const selectedConferenceId = currentTab.url;
 
     // Send a message to the background script to start capturing
-    let host = "176.99.131.161"; //176.99.131.161 localhost
+    let host = "localhost"; //176.99.131.161 localhost
     let port = "9090";
     const useCollaboraServer = useServerCheckbox.checked;
     if (useCollaboraServer){
-      host = "transcription.kurg.org"
-      port = "7090"
+      host = "176.99.131.161"
+      port = "9090"
     }
 
     chrome.runtime.sendMessage(
