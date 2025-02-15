@@ -1084,9 +1084,10 @@ class ServeClientFasterWhisper(ServeClientBase):
         segments = []
         if len(result):
             self.t_start = None
+            for i, res in enumerate(list(result)):
+                translated_segment = self.translator.translate(res.text)
+                result[i].text = translated_segment
             last_segment = self.update_segments(result, duration)
-            translated_segment = self.translator.translate(last_segment["text"])
-            last_segment["text"] = translated_segment
             segments = self.prepare_segments(last_segment)
         else:
             # show previous output if there is pause i.e. no output from whisper
