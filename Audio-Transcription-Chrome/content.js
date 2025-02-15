@@ -40,7 +40,6 @@ function initPopupElement() {
   document.body.appendChild(popupContainer);
 }
 
-
 function showPopup(customText) {
   const popup = document.getElementById('popupElement');
   const popupText = popup.querySelector('.popupText');
@@ -51,6 +50,96 @@ function showPopup(customText) {
   }
 }
 
+function resizeTranscription({w = 500, h = 90, f = 18, l = 18}){
+    const transcriptionStyle = document.getElementById("transcription").style;
+    transcriptionStyle.width = `${w}px`;
+    transcriptionStyle.height = `${h}px`;
+    transcriptionStyle.fontSize = `${f}px`;
+    transcriptionStyle.lineHeight = `${l}px`;
+}
+
+let translateToggle = false;
+
+function speakText(text) {
+    // stop any speaking in progress
+    if (translateToggle){
+        translateToggle = false;
+        window.speechSynthesis.cancel();
+        return;
+    }
+
+    translateToggle = true;
+  
+    // create new utterance with all the properties
+    // const text = 'я@ты@я@ты@я@ты@я@ты@я@ты@';
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.voice = window.speechSynthesis.getVoices()[0];//.find(voice => voice.voiceURI === voiceInEl.value);
+    utterance.pitch = 1;
+    utterance.rate = 1;
+    utterance.volume = 1;
+    
+    // speak that utterance
+    window.speechSynthesis.speak(utterance);
+
+}
+
+function speechChunks(){
+    
+    if (chunksToSpeech.length){
+        if (window.speechSynthesis.speaking){
+            setTimeout(() => speechChunks(), 100);
+            return;
+        }
+        const nc = [];
+        // chunksTotal
+        chunksToSpeech.forEach(chunk => {
+            if (!chunksTotal.includes(chunk)){
+                nc.push(chunk);
+            }
+        })
+
+        chunksToSpeech = [...chunksToSpeech, ...nc]
+        console.log('nc', nc)
+
+        const text = nc.join('. ');
+        console.log('speechChunks', text)
+        // chunksToSpeech = [];
+        speakText(text);
+    }    
+}
+
+function updateVoices() {
+    // add an option for each available voice that isn't already added
+    window.speechSynthesis.getVoices().forEach(voice => {
+      const isAlreadyAdded = [...voiceInEl.options].some(option => option.value === voice.voiceURI);
+      if (!isAlreadyAdded) {
+        const option = new Option(voice.name, voice.voiceURI, voice.default, voice.default);
+        voiceInEl.add(option);
+      }
+    });
+}
+
+document.addEventListener('keydown', function(event) {
+    // Проверяем, что нажата клавиша Control и клавиша "1"
+    if (event.ctrlKey && event.key === '1') {
+        resizeTranscription({w: 500, h: 90, f: 18, l: 18})
+    }
+
+    if (event.ctrlKey && event.key === '2') {
+        resizeTranscription({w: 750, h: 135, f: 27, l: 27})
+    }
+
+    if (event.ctrlKey && event.key === '3') {
+        resizeTranscription({w: 1000, h: 180, f: 36, l: 36})
+    }
+
+    if (event.ctrlKey && event.key.toLowerCase() === 'a') {
+        speakText();
+    }
+
+
+    event.preventDefault();
+});
 
 function init_element() {
     if (document.getElementById('transcription')) {
@@ -167,6 +256,62 @@ function remove_element() {
     elem.remove()
 }
 
+let chunksOld = [];
+let chunksToSpeech = [];
+let chunksTotal = [];
+
+class SentenceProcessor {
+    constructor() {
+        this.buffer = ''; // Буфер для неполных данных
+        this.completeSentencesSet = new Set(); // Множество для уникальных предложений
+        this.prevChunks = []; // Хранение предыдущих обработанных кусков
+    }
+
+    processChunks(currentChunks) {
+        // Найдем пересечение предыдущих кусков и текущих
+        const overlap = this.prevChunks.filter(chunk => currentChunks.includes(chunk)).join(' ');
+
+        // Определяем начало новой части данных, которая может содержать новые предложения
+        const newPartStartIndex = overlap ? currentChunks.indexOf(overlap.split(' ')[0]) + overlap.split(' ').length : 0;
+        const newPart = currentChunks.slice(newPartStartIndex).join(' ');
+
+        // Обновляем буфер новыми данными
+        this.buffer += newPart;
+
+        // Шаблон для поиска полного предложения, которое заканчивается на точку и пробел
+        const sentencePattern = /([^.!?]+[.!?] )/g;
+        let match;
+        let newSentences = [];
+
+        while ((match = sentencePattern.exec(this.buffer)) !== null) {
+            const sentence = match[1].trim();
+            // Если предложение новое, добавляем его в результат и набор уже известных предложений
+            if (!this.completeSentencesSet.has(sentence)) {
+                this.completeSentencesSet.add(sentence);
+                newSentences.push(sentence);
+            }
+        }
+
+        // Оставляем в буфере только ту часть, которая может содержать незавершенные предложения
+        this.buffer = this.buffer.slice(sentencePattern.lastIndex);
+
+        // Обновляем предыдущие куски
+        this.prevChunks = currentChunks;
+
+        return newSentences;
+    }
+}
+
+const processor = new SentenceProcessor();
+
+// const chunks1 = ["Это ", "первое ", "предложение. ", "Второе ", "предложение ", "начинается "];
+// const chunks2 = ["предложение. ", "Третье ", "начинается ", "здесь. ", "Четвертое ", "предложение "];
+// const chunks3 = ["здесь. ", "Четвертое ", "предложение ", "оканчивается. "];
+
+// console.log(processor.processChunks(chunks1)); // ["Это первое предложение."]
+// console.log(processor.processChunks(chunks2)); // ["Второе предложение начинается здесь."]
+// console.log(processor.processChunks(chunks3)); // ["Третье предложение заканчивается."]
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const { type, data } = request;
     
@@ -186,12 +331,35 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     message = JSON.parse(data);
     message = message["segments"];
+    console.log('message', message)
+
+    const ch = message.map(msg => msg.text)
+    console.log('processChunks', processor.processChunks(ch));
 
     var text = '';
     for (var i = 0; i < message.length; i++) {
         text += message[i].text + ' ';
     }
     text = text.replace(/(\r\n|\n|\r)/gm, "");
+    // console.log(text);
+    let chunks = text.split('. ');
+    let chunksNew = [];
+
+    if (chunksOld.length === 0){
+        chunksOld = chunks;
+    } else {
+        chunks.forEach(chunk => {
+            if (chunksOld.includes(chunk)){
+                chunksNew.push(chunk);
+            }
+        })
+        chunksOld = [...chunks];
+        let chunkDiff = chunksNew.filter(Boolean).filter(chunk => !chunksToSpeech.includes(chunk)).filter(Boolean)
+        // console.log('chunksNew', chunksNew)
+        // console.log('chunkDiff', chunkDiff)
+        chunksToSpeech = [...chunksToSpeech, ...chunkDiff];
+    //    speechChunks();
+    }
     
     var elem = document.getElementById('t3');
     elem.innerHTML = text;

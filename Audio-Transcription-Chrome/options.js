@@ -93,13 +93,14 @@ async function startRecord(option) {
     const socket = new WebSocket(`ws://${option.host}:${option.port}/`);
     let isServerReady = false;
     let language = option.language;
+    let languageTo = option.languageTo;
     socket.onopen = function(e) { 
       socket.send(
         JSON.stringify({
           uid: uuid,
           language: option.language,
-          language_to: 'en',
-          conference_id: 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx',
+          language_to: option.languageTo,
+          conference_id: option.conferenceId, //'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx',
           task: option.task,
           model: option.modelSize,
           use_vad: option.useVad
@@ -144,7 +145,7 @@ async function startRecord(option) {
         chrome.runtime.sendMessage({ action: "toggleCaptureButtons", data: false })        
         return;
       }
-
+      console.log('event.data', event.data)
       res = await sendMessageToTab(option.currentTabId, {
         type: "transcript",
         data: event.data,

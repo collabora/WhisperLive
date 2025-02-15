@@ -156,6 +156,8 @@ async function startCapture(options) {
           port: options.port, 
           multilingual: options.useMultilingual,
           language: options.language,
+          languageTo: options.languageTo,
+          conferenceId: options.conferenceId,
           task: options.task,
           modelSize: options.modelSize,
           useVad: options.useVad,
@@ -201,6 +203,10 @@ chrome.runtime.onMessage.addListener(async (message) => {
     const detectedLanguage = message.detectedLanguage;
     chrome.runtime.sendMessage({ action: "updateSelectedLanguage", detectedLanguage });
     chrome.storage.local.set({ selectedLanguage: detectedLanguage });
+  } else if (message.action === "updateSelectedLanguageTo") {
+    const detectedLanguageTo = message.detectedLanguageTo;
+    chrome.runtime.sendMessage({ action: "updateSelectedLanguageTo", detectedLanguageTo });
+    chrome.storage.local.set({ selectedLanguageTo: detectedLanguageTo });
   } else if (message.action === "toggleCaptureButtons") {
     chrome.runtime.sendMessage({ action: "toggleCaptureButtons", data: false });
     chrome.storage.local.set({ capturingState: { isCapturing: false } })
