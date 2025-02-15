@@ -98,6 +98,8 @@ async function startRecord(option) {
         JSON.stringify({
           uid: uuid,
           language: option.language,
+          language_to: 'en',
+          conference_id: 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx',
           task: option.task,
           model: option.modelSize,
           use_vad: option.useVad
