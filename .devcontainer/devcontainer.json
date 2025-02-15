@@ -20,5 +20,8 @@
   "runArgs": [
     "--gpus", "all"
   ],
-  "remoteUser": "root"
+  "remoteUser": "root",
+  "forwardPorts": [
+    9090
+  ]
 }
