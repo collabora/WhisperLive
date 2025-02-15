@@ -58,7 +58,7 @@ function resizeTranscription({w = 500, h = 90, f = 18, l = 18}){
     transcriptionStyle.lineHeight = `${l}px`;
 }
 
-let translateToggle = false;
+// let translateToggle = false;
 
 function speakText(text) {
     // stop any speaking in progress
@@ -73,7 +73,15 @@ function speakText(text) {
     // create new utterance with all the properties
     // const text = 'я@ты@я@ты@я@ты@я@ты@я@ты@';
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.voice = window.speechSynthesis.getVoices()[0];//.find(voice => voice.voiceURI === voiceInEl.value);
+    utterance.voice = window.speechSynthesis.getVoices().filter(voice => {
+        return voice.lang.includes('en'.toLocaleLowerCase())
+    })[0];//.find(voice => voice.voiceURI === voiceInEl.value);
+
+    // window.speechSynthesis.getVoices().forEach(voice => {
+    //     console.log('voice')
+    //     console.log(voice)
+    // });
+
     utterance.pitch = 1;
     utterance.rate = 1;
     utterance.volume = 1;
@@ -115,21 +123,33 @@ function speechChunksNew(chunks, tmp){
         setTimeout(() => speechChunksNew(chunks, tmp), 900);
         return;
     }
-    const text = chunks.map(s => s.trim()).join('. ').trim() + '.';
+    const text = chunks.map(s => s.trim()).join(' ').trim();
     console.log('text', tmp, text)
+
+    // window.speechSynthesis.getVoices().forEach(voice => {
+    //     console.log('voice')
+    //     console.log(voice)
+    // });
     
     speakText(text);
     
 }
 
+updateVoices()
+
 function updateVoices() {
     // add an option for each available voice that isn't already added
+    // window.speechSynthesis.getVoices().forEach(voice => {
+    //   const isAlreadyAdded = [...voiceInEl.options].some(option => option.value === voice.voiceURI);
+    //   if (!isAlreadyAdded) {
+    //     const option = new Option(voice.name, voice.voiceURI, voice.default, voice.default);
+    //     voiceInEl.add(option);
+    //   }
+    // });
+
     window.speechSynthesis.getVoices().forEach(voice => {
-      const isAlreadyAdded = [...voiceInEl.options].some(option => option.value === voice.voiceURI);
-      if (!isAlreadyAdded) {
-        const option = new Option(voice.name, voice.voiceURI, voice.default, voice.default);
-        voiceInEl.add(option);
-      }
+        console.log('voice')
+        console.log(voice)
     });
 }
 
@@ -358,10 +378,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         text += message[i].text + ' ';
     }
     text = text.replace(/(\r\n|\n|\r)/gm, "");
-    // console.log(text);
-    // const chunks = text.split('. ').split('! ').split('? ').filter(Boolean);
+    console.log('text?', text);
+    const chunks = text.split('. ')
+        // .split('! ').split('? ')
+        .filter(Boolean).map(s => s.trim());
 
-    const chunks = text.match( /[^\.!\?]+[\.!\?]+/g ).filter(Boolean).map(s => s.trim())
+    // let chunks = text.match( /[^\.!\?]+[\.!\?]+/g );
+    
+    console.log('chunks?', chunks);
+    // chunks = chunks.filter(Boolean).map(s => s.trim())
 
     let chunksNew = [];
     console.log('chunks.length', chunks.length, chunks)
