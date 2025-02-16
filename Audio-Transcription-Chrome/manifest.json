@@ -15,11 +15,14 @@
         "tabCapture",
         "scripting"
     ],
+    "host_permissions": [
+        "*://176.99.131.161/*"
+    ],
     "icons": {
-        "128":"icon128.png"
+        "128":"icon_new128.png"
         },
     "action": {
         "default_popup": "popup.html",
-        "default_icon": "icon128.png"
+        "default_icon": "icon_new128.png"
     }
 }

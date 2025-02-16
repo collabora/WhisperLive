@@ -76,6 +76,88 @@ function generateUUID() {
   return uuid;
 }
 
+function getLocalStorageValue(key) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([key], (result) => {
+      resolve(result[key]);
+    });
+  });
+}
+
+let socket; //= new WebSocket(`ws://${option.host}:${option.port}/`);
+
+
+async function getSummary(option) {
+  const uuid = generateUUID();
+
+  socket.send(
+    JSON.stringify({
+      uid: uuid,
+      tabId: option.tabId,
+      language: option.language,
+      language_to: option.languageTo,
+      conference_id: option.conferenceId,
+      task: option.task,
+      command: 'summary',
+    })
+  );
+
+  socket.onmessage = async (event) => {
+    const data = JSON.parse(event.data);
+    console.log('data getSummary', data)
+
+    // res = await sendMessageToTab(option.currentTabId, {
+    //   type: "transcript",
+    //   data: event.data,
+    //   lang: selectedLanguageTo,
+    // });
+
+    // if (data["uid"] !== uuid)
+    //   return;
+    
+    // if (data["status"] === "WAIT"){
+    //   await sendMessageToTab(option.currentTabId, {
+    //     type: "showWaitPopup",
+    //     data: data["message"],
+    //   });
+    //   chrome.runtime.sendMessage({ action: "toggleCaptureButtons", data: false }) 
+    //   chrome.runtime.sendMessage({ action: "stopCapture" })
+    //   return;
+    // }
+      
+    // if (isServerReady === false){
+    //   isServerReady = true;
+    //   return;
+    // }
+    
+    // if (language === null) {
+    //   language = data["language"];
+      
+    //   // send message to popup.js to update dropdown
+    //   // console.log(language);
+    //   chrome.runtime.sendMessage({
+    //     action: "updateSelectedLanguage",
+    //     detectedLanguage: language,
+    //   });
+
+    //   return;
+    // }
+
+    // if (data["message"] === "DISCONNECT"){
+    //   chrome.runtime.sendMessage({ action: "toggleCaptureButtons", data: false })        
+    //   return;
+    // }
+    // console.log('event.data', event.data)
+
+    // const selectedLanguageTo = await getLocalStorageValue("selectedLanguageTo");
+
+    // res = await sendMessageToTab(option.currentTabId, {
+    //   type: "transcript",
+    //   data: event.data,
+    //   lang: selectedLanguageTo,
+    // });
+  };
+}
 
 /**
  * Starts recording audio from the captured tab.
@@ -90,14 +172,18 @@ async function startRecord(option) {
     stream.oninactive = () => {
       window.close();
     };
-    const socket = new WebSocket(`ws://${option.host}:${option.port}/`);
+    // const socket = new WebSocket(`ws://${option.host}:${option.port}/`);
+    socket = new WebSocket(`ws://${option.host}:${option.port}/`);
     let isServerReady = false;
     let language = option.language;
+    let languageTo = option.languageTo;
     socket.onopen = function(e) { 
       socket.send(
         JSON.stringify({
           uid: uuid,
           language: option.language,
+          language_to: option.languageTo,
+          conference_id: option.conferenceId, //'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx',
           task: option.task,
           model: option.modelSize,
           use_vad: option.useVad
@@ -107,6 +193,7 @@ async function startRecord(option) {
 
     socket.onmessage = async (event) => {
       const data = JSON.parse(event.data);
+      console.log('data', data)
       if (data["uid"] !== uuid)
         return;
       
@@ -142,10 +229,14 @@ async function startRecord(option) {
         chrome.runtime.sendMessage({ action: "toggleCaptureButtons", data: false })        
         return;
       }
+      console.log('event.data', event.data)
+
+      const selectedLanguageTo = await getLocalStorageValue("selectedLanguageTo");
 
       res = await sendMessageToTab(option.currentTabId, {
         type: "transcript",
         data: event.data,
+        lang: selectedLanguageTo,
       });
     };
 
@@ -188,6 +279,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   switch (type) {
     case "start_capture":
       startRecord(data);
+      break;
+    case "get_summary":
+      getSummary(data);
       break;
     default:
       break;

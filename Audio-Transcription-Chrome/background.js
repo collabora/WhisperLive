@@ -129,6 +129,64 @@ async function getTab(tabId) {
  * @param {number} tabId - The ID of the tab to start capturing.
  * @returns {Promise<void>} - A Promise that resolves when the capture process is started successfully.
  */
+async function getSummary(options) {
+  const { tabId } = options;
+  const optionTabId = await getLocalStorageValue("optionTabId");
+  const currentTab = await getTab(tabId);
+
+  await sendMessageToTab(optionTabId, {
+    type: "get_summary",
+    data: { 
+      currentTabId: currentTab.tabId, 
+      tabId: options.tabId,
+      host: options.host, 
+      port: options.port, 
+      language: options.language,
+      languageTo: options.languageTo,
+      conferenceId: options.conferenceId,
+    },
+  });
+
+  // action: "getSummary", 
+  //       tabId: currentTab.id,
+  //       host: host,
+  //       port: port,
+  //       language: selectedLanguage,
+  //       languageTo: selectedLanguageTo,
+  //       conferenceId: selectedConferenceId,
+
+  // try {
+  //   const currentTab = await getTab(tabId);
+  //   if (currentTab.audible) {
+  //     await setLocalStorageValue("currentTabId", currentTab.id);
+  //     await executeScriptInTab(currentTab.id, "content.js");
+  //     await delayExecution(500);
+
+  //     const optionTab = await openExtensionOptions();
+
+  //     await setLocalStorageValue("optionTabId", optionTab.id);
+  //     await delayExecution(500);
+
+  //     await sendMessageToTab(optionTab.id, {
+  //       type: "get_summary",
+  //       data: { 
+  //         currentTabId: currentTab.id, 
+  //         host: options.host, 
+  //         port: options.port, 
+  //         multilingual: options.useMultilingual,
+  //         language: options.language,
+  //         languageTo: options.languageTo,
+  //         conferenceId: options.conferenceId,
+  //       },
+  //     });
+  //   } else {
+  //     console.log("No Audio");
+  //   }
+  // } catch (error) {
+  //   console.error("Error occurred while starting capture:", error);
+  // }
+}
+
 async function startCapture(options) {
   const { tabId } = options;
   const optionTabId = await getLocalStorageValue("optionTabId");
@@ -156,6 +214,8 @@ async function startCapture(options) {
           port: options.port, 
           multilingual: options.useMultilingual,
           language: options.language,
+          languageTo: options.languageTo,
+          conferenceId: options.conferenceId,
           task: options.task,
           modelSize: options.modelSize,
           useVad: options.useVad,
@@ -187,6 +247,20 @@ async function stopCapture() {
   }
 }
 
+async function updateSelectedLanguageTo(){
+  const optionTabId = await getLocalStorageValue("optionTabId");
+  const currentTabId = await getLocalStorageValue("currentTabId");
+  const selectedLanguageTo = await getLocalStorageValue("selectedLanguageTo");
+  console.log('updateSelectedLanguageTo 1', selectedLanguageTo)
+  if (optionTabId) {
+    console.log('updateSelectedLanguageTo 2')
+    res = await sendMessageToTab(currentTabId, {
+      type: "CHANGE_LANG",
+      data: { currentTabId: currentTabId, lang: selectedLanguageTo },
+    });
+  }
+}
+
 
 /**
  * Listens for messages from the runtime and performs corresponding actions.
@@ -194,16 +268,26 @@ async function stopCapture() {
  */
 chrome.runtime.onMessage.addListener(async (message) => {
   if (message.action === "startCapture") {
+    console.log('action startCapture')
+    updateSelectedLanguageTo();
     startCapture(message);
   } else if (message.action === "stopCapture") {
     stopCapture();
+  } else if (message.action === "getSummary") {
+    getSummary(message);
   } else if (message.action === "updateSelectedLanguage") {
     const detectedLanguage = message.detectedLanguage;
     chrome.runtime.sendMessage({ action: "updateSelectedLanguage", detectedLanguage });
     chrome.storage.local.set({ selectedLanguage: detectedLanguage });
+  } else if (message.action === "updateSelectedLanguageTo") {
+    const detectedLanguageTo = message.detectedLanguageTo;
+    chrome.runtime.sendMessage({ action: "updateSelectedLanguageTo", detectedLanguageTo });
+    chrome.storage.local.set({ selectedLanguageTo: detectedLanguageTo });
+    updateSelectedLanguageTo();
   } else if (message.action === "toggleCaptureButtons") {
     chrome.runtime.sendMessage({ action: "toggleCaptureButtons", data: false });
     chrome.storage.local.set({ capturingState: { isCapturing: false } })
+    updateSelectedLanguageTo();
     stopCapture();
   }
 });

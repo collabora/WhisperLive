@@ -4,6 +4,7 @@ import threading
 import json
 import functools
 import logging
+import uuid
 from enum import Enum
 from typing import List, Optional
 
@@ -13,6 +14,8 @@ from websockets.sync.server import serve
 from websockets.exceptions import ConnectionClosed
 from whisper_live.vad import VoiceActivityDetector
 from whisper_live.transcriber import WhisperModel
+from whisper_live.translator import TranslatorAPI, TranslatorNN
+from whisper_live.summarizer import TextSummarizer
 try:
     from whisper_live.transcriber_tensorrt import WhisperTRTLLM
 except Exception:
@@ -31,12 +34,12 @@ class ClientManager:
             max_connection_time (int, optional): The maximum duration (in seconds) a client can stay connected. Defaults
                                                  to 600 seconds (10 minutes).
         """
-        self.clients = {}
+        self.conferences = {}
         self.start_times = {}
         self.max_clients = max_clients
         self.max_connection_time = max_connection_time
 
-    def add_client(self, websocket, client):
+    def add_client(self, websocket, client, conference_id=None):
         """
         Adds a client and their connection start time to the tracking dictionaries.
 
@@ -44,8 +47,29 @@ class ClientManager:
             websocket: The websocket associated with the client to add.
             client: The client object to be added and tracked.
         """
-        self.clients[websocket] = client
+        if conference_id is None:
+            conference_id = uuid.uuid4()
+        # Регистрируем время подключения
         self.start_times[websocket] = time.time()
+        if conference_id in self.conferences:
+            # Уже есть подключенные клиенты в этой конференции – добавляем как слушателя
+            self.conferences[conference_id]["listeners"].append(client)
+            role = "listener"
+        else:
+            # Если конференция новая – назначаем текущего клиента ведущим (primary).
+            self.conferences[conference_id] = {"primary": client, "listeners": []}
+            role = "primary"
+
+        try:
+            websocket.send(json.dumps({
+                "uid": client.client_uid,
+                "role": role,
+                "message": "SERVER_READY"
+            }))
+        except Exception as e:
+            logging.error(f"[ERROR] Failed to send role to client: {e}")
+
+        return conference_id, role
 
     def get_client(self, websocket):
         """
@@ -57,8 +81,19 @@ class ClientManager:
         Returns:
             The client object if found, False otherwise.
         """
-        if websocket in self.clients:
-            return self.clients[websocket]
+        for conf in self.conferences.values():
+            if conf["primary"].websocket == websocket:
+                return conf["primary"]
+            for client in conf["listeners"]:
+                if client.websocket == websocket:
+                    return client
+        return False
+
+    def is_primary(self, websocket):
+        # Проверяет, является ли клиент по websocket ведущим (primary) в своей конференции
+        for conf in self.conferences.values():
+            if conf["primary"].websocket == websocket:
+                return True
         return False
 
     def remove_client(self, websocket):
@@ -69,10 +104,34 @@ class ClientManager:
         Args:
             websocket: The websocket associated with the client to be removed.
         """
-        client = self.clients.pop(websocket, None)
-        if client:
-            client.cleanup()
-        self.start_times.pop(websocket, None)
+        for conference_id, conf in list(self.conferences.items()):
+            if conf["primary"].websocket == websocket:
+                client = conf["primary"]
+                if client:
+                    client.cleanup()
+                self.start_times.pop(websocket, None)
+                # Если есть слушатели, переназначаем первого слушателя на primary
+                if conf["listeners"]:
+                    new_primary = conf["listeners"].pop(0)
+                    self.conferences[conference_id]["primary"] = new_primary
+                    try:
+                        new_primary.websocket.send(json.dumps({
+                            "uid": new_primary.client_uid,
+                            "role": "primary",
+                            "message": "SERVER_READY"
+                        }))
+                    except Exception as e:
+                        logging.error(f"[ERROR] Failed to send role update to new primary: {e}")
+                else:
+                    del self.conferences[conference_id]
+                return
+            else:
+                for idx, client in enumerate(conf["listeners"]):
+                    if client.websocket == websocket:
+                        client.cleanup()
+                        self.start_times.pop(websocket, None)
+                        del conf["listeners"][idx]
+                        return
 
     def get_wait_time(self):
         """
@@ -99,7 +158,7 @@ class ClientManager:
         Returns:
             True if the server is full, False otherwise.
         """
-        if len(self.clients) >= self.max_clients:
+        if len(self.conferences.keys()) >= self.max_clients:
             wait_time = self.get_wait_time()
             response = {"uid": options["uid"], "status": "WAIT", "message": wait_time}
             websocket.send(json.dumps(response))
@@ -116,12 +175,33 @@ class ClientManager:
         Returns:
             True if the client's connection time has exceeded the maximum limit, False otherwise.
         """
-        elapsed_time = time.time() - self.start_times[websocket]
+        elapsed_time = time.time() - self.start_times.get(websocket, time.time())
         if elapsed_time >= self.max_connection_time:
-            self.clients[websocket].disconnect()
-            logging.warning(f"Client with uid '{self.clients[websocket].client_uid}' disconnected due to overtime.")
+            client = self.get_client(websocket)
+            if client:
+                client.disconnect()
+                logging.warning(f"Client with uid '{client.client_uid}' disconnected due to overtime.")
             return True
         return False
+
+    def broadcast_to_conference(self, conference_id, data):
+        # Отправляет данные (строку JSON) всем участникам конференции
+        conf = self.conferences.get(conference_id)
+        if conf is None:
+            return
+        try:
+            primary_msg = data.copy()
+            primary_msg["uid"] = conf["primary"].client_uid
+            conf["primary"].websocket.send(json.dumps(primary_msg))
+        except Exception as e:
+            logging.error(f"[BROADCAST ERROR]: {e}")
+        for client in conf["listeners"]:
+            try:
+                msg_dict = data.copy()
+                msg_dict["uid"] = client.client_uid
+                client.websocket.send(json.dumps(msg_dict))
+            except Exception as e:
+                logging.error(f"[BROADCAST ERROR]: {e}")
 
 
 class BackendType(Enum):
@@ -158,14 +238,19 @@ class TranscriptionServer:
     ):
         client: Optional[ServeClientBase] = None
 
+        # Получаем conference_id из options
+        conference_id = options.get("conference_id", None)
+
         if self.backend.is_tensorrt():
             try:
                 client = ServeClientTensorRT(
                     websocket,
                     multilingual=trt_multilingual,
                     language=options["language"],
+                    language_to=options["language_to"],
                     task=options["task"],
                     client_uid=options["uid"],
+                    conference_id=conference_id,
                     model=whisper_tensorrt_path,
                     single_model=self.single_model,
                 )
@@ -189,8 +274,10 @@ class TranscriptionServer:
                 client = ServeClientFasterWhisper(
                     websocket,
                     language=options["language"],
+                    language_to=options["language_to"],
                     task=options["task"],
                     client_uid=options["uid"],
+                    conference_id=conference_id,
                     model=options["model"],
                     initial_prompt=options.get("initial_prompt"),
                     vad_parameters=options.get("vad_parameters"),
@@ -202,10 +289,23 @@ class TranscriptionServer:
         except Exception as e:
             return
 
+        if options.get("task") == "translate":
+            translator_method = options.get("translator_method", "api")
+            source_language = options["language"]
+            if source_language is None:
+                source_language = "auto"
+            if translator_method == "api":
+                translator = TranslatorAPI(options["language"], options.get("language_to", "en"))
+            else:
+                translator = TranslatorNN(options["language"], options.get("language_to", "en"))
+            client.translator = translator
+
         if client is None:
             raise ValueError(f"Backend type {self.backend.value} not recognised or not handled.")
 
-        self.client_manager.add_client(websocket, client)
+        self.client_manager.add_client(websocket, client, conference_id)
+        client.conference_id = conference_id
+        client.manager = self.client_manager
 
     def get_audio_from_websocket(self, websocket):
         """
@@ -218,6 +318,17 @@ class TranscriptionServer:
             A numpy array containing the audio.
         """
         frame_data = websocket.recv()
+        if isinstance(frame_data, str):
+            try:
+                message = json.loads(frame_data)
+                if "command" in message and message["command"] == "summary":
+                    client = self.client_manager.get_client(websocket)
+                    if client:
+                        client.handle_summary_request()
+                    # Возвращаем None, чтобы пропустить обработку как аудио-данные
+                    return None
+            except Exception as e:
+                logging.error(f"[ERROR]: Обработка команды: {e}")
         if frame_data == b"END_OF_AUDIO":
             return False
         return np.frombuffer(frame_data, dtype=np.float32)
@@ -255,7 +366,11 @@ class TranscriptionServer:
             return False
 
     def process_audio_frames(self, websocket):
+        if not self.client_manager.is_primary(websocket):
+            return True
         frame_np = self.get_audio_from_websocket(websocket)
+        if frame_np is None:
+            return True
         client = self.client_manager.get_client(websocket)
         if frame_np is False:
             if self.backend.is_tensorrt():
@@ -409,7 +524,7 @@ class ServeClientBase(object):
     SERVER_READY = "SERVER_READY"
     DISCONNECT = "DISCONNECT"
 
-    def __init__(self, client_uid, websocket):
+    def __init__(self, client_uid, websocket, language=None, language_to=None,):
         self.client_uid = client_uid
         self.websocket = websocket
         self.frames = b""
@@ -432,6 +547,11 @@ class ServeClientBase(object):
 
         # threading
         self.lock = threading.Lock()
+        self.manager = None
+        self.conference_id = None
+        self.translator = None
+        self.language = language
+        self.language_to = language_to
 
     def speech_to_text(self):
         raise NotImplementedError
@@ -586,13 +706,45 @@ class ServeClientBase(object):
         logging.info("Cleaning up.")
         self.exit = True
 
+    def handle_summary_request(self):
+        """
+        Обрабатывает запрос на саммаризацию, используя текущий транскрипт.
+        Текст для саммари берётся из self.transcript.
+        Результат отправляется клиенту.
+        """
+        # Если нет данных для саммаризации, отправляем сообщение
+        if not self.transcript:
+            summary = "Нет данных для саммаризации."
+        else:
+            transcripts_text = []
+            for segment in self.transcript:
+                transcripts_text.append(segment["text"])
+            # Объединяем сегменты транскрипта в один текст
+            full_text = " ".join(transcripts_text)
+            source_language = self.language
+            if source_language is None:
+                source_language = "auto"
+            summarizer = TextSummarizer(source_language=source_language, target_language=self.language_to)
+            summary = summarizer.summarize(full_text)
+
+        # Отправляем результат клиенту
+        try:
+            self.websocket.send(
+                json.dumps({
+                    "uid": self.client_uid,
+                    "summary": summary
+                })
+            )
+        except Exception as e:
+            logging.error(f"[ERROR]: Отправка саммаризации: {e}")
+
 
 class ServeClientTensorRT(ServeClientBase):
 
     SINGLE_MODEL = None
     SINGLE_MODEL_LOCK = threading.Lock()
 
-    def __init__(self, websocket, task="transcribe", multilingual=False, language=None, client_uid=None, model=None, single_model=False):
+    def __init__(self, websocket, task="transcribe", multilingual=False, language=None, language_to=None, client_uid=None, conference_id=None, model=None, single_model=False):
         """
         Initialize a ServeClient instance.
         The Whisper model is initialized based on the client's language and device availability.
@@ -611,6 +763,8 @@ class ServeClientTensorRT(ServeClientBase):
         """
         super().__init__(client_uid, websocket)
         self.language = language if multilingual else "en"
+        self.language_to = language_to if language_to else "en"
+        self.conference_id = conference_id
         self.task = task
         self.eos = False
 
@@ -627,11 +781,14 @@ class ServeClientTensorRT(ServeClientBase):
         self.trans_thread = threading.Thread(target=self.speech_to_text)
         self.trans_thread.start()
 
+        #TODO: удалить если всё работает
+        """
         self.websocket.send(json.dumps({
             "uid": self.client_uid,
             "message": self.SERVER_READY,
             "backend": "tensorrt"
         }))
+        """
 
     def create_model(self, model, multilingual, warmup=True):
         """
@@ -643,7 +800,6 @@ class ServeClientTensorRT(ServeClientBase):
             device="cuda",
             is_multilingual=multilingual,
             language=self.language,
-            task=self.task
         )
         if warmup:
             self.warmup()
@@ -680,8 +836,17 @@ class ServeClientTensorRT(ServeClientBase):
                                 of the possibility of word being truncated.
             duration (float): Duration of the transcribed audio chunk.
         """
+        if self.task == "translate":
+            translated_segment = self.translator.translate(last_segment["text"])
+            last_segment["text"] = translated_segment
         segments = self.prepare_segments({"text": last_segment})
-        self.send_transcription_to_client(segments)
+
+        # Используем менеджер для рассылки транскрипции по всей конференции
+        data = {
+            "uid": self.client_uid,
+            "segments": segments,
+        }
+        self.manager.broadcast_to_conference(self.conference_id, data)
         if self.eos:
             self.update_timestamp_offset(last_segment, duration)
 
@@ -698,7 +863,7 @@ class ServeClientTensorRT(ServeClientBase):
         mel, duration = self.transcriber.log_mel_spectrogram(input_bytes)
         last_segment = self.transcriber.transcribe(
             mel,
-            text_prefix=f"<|startoftranscript|><|{self.language}|><|{self.task}|><|notimestamps|>"
+            text_prefix=f"<|startoftranscript|><|{self.language}|><|transcribe|><|notimestamps|>"
         )
         if ServeClientTensorRT.SINGLE_MODEL:
             ServeClientTensorRT.SINGLE_MODEL_LOCK.release()
@@ -717,7 +882,7 @@ class ServeClientTensorRT(ServeClientBase):
             self.transcript.append({"text": last_segment + " "})
         elif self.transcript[-1]["text"].strip() != last_segment:
             self.transcript.append({"text": last_segment + " "})
-        
+
         with self.lock:
             self.timestamp_offset += duration
 
@@ -767,7 +932,7 @@ class ServeClientFasterWhisper(ServeClientBase):
     SINGLE_MODEL = None
     SINGLE_MODEL_LOCK = threading.Lock()
 
-    def __init__(self, websocket, task="transcribe", device=None, language=None, client_uid=None, model="small.en",
+    def __init__(self, websocket, task="transcribe", device=None, language=None, language_to=None, conference_id=None, client_uid=None, model="small.en",
                  initial_prompt=None, vad_parameters=None, use_vad=True, single_model=False):
         """
         Initialize a ServeClient instance.
@@ -786,6 +951,8 @@ class ServeClientFasterWhisper(ServeClientBase):
             single_model (bool, optional): Whether to instantiate a new model for each client connection. Defaults to False.
         """
         super().__init__(client_uid, websocket)
+        self.language_to = language_to if language_to else "en"
+        self.conference_id = conference_id
         self.model_sizes = [
             "tiny", "tiny.en", "base", "base.en", "small", "small.en",
             "medium", "medium.en", "large-v2", "large-v3", "distil-small.en",
@@ -812,7 +979,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         if self.model_size_or_path is None:
             return
         logging.info(f"Using Device={device} with precision {self.compute_type}")
-    
+
         try:
             if single_model:
                 if ServeClientFasterWhisper.SINGLE_MODEL is None:
@@ -837,6 +1004,8 @@ class ServeClientFasterWhisper(ServeClientBase):
         # threading
         self.trans_thread = threading.Thread(target=self.speech_to_text)
         self.trans_thread.start()
+        #TODO: Удалить если всё работает
+        """
         self.websocket.send(
             json.dumps(
                 {
@@ -846,6 +1015,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 }
             )
         )
+        """
 
     def create_model(self, device):
         """
@@ -919,12 +1089,11 @@ class ServeClientFasterWhisper(ServeClientBase):
             input_sample,
             initial_prompt=self.initial_prompt,
             language=self.language,
-            task=self.task,
             vad_filter=self.use_vad,
-            vad_parameters=self.vad_parameters if self.use_vad else None)
+            vad_parameters=self.vad_parameters if self.use_vad else None,
+        )
         if ServeClientFasterWhisper.SINGLE_MODEL:
             ServeClientFasterWhisper.SINGLE_MODEL_LOCK.release()
-
         if self.language is None and info is not None:
             self.set_language(info)
         return result
@@ -967,6 +1136,10 @@ class ServeClientFasterWhisper(ServeClientBase):
         segments = []
         if len(result):
             self.t_start = None
+            if self.task == "translate":
+                for i, res in enumerate(list(result)):
+                    translated_segment = self.translator.translate(res.text)
+                    result[i].text = translated_segment
             last_segment = self.update_segments(result, duration)
             segments = self.prepare_segments(last_segment)
         else:
@@ -974,7 +1147,11 @@ class ServeClientFasterWhisper(ServeClientBase):
             segments = self.get_previous_output()
 
         if len(segments):
-            self.send_transcription_to_client(segments)
+            data = {
+                "uid": self.client_uid,
+                "segments": segments,
+            }
+            self.manager.broadcast_to_conference(self.conference_id, data)
 
     def speech_to_text(self):
         """
@@ -1097,7 +1274,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         if self.current_out.strip() == self.prev_out.strip() and self.current_out != '':
             self.same_output_count += 1
 
-            # if we remove the audio because of same output on the nth reptition we might remove the 
+            # if we remove the audio because of same output on the nth reptition we might remove the
             # audio thats not yet transcribed so, capturing the time when it was repeated for the first time
             if self.end_time_for_same_output is None:
                 self.end_time_for_same_output = segments[-1].end
