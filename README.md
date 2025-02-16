@@ -24,8 +24,7 @@
 - [Базовый репозиторий](#title1)
 - [Основные изменения](#title2)
 - [Схема решения](#title3)
-- [Системные требования](#title4)
-- [Инструкция по установке](#title5)
+- [Инструкция по установке](#title4)
 
 # Whisper Live: Forked and Enhanced
 # <h1 align="start"><a id="title1">Базовый репозиторий</a></h1>  
@@ -53,7 +52,7 @@
 
 <a name="readme-top"></a>
 <p align="center">  
-<img width="30%" src="./images/service.png" alt="banner">
+<img width="60%" src="./images/service.png" alt="banner">
 </p>
   <p align="center">
     <!--<h1 align="center">Strelka</h1>-->
@@ -65,13 +64,8 @@
   </p>
 </div>
 
-# <h1 align="start"><a id="title4">Системные требования</a></h1>
 
-### Контейнер на базе GPU
-
-### Контейнер на базе CPU
-
-# <h1 align="start"><a id="title5">Как запустить</a></h1>  
+# <h1 align="start"><a id="title4">Как запустить</a></h1>  
 ## Запуск через Docker
 
 ### Контейнер на базе CPU
@@ -82,6 +76,9 @@
 docker build -f docker/Dockerfile.cpu -t whisperlive:cpu .
 docker run -p 9090:9090 whisperlive:cpu
 ```
+#### Системные требования (на одну конференцию или видео)
+
+В зависимости от выбранной модели от 2 гб (tiny) до 8 гб (large-v3) GPU памяти + оперативка на поддержку работы сервиса (+-10 гб)
 
 ### Контейнер с поддержкой GPU
 
@@ -91,6 +88,8 @@ docker run -p 9090:9090 whisperlive:cpu
 docker build -f docker/Dockerfile.gpu -t whisperlive:gpu .
 docker run -p 9090:9090 --runtime=nvidia --gpus all whisperlive:gpu
 ```
+#### Системные требования (на одну конференцию или видео)
+В зависимости от выбранной модели от 2 гб до 8 гб оперативной памяти + оперативка на поддержку работы сервиса (+-10 гб) 
 
 ### Сервер
 
