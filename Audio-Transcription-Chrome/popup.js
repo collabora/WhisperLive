@@ -2,6 +2,7 @@
 document.addEventListener("DOMContentLoaded", function () {
   const startButton = document.getElementById("startCapture");
   const stopButton = document.getElementById("stopCapture");
+  const summaryButton = document.getElementById("getSummary");
 
   const useServerCheckbox = document.getElementById("useServerCheckbox");
   const useVadCheckbox = document.getElementById("useVadCheckbox");
@@ -17,6 +18,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // Add click event listeners to the buttons
   startButton.addEventListener("click", startCapture);
   stopButton.addEventListener("click", stopCapture);
+  summaryButton.addEventListener("click", getSummary);
 
   // Retrieve capturing state from storage on popup open
   chrome.storage.local.get("capturingState", ({ capturingState }) => {
@@ -124,6 +126,34 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     });
   }
+  
+  async function getSummary() {
+    const currentTab = await getCurrentTab();
+    const selectedConferenceId = currentTab.url;
+
+    // Send a message to the background script to start capturing
+    let host = "localhost"; //176.99.131.161 localhost
+    let port = "9090";
+    const useCollaboraServer = useServerCheckbox.checked;
+    if (useCollaboraServer){
+      host = "176.99.131.161"
+      port = "9090"
+    }
+
+    chrome.runtime.sendMessage(
+      { 
+        action: "getSummary", 
+        tabId: currentTab.id,
+        host: host,
+        port: port,
+        language: selectedLanguage,
+        languageTo: selectedLanguageTo,
+        conferenceId: selectedConferenceId,
+      }, () => {
+        console.log('chrome.runtime.sendMessage getSummary')
+      }
+    );
+  }
 
   // Function to get the current active tab
   async function getCurrentTab() {
@@ -175,7 +205,7 @@ document.addEventListener("DOMContentLoaded", function () {
       selectedLanguageTo = languageToDropdown.value;
     }
     chrome.storage.local.set({ selectedLanguageTo });
-    
+
   });
 
   taskDropdown.addEventListener('change', function() {

@@ -64,11 +64,31 @@ var translateToggle = true;
 
 function getLocalStorageValue(key) {
     return new Promise((resolve) => {
-      chrome.storage.local.get([key], (result) => {
+        chrome.storage.local.get([key], (result) => {
         resolve(result[key]);
-      });
+        });
     });
-  }
+}
+
+function sendMessageToTab(tabId, data) {
+    return new Promise((resolve) => {
+        chrome.tabs.sendMessage(tabId, data, (response) => {
+        resolve(response);
+        });
+    });
+}
+
+async function stopCapture() {
+    const optionTabId = await getLocalStorageValue("optionTabId");
+    const currentTabId = await getLocalStorageValue("currentTabId");
+
+    if (optionTabId) {
+        res = await sendMessageToTab(currentTabId, {
+            type: "STOP",
+            data: { currentTabId: currentTabId },
+        });
+    }
+}
 
 // const selectedLanguageTo = await getLocalStorageValue("selectedLanguageTo");
 
@@ -177,6 +197,8 @@ function speechChunksGo(){
         // setTimeout(() => speechChunksNew(chunks, tmp), 500);
         return;
     }
+    if (!chunkSeq) return;
+
     const {chunks, tmp} = chunkSeq.shift();
     const text = chunks.map(s => s.trim()).join(' ').trim();
     console.log('text', tmp, text)
@@ -226,6 +248,11 @@ document.addEventListener('keydown', function(event) {
     if (event.ctrlKey && event.key.toLowerCase() === 'a') {
         // speakText();
         translateToggle = !translateToggle;
+        if (!translateToggle){
+            window.speechSynthesis.cancel();
+        } else {
+            speechChunksGo();
+        }
         console.log('translateToggle', translateToggle)
     }
 
