@@ -15,6 +15,7 @@ from websockets.exceptions import ConnectionClosed
 from whisper_live.vad import VoiceActivityDetector
 from whisper_live.transcriber import WhisperModel
 from whisper_live.translator import TranslatorAPI, TranslatorNN
+from whisper_live.summarizer import TextSummarizer
 try:
     from whisper_live.transcriber_tensorrt import WhisperTRTLLM
 except Exception:
@@ -314,6 +315,17 @@ class TranscriptionServer:
             A numpy array containing the audio.
         """
         frame_data = websocket.recv()
+        if isinstance(frame_data, str):
+            try:
+                message = json.loads(frame_data)
+                if "command" in message and message["command"] == "summary":
+                    client = self.client_manager.get_client(websocket)
+                    if client:
+                        client.handle_summary_request()
+                    # Возвращаем None, чтобы пропустить обработку как аудио-данные
+                    return None
+            except Exception as e:
+                logging.error(f"[ERROR]: Обработка команды: {e}")
         if frame_data == b"END_OF_AUDIO":
             return False
         return np.frombuffer(frame_data, dtype=np.float32)
@@ -354,6 +366,8 @@ class TranscriptionServer:
         if not self.client_manager.is_primary(websocket):
             return True
         frame_np = self.get_audio_from_websocket(websocket)
+        if frame_np is None:
+            return True
         client = self.client_manager.get_client(websocket)
         if frame_np is False:
             if self.backend.is_tensorrt():
@@ -507,7 +521,7 @@ class ServeClientBase(object):
     SERVER_READY = "SERVER_READY"
     DISCONNECT = "DISCONNECT"
 
-    def __init__(self, client_uid, websocket):
+    def __init__(self, client_uid, websocket, language=None, language_to=None,):
         self.client_uid = client_uid
         self.websocket = websocket
         self.frames = b""
@@ -533,6 +547,8 @@ class ServeClientBase(object):
         self.manager = None
         self.conference_id = None
         self.translator = None
+        self.language = language
+        self.language_to = language_to
 
     def speech_to_text(self):
         raise NotImplementedError
@@ -686,6 +702,35 @@ class ServeClientBase(object):
         """
         logging.info("Cleaning up.")
         self.exit = True
+
+    def handle_summary_request(self):
+        """
+        Обрабатывает запрос на саммаризацию, используя текущий транскрипт.
+        Текст для саммари берётся из self.transcript.
+        Результат отправляется клиенту.
+        """
+        # Если нет данных для саммаризации, отправляем сообщение
+        if not self.transcript:
+            summary = "Нет данных для саммаризации."
+        else:
+            transcripts_text = []
+            for segment in self.transcript:
+                transcripts_text.append(segment["text"])
+            # Объединяем сегменты транскрипта в один текст
+            full_text = " ".join(transcripts_text)
+            summarizer = TextSummarizer(source_language=self.language, target_language=self.language_to)
+            summary = summarizer.summarize(full_text)
+
+        # Отправляем результат клиенту
+        try:
+            self.websocket.send(
+                json.dumps({
+                    "uid": self.client_uid,
+                    "summary": summary
+                })
+            )
+        except Exception as e:
+            logging.error(f"[ERROR]: Отправка саммаризации: {e}")
 
 
 class ServeClientTensorRT(ServeClientBase):

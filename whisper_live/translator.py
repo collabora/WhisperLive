@@ -18,7 +18,11 @@ class TranslatorAPI:
         self.target_language = target_language
         self.translator = Translator()
 
-    def translate(self, text: str) -> str:
+    def translate(self, text: str, target_language: str = None, source_language: str = None) -> str:
+        if target_language is not None:
+            self.target_language = target_language
+        if source_language is not None:
+            self.source_language = source_language
         try:
             result = self.translator.translate(text, src=self.source_language, dest=self.target_language)
             return result.text
