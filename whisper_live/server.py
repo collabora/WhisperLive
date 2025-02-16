@@ -291,6 +291,9 @@ class TranscriptionServer:
 
         if options.get("task") == "translate":
             translator_method = options.get("translator_method", "api")
+            source_language = options["language"]
+            if source_language is None:
+                source_language = "auto"
             if translator_method == "api":
                 translator = TranslatorAPI(options["language"], options.get("language_to", "en"))
             else:
@@ -718,7 +721,10 @@ class ServeClientBase(object):
                 transcripts_text.append(segment["text"])
             # Объединяем сегменты транскрипта в один текст
             full_text = " ".join(transcripts_text)
-            summarizer = TextSummarizer(source_language=self.language, target_language=self.language_to)
+            source_language = self.language
+            if source_language is None:
+                source_language = "auto"
+            summarizer = TextSummarizer(source_language=source_language, target_language=self.language_to)
             summary = summarizer.summarize(full_text)
 
         # Отправляем результат клиенту
@@ -832,7 +838,7 @@ class ServeClientTensorRT(ServeClientBase):
         """
         if self.task == "translate":
             translated_segment = self.translator.translate(last_segment["text"])
-        last_segment["text"] = translated_segment
+            last_segment["text"] = translated_segment
         segments = self.prepare_segments({"text": last_segment})
 
         # Используем менеджер для рассылки транскрипции по всей конференции

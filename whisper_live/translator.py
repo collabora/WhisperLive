@@ -13,7 +13,7 @@ class TranslatorAPI:
     """
     Класс для перевода с использованием бесплатного API LibreTranslate.
     """
-    def __init__(self, source_language: str, target_language: str):
+    def __init__(self, source_language: str = "auto", target_language: str = None):
         self.source_language = source_language
         self.target_language = target_language
         self.translator = Translator()
@@ -24,6 +24,8 @@ class TranslatorAPI:
         if source_language is not None:
             self.source_language = source_language
         try:
+            if self.source_language is None:
+                self.source_language = "auto"
             result = self.translator.translate(text, src=self.source_language, dest=self.target_language)
             return result.text
         except Exception as e:
