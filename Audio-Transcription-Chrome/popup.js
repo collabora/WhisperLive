@@ -175,6 +175,7 @@ document.addEventListener("DOMContentLoaded", function () {
       selectedLanguageTo = languageToDropdown.value;
     }
     chrome.storage.local.set({ selectedLanguageTo });
+    
   });
 
   taskDropdown.addEventListener('change', function() {

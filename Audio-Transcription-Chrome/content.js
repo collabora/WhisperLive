@@ -6,6 +6,8 @@ var elem_text = null;
 var segments = [];
 var text_segments = [];
 
+var lang = 'ru';
+
 function initPopupElement() {
   if (document.getElementById('popupElement')) {
     return;
@@ -58,9 +60,46 @@ function resizeTranscription({w = 500, h = 90, f = 18, l = 18}){
     transcriptionStyle.lineHeight = `${l}px`;
 }
 
-// let translateToggle = false;
+var translateToggle = true;
+
+function getLocalStorageValue(key) {
+    return new Promise((resolve) => {
+      chrome.storage.local.get([key], (result) => {
+        resolve(result[key]);
+      });
+    });
+  }
+
+// const selectedLanguageTo = await getLocalStorageValue("selectedLanguageTo");
 
 function speakText(text) {
+
+    getLocalStorageValue("selectedLanguageTo")
+        .then(lang => {
+            console.log('selected lang', lang)
+            const curLang = lang ?? 'ru'
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.voice = window.speechSynthesis.getVoices().filter(voice => {
+                // return voice.lang.includes('en'.toLocaleLowerCase())
+                const cond = voice.lang.toLocaleLowerCase().includes(curLang.toLocaleLowerCase());
+                // cond && console.log('voice.lang', curLang, voice.lang)
+                return cond;
+            })[0];//.find(voice => voice.voiceURI === voiceInEl.value);
+
+            // window.speechSynthesis.getVoices().forEach(voice => {
+            //     console.log('voice')
+            //     console.log(voice)
+            // });
+
+            utterance.pitch = 1;
+            utterance.rate = 1;
+            utterance.volume = 1;
+            
+            // speak that utterance
+            console.log('translateToggle', translateToggle)
+            translateToggle && window.speechSynthesis.speak(utterance);
+        })
+        /*
     // stop any speaking in progress
     // if (translateToggle){
     //     translateToggle = false;
@@ -72,9 +111,14 @@ function speakText(text) {
   
     // create new utterance with all the properties
     // const text = 'я@ты@я@ты@я@ты@я@ты@я@ты@';
+    console.log('selected lang', lang)
+    const curLang = lang ?? 'ru'
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.voice = window.speechSynthesis.getVoices().filter(voice => {
-        return voice.lang.includes('en'.toLocaleLowerCase())
+        // return voice.lang.includes('en'.toLocaleLowerCase())
+        const cond = voice.lang.toLocaleLowerCase().includes(curLang.toLocaleLowerCase());
+        cond && console.log('voice.lang', curLang, voice.lang)
+        return cond;
     })[0];//.find(voice => voice.voiceURI === voiceInEl.value);
 
     // window.speechSynthesis.getVoices().forEach(voice => {
@@ -88,6 +132,8 @@ function speakText(text) {
     
     // speak that utterance
     window.speechSynthesis.speak(utterance);
+
+    */
 
 }
 
@@ -116,13 +162,22 @@ function speechChunks(){
     }    
 }
 
+var chunkSeq = [];
+
 function speechChunksNew(chunks, tmp){
-    if (chunks.length === 0) return;
+    chunkSeq.push({chunks, tmp});
+    speechChunksGo();
+}
+
+function speechChunksGo(){
+    // if (chunks.length === 0) return;
     // console.log('speechChunksNew', window.speechSynthesis.speaking, tmp, chunks)
     if (window.speechSynthesis.speaking){
-        setTimeout(() => speechChunksNew(chunks, tmp), 900);
+        setTimeout(() => speechChunksGo(), 500);
+        // setTimeout(() => speechChunksNew(chunks, tmp), 500);
         return;
     }
+    const {chunks, tmp} = chunkSeq.shift();
     const text = chunks.map(s => s.trim()).join(' ').trim();
     console.log('text', tmp, text)
 
@@ -135,7 +190,7 @@ function speechChunksNew(chunks, tmp){
     
 }
 
-updateVoices()
+// updateVoices()
 
 function updateVoices() {
     // add an option for each available voice that isn't already added
@@ -150,6 +205,7 @@ function updateVoices() {
     window.speechSynthesis.getVoices().forEach(voice => {
         console.log('voice')
         console.log(voice)
+        // SpeechSynthesisVoice {voiceURI: 'Лаура', name: 'Лаура', lang: 'sk-SK', localService: true, default: false}
     });
 }
 
@@ -168,7 +224,9 @@ document.addEventListener('keydown', function(event) {
     }
 
     if (event.ctrlKey && event.key.toLowerCase() === 'a') {
-        speakText();
+        // speakText();
+        translateToggle = !translateToggle;
+        console.log('translateToggle', translateToggle)
     }
 
 
@@ -290,9 +348,9 @@ function remove_element() {
     elem.remove()
 }
 
-let chunksOld = [];
-let chunksToSpeech = [];
-let chunksTotal = [];
+var chunksOld = [];
+var chunksToSpeech = [];
+var chunksTotal = [];
 
 class SentenceProcessor {
     constructor() {
@@ -336,7 +394,7 @@ class SentenceProcessor {
     }
 }
 
-const processor = new SentenceProcessor();
+var processor = new SentenceProcessor();
 
 // const chunks1 = ["Это ", "первое ", "предложение. ", "Второе ", "предложение ", "начинается "];
 // const chunks2 = ["предложение. ", "Третье ", "начинается ", "здесь. ", "Четвертое ", "предложение "];
@@ -346,12 +404,13 @@ const processor = new SentenceProcessor();
 // console.log(processor.processChunks(chunks2)); // ["Второе предложение начинается здесь."]
 // console.log(processor.processChunks(chunks3)); // ["Третье предложение заканчивается."]
 
-let superChunks = [];
-let cnt = 0;
+var superChunks = [];
+var cnt = 0;
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const { type, data } = request;
-    
+    console.log('chrome.runtime.onMessage.addListener', request)
+    lang = data.lang;
     if (type === "STOP") {
         remove_element();
         sendResponse({data: "STOPPED"});
@@ -361,6 +420,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         showPopup(`Estimated wait time ~ ${Math.round(data)} minutes`);
         sendResponse({data: "popup"});
+        return true;
+    } else if (type === "CHANGE_LANG"){
+        lang = data.lang;
+        console.log('set lang', lang)
         return true;
     }
 
@@ -379,9 +442,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     text = text.replace(/(\r\n|\n|\r)/gm, "");
     console.log('text?', text);
-    const chunks = text.split('. ')
-        // .split('! ').split('? ')
-        .filter(Boolean).map(s => s.trim());
+    // const chunks = text.split('. ')
+    const chunks = text.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
+
 
     // let chunks = text.match( /[^\.!\?]+[\.!\?]+/g );
     
@@ -394,7 +457,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (superChunks.length === 0){
             superChunks = chunks.slice(0, -2);
             cnt = superChunks.length;
-            speechChunksNew(superChunks, 'superChunks')
+            if (superChunks.length !== 0){
+                speechChunksNew(superChunks, 'superChunks')
+            }
         } else {
             let varChunks = chunks.slice(1, -2)
             let newSuper  = [];
@@ -406,7 +471,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
             superChunks = [...superChunks, ...newSuper]
             // console.log('varChunks', varChunks)
-            speechChunksNew(newSuper, 'newSuper')
+            if (newSuper.length !== 0){                
+                speechChunksNew(newSuper, 'newSuper')
+            }
         }        
     } 
 

@@ -76,6 +76,13 @@ function generateUUID() {
   return uuid;
 }
 
+function getLocalStorageValue(key) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([key], (result) => {
+      resolve(result[key]);
+    });
+  });
+}
 
 /**
  * Starts recording audio from the captured tab.
@@ -110,6 +117,7 @@ async function startRecord(option) {
 
     socket.onmessage = async (event) => {
       const data = JSON.parse(event.data);
+      console.log('data', data)
       if (data["uid"] !== uuid)
         return;
       
@@ -146,9 +154,13 @@ async function startRecord(option) {
         return;
       }
       console.log('event.data', event.data)
+
+      const selectedLanguageTo = await getLocalStorageValue("selectedLanguageTo");
+
       res = await sendMessageToTab(option.currentTabId, {
         type: "transcript",
         data: event.data,
+        lang: selectedLanguageTo,
       });
     };
 
