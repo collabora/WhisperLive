@@ -785,7 +785,8 @@ class ServeClientTensorRT(ServeClientBase):
                                 of the possibility of word being truncated.
             duration (float): Duration of the transcribed audio chunk.
         """
-        translated_segment = self.translator.translate(last_segment["text"])
+        if self.task == "translate":
+            translated_segment = self.translator.translate(last_segment["text"])
         last_segment["text"] = translated_segment
         segments = self.prepare_segments({"text": last_segment})
 
@@ -1084,9 +1085,10 @@ class ServeClientFasterWhisper(ServeClientBase):
         segments = []
         if len(result):
             self.t_start = None
-            for i, res in enumerate(list(result)):
-                translated_segment = self.translator.translate(res.text)
-                result[i].text = translated_segment
+            if self.task == "translate":
+                for i, res in enumerate(list(result)):
+                    translated_segment = self.translator.translate(res.text)
+                    result[i].text = translated_segment
             last_segment = self.update_segments(result, duration)
             segments = self.prepare_segments(last_segment)
         else:
