@@ -1,7 +1,7 @@
 {
   "name": "true_tech_STS Dev Container with CUDA",
   "build": {
-    "dockerfile": "../Dockerfile.dev",
+    "dockerfile": "../docker/Dockerfile.dev",
     "context": ".."
   },
   "customizations": {
