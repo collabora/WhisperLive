@@ -189,6 +189,20 @@ async function stopCapture() {
   }
 }
 
+async function updateSelectedLanguageTo(){
+  const optionTabId = await getLocalStorageValue("optionTabId");
+  const currentTabId = await getLocalStorageValue("currentTabId");
+  const selectedLanguageTo = await getLocalStorageValue("selectedLanguageTo");
+  console.log('updateSelectedLanguageTo 1', selectedLanguageTo)
+  if (optionTabId) {
+    console.log('updateSelectedLanguageTo 2')
+    res = await sendMessageToTab(currentTabId, {
+      type: "CHANGE_LANG",
+      data: { currentTabId: currentTabId, lang: selectedLanguageTo },
+    });
+  }
+}
+
 
 /**
  * Listens for messages from the runtime and performs corresponding actions.
@@ -196,6 +210,8 @@ async function stopCapture() {
  */
 chrome.runtime.onMessage.addListener(async (message) => {
   if (message.action === "startCapture") {
+    console.log('action startCapture')
+    updateSelectedLanguageTo();
     startCapture(message);
   } else if (message.action === "stopCapture") {
     stopCapture();
@@ -207,9 +223,11 @@ chrome.runtime.onMessage.addListener(async (message) => {
     const detectedLanguageTo = message.detectedLanguageTo;
     chrome.runtime.sendMessage({ action: "updateSelectedLanguageTo", detectedLanguageTo });
     chrome.storage.local.set({ selectedLanguageTo: detectedLanguageTo });
+    updateSelectedLanguageTo();
   } else if (message.action === "toggleCaptureButtons") {
     chrome.runtime.sendMessage({ action: "toggleCaptureButtons", data: false });
     chrome.storage.local.set({ capturingState: { isCapturing: false } })
+    updateSelectedLanguageTo();
     stopCapture();
   }
 });
