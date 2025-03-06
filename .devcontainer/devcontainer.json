@@ -1,0 +1,27 @@
+{
+  "name": "true_tech_STS Dev Container with CUDA",
+  "build": {
+    "dockerfile": "../docker/Dockerfile.dev",
+    "context": ".."
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.shell.linux": "/bin/bash",
+        "python.pythonPath": "/usr/bin/python3"
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ]
+    }
+  },
+  "postCreateCommand": "pip install -r requirements.txt",
+  "runArgs": [
+    "--gpus", "all"
+  ],
+  "remoteUser": "root",
+  "forwardPorts": [
+    9090
+  ]
+}
