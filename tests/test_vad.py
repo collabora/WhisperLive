@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from whisper_live.tensorrt_utils import load_audio
+from whisper_live.transcriber.tensorrt_utils import load_audio
 from whisper_live.vad import VoiceActivityDetector
 
 

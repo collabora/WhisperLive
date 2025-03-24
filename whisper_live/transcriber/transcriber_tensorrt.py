@@ -9,7 +9,12 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 from whisper.tokenizer import get_tokenizer
-from whisper_live.tensorrt_utils import (mel_filters, load_audio_wav_format, pad_or_trim, load_audio)
+from whisper_live.transcriber.tensorrt_utils import (
+    mel_filters, 
+    load_audio_wav_format, 
+    pad_or_trim, 
+    load_audio
+)
 
 import tensorrt_llm
 import tensorrt_llm.logger as logger
