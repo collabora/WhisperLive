@@ -11,7 +11,7 @@ import numpy as np
 from websockets.sync.server import serve
 from websockets.exceptions import ConnectionClosed
 from whisper_live.vad import VoiceActivityDetector
-
+from whisper_live.backend.base import ServeClientBase
 
 logging.basicConfig(level=logging.INFO)
 

@@ -11,6 +11,16 @@ This project is a real-time transcription application that uses the OpenAI Whisp
 to convert speech input into text output. It can be used to transcribe both live audio
 input from microphone and pre-recorded audio files.
 
+- [Installation](#installation)
+- [Getting Started](#getting-started)
+- [Running the Server](#running-the-server)
+- [Running the Client](#running-the-client)
+- [Browser Extensions](#browser-extensions)
+- [Whisper Live Server in Docker](#whisper-live-server-in-docker)
+- [Future Work](#future-work)
+- [Contact](#contact)
+- [Citations](#citations)
+
 ## Installation
 - Install PyAudio
 ```bash
@@ -26,7 +36,7 @@ input from microphone and pre-recorded audio files.
 - Please follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) for setup of [NVIDIA/TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) and for building Whisper-TensorRT engine.
 
 ## Getting Started
-The server supports two backends `faster_whisper` and `tensorrt`. If running `tensorrt` backend follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md)
+The server supports 3 backends `faster_whisper`, `tensorrt` and `openvino`. If running `tensorrt` backend follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md)
 
 ### Running the Server
 - [Faster Whisper](https://github.com/SYSTRAN/faster-whisper) backend
@@ -53,6 +63,16 @@ python3 run_server.py -p 9090 \
                       -trt /home/TensorRT-LLM/examples/whisper/whisper_small \
                       -m
 ```
+
+- WhisperLive now supports the [OpenVINO](https://github.com/openvinotoolkit/openvino) backend for efficient inference on Intel CPUs, iGPU and dGPUs. Currently, we tested the models uploaded to [huggingface by OpenVINO](https://huggingface.co/OpenVINO?search_models=whisper).
+  - > **Docker Recommended:** Running WhisperLive with OpenVINO inside Docker automatically enables GPU support (iGPU/dGPU) without requiring additional host setup.
+  - > **Native (non-Docker) Use:** If you prefer running outside Docker, ensure the Intel drivers and OpenVINO runtime are installed and properly configured on your system. Refer to the documentation for [installing OpenVINO](https://docs.openvino.ai/2025/get-started/install-openvino.html?PACKAGE=OPENVINO_BASE&VERSION=v_2025_0_0&OP_SYSTEM=LINUX&DISTRIBUTION=PIP#).
+
+```
+python3 run_server.py -p 9090 -b openvino
+```
+
+
 #### Controlling OpenMP Threads
 To control the number of threads used by OpenMP, you can set the `OMP_NUM_THREADS` environment variable. This is useful for managing CPU resources and ensuring consistent performance. If not specified, `OMP_NUM_THREADS` is set to `1` by default. You can change this by using the `--omp_num_threads` argument:
 ```bash
@@ -147,15 +167,21 @@ client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/b
                         --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_en_int4"
   ```
 
+  - OpenVINO
+  ```
+  docker run -it --device=/dev/dri -p 9090:9090 ghcr.io/collabora/whisperlive-openvino
+  ```
+
 - CPU
-```bash
-docker run -it -p 9090:9090 ghcr.io/collabora/whisperlive-cpu:latest
-```
+  - Faster-whisper
+  ```bash
+  docker run -it -p 9090:9090 ghcr.io/collabora/whisperlive-cpu:latest
+  ```
+
 **Note**: By default we use "small" model size. To build docker image for a different model size, change the size in server.py and then build the docker image.
 
 ## Future Work
 - [ ] Add translation to other languages on top of transcription.
-- [x] TensorRT backend for Whisper.
 
 ## Contact
 

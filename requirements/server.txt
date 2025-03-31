@@ -11,3 +11,11 @@ evaluate
 numpy<2
 openai-whisper==20240930
 tokenizers==0.20.3
+
+# openvino
+librosa
+openvino
+openvino-genai
+openvino-tokenizers
+optimum 
+optimum-intel

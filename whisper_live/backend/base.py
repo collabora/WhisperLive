@@ -1,6 +1,7 @@
 import json
 import logging
 import threading
+import time
 import numpy as np
 
 
@@ -26,6 +27,7 @@ class ServeClientBase(object):
         self.add_pause_thresh = 3       # add a blank to segment list as a pause(no speech) for 3 seconds
         self.transcript = []
         self.send_last_n_segments = 10
+        self.no_speech_thresh = 0.45
 
         # text formatting
         self.pick_previous_segments = 2
@@ -34,13 +36,76 @@ class ServeClientBase(object):
         self.lock = threading.Lock()
 
     def speech_to_text(self):
-        raise NotImplementedError
+        """
+        Process an audio stream in an infinite loop, continuously transcribing the speech.
+
+        This method continuously receives audio frames, performs real-time transcription, and sends
+        transcribed segments to the client via a WebSocket connection.
+
+        If the client's language is not detected, it waits for 30 seconds of audio input to make a language prediction.
+        It utilizes the Whisper ASR model to transcribe the audio, continuously processing and streaming results. Segments
+        are sent to the client in real-time, and a history of segments is maintained to provide context.Pauses in speech
+        (no output from Whisper) are handled by showing the previous output for a set duration. A blank segment is added if
+        there is no speech for a specified duration to indicate a pause.
+
+        Raises:
+            Exception: If there is an issue with audio processing or WebSocket communication.
+
+        """
+        while True:
+            if self.exit:
+                logging.info("Exiting speech to text thread")
+                break
+
+            if self.frames_np is None:
+                continue
+
+            self.clip_audio_if_no_valid_segment()
+
+            input_bytes, duration = self.get_audio_chunk_for_processing()
+            if duration < 1.0:
+                time.sleep(0.1)     # wait for audio chunks to arrive
+                continue
+            try:
+                input_sample = input_bytes.copy()
+                result = self.transcribe_audio(input_sample)
+
+                if result is None or self.language is None:
+                    self.timestamp_offset += duration
+                    time.sleep(0.25)    # wait for voice activity, result is None when no voice activity
+                    continue
+                self.handle_transcription_output(result, duration)
+
+            except Exception as e:
+                logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
+                time.sleep(0.01)
 
     def transcribe_audio(self):
         raise NotImplementedError
 
     def handle_transcription_output(self):
         raise NotImplementedError
+    
+    def format_segment(self, start, end, text, completed=False):
+        """
+        Formats a transcription segment with precise start and end times alongside the transcribed text.
+
+        Args:
+            start (float): The start time of the transcription segment in seconds.
+            end (float): The end time of the transcription segment in seconds.
+            text (str): The transcribed text corresponding to the segment.
+
+        Returns:
+            dict: A dictionary representing the formatted transcription segment, including
+                'start' and 'end' times as strings with three decimal places and the 'text'
+                of the transcription.
+        """
+        return {
+            'start': "{:.3f}".format(start),
+            'end': "{:.3f}".format(end),
+            'text': text,
+            'completed': completed
+        }
 
     def add_frames(self, frame_np):
         """
@@ -161,6 +226,33 @@ class ServeClientBase(object):
         except Exception as e:
             logging.error(f"[ERROR]: Sending data to client: {e}")
 
+    def get_previous_output(self):
+        """
+        Retrieves previously generated transcription outputs if no new transcription is available
+        from the current audio chunks.
+
+        Checks the time since the last transcription output and, if it is within a specified
+        threshold, returns the most recent segments of transcribed text. It also manages
+        adding a pause (blank segment) to indicate a significant gap in speech based on a defined
+        threshold.
+
+        Returns:
+            segments (list): A list of transcription segments. This may include the most recent
+                            transcribed text segments or a blank segment to indicate a pause
+                            in speech.
+        """
+        segments = []
+        if self.t_start is None:
+            self.t_start = time.time()
+        if time.time() - self.t_start < self.show_prev_out_thresh:
+            segments = self.prepare_segments()
+
+        # add a blank if there is no speech for 3 seconds
+        if len(self.text) and self.text[-1] != '':
+            if time.time() - self.t_start > self.add_pause_thresh:
+                self.text.append('')
+        return segments
+
     def disconnect(self):
         """
         Notify the client of disconnection and send a disconnect message.
@@ -185,4 +277,94 @@ class ServeClientBase(object):
         """
         logging.info("Cleaning up.")
         self.exit = True
+    
+    def get_segment_no_speech_prob(self, segment):
+        return getattr(segment, "no_speech_prob", 0)
 
+    def get_segment_start(self, segment):
+        return getattr(segment, "start", getattr(segment, "start_ts", 0))
+
+    def get_segment_end(self, segment):
+        return getattr(segment, "end", getattr(segment, "end_ts", 0))
+
+    def update_segments(self, segments, duration):
+        """
+        Processes the segments from Whisper and updates the transcript.
+        Uses helper methods to account for differences between backends.
+        
+        Args:
+            segments (list): List of segments returned by the transcriber.
+            duration (float): Duration of the current audio chunk.
+        
+        Returns:
+            dict or None: The last processed segment (if any).
+        """
+        offset = None
+        self.current_out = ''
+        last_segment = None
+
+        # Process complete segments only if there are more than one
+        # and if the last segment's no_speech_prob is below the threshold.
+        if len(segments) > 1 and self.get_segment_no_speech_prob(segments[-1]) <= self.no_speech_thresh:
+            for s in segments[:-1]:
+                text_ = s.text
+                self.text.append(text_)
+                with self.lock:
+                    start = self.timestamp_offset + self.get_segment_start(s)
+                    end = self.timestamp_offset + min(duration, self.get_segment_end(s))
+                if start >= end:
+                    continue
+                if self.get_segment_no_speech_prob(s) > self.no_speech_thresh:
+                    continue
+                self.transcript.append(self.format_segment(start, end, text_, completed=True))
+                offset = min(duration, self.get_segment_end(s))
+
+        # Process the last segment if its no_speech_prob is acceptable.
+        if self.get_segment_no_speech_prob(segments[-1]) <= self.no_speech_thresh:
+            self.current_out += segments[-1].text
+            with self.lock:
+                last_segment = self.format_segment(
+                    self.timestamp_offset + self.get_segment_start(segments[-1]),
+                    self.timestamp_offset + min(duration, self.get_segment_end(segments[-1])),
+                    self.current_out,
+                    completed=False
+                )
+
+        # Handle repeated output logic.
+        if self.current_out.strip() == self.prev_out.strip() and self.current_out != '':
+            self.same_output_count += 1
+
+            # if we remove the audio because of same output on the nth reptition we might remove the 
+            # audio thats not yet transcribed so, capturing the time when it was repeated for the first time
+            if self.end_time_for_same_output is None:
+                self.end_time_for_same_output = self.get_segment_end(segments[-1])
+            time.sleep(0.1)  # wait briefly for any new voice activity
+        else:
+            self.same_output_count = 0
+            self.end_time_for_same_output = None
+
+        # If the same incomplete segment is repeated too many times,
+        # append it to the transcript and update the offset.
+        if self.same_output_count > self.same_output_threshold:
+            if not self.text or self.text[-1].strip().lower() != self.current_out.strip().lower():
+                self.text.append(self.current_out)
+                with self.lock:
+                    self.transcript.append(self.format_segment(
+                        self.timestamp_offset,
+                        self.timestamp_offset + min(duration, self.end_time_for_same_output),
+                        self.current_out,
+                        completed=True
+                    ))
+            self.current_out = ''
+            offset = min(duration, self.end_time_for_same_output)
+            self.same_output_count = 0
+            last_segment = None
+            self.end_time_for_same_output = None
+        else:
+            self.prev_out = self.current_out
+
+        if offset is not None:
+            with self.lock:
+                self.timestamp_offset += offset
+
+        return last_segment
