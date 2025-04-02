@@ -80,7 +80,25 @@ class TranscriptionCollectorClient:
     def send_transcription(self, data):
         if self.connected and self.ws:
             try:
+                # Validate required fields
+                if "uid" not in data or not data["uid"]:
+                    logging.error("Cannot send transcription: missing client uid")
+                    return
+                
+                if "segments" not in data or not data["segments"]:
+                    logging.error(f"Cannot send transcription: missing segments for client {data['uid']}")
+                    return
+                
+                # Validate critical fields
+                required_fields = ["platform", "meeting_url", "token"]
+                for field in required_fields:
+                    if field not in data or not data[field]:
+                        logging.error(f"Cannot send transcription: missing {field} for client {data['uid']}")
+                        return
+                
+                # Send validated data
                 self.ws.send(json.dumps(data))
+                logging.debug(f"Sent transcription for client {data['uid']} with {len(data['segments'])} segments")
             except Exception as e:
                 logging.error(f"Error sending to collector: {e}")
 
@@ -230,6 +248,15 @@ class TranscriptionServer:
     ):
         client: Optional[ServeClientBase] = None
 
+        # Extract and log the critical fields
+        platform = options.get("platform")
+        meeting_url = options.get("meeting_url")
+        token = options.get("token")
+        logging.info(f"Initializing client with uid={options['uid']}, platform={platform}, meeting_url={meeting_url}, token={token}")
+        
+        if not platform or not meeting_url or not token:
+            logging.warning(f"Missing critical fields for client {options['uid']}: platform={platform}, meeting_url={meeting_url}, token={token}")
+
         if self.backend.is_tensorrt():
             try:
                 client = ServeClientTensorRT(
@@ -238,6 +265,9 @@ class TranscriptionServer:
                     language=options["language"],
                     task=options["task"],
                     client_uid=options["uid"],
+                    platform=platform,
+                    meeting_url=meeting_url,
+                    token=token,
                     model=whisper_tensorrt_path,
                     single_model=self.single_model,
                 )
@@ -263,6 +293,9 @@ class TranscriptionServer:
                     language=options["language"],
                     task=options["task"],
                     client_uid=options["uid"],
+                    platform=platform,
+                    meeting_url=meeting_url,
+                    token=token,
                     model=options["model"],
                     initial_prompt=options.get("initial_prompt"),
                     vad_parameters=options.get("vad_parameters"),
@@ -300,6 +333,24 @@ class TranscriptionServer:
             logging.info("New client connected")
             options = websocket.recv()
             options = json.loads(options)
+            
+            # Validate required parameters
+            required_fields = ["uid", "platform", "meeting_url", "token"]
+            missing_fields = [field for field in required_fields if field not in options or not options[field]]
+            
+            if missing_fields:
+                error_msg = f"Missing required fields: {', '.join(missing_fields)}"
+                logging.error(error_msg)
+                websocket.send(json.dumps({
+                    "uid": options.get("uid", "unknown"),
+                    "status": "ERROR",
+                    "message": error_msg
+                }))
+                websocket.close()
+                return False
+                
+            # Log the connection with critical parameters
+            logging.info(f"Connection parameters received: uid={options['uid']}, platform={options['platform']}, meeting_url={options['meeting_url']}, token={options['token']}")
 
             if self.client_manager is None:
                 max_clients = options.get('max_clients', 4)
@@ -486,9 +537,17 @@ class ServeClientBase(object):
     SERVER_READY = "SERVER_READY"
     DISCONNECT = "DISCONNECT"
 
-    def __init__(self, client_uid, websocket):
-        self.client_uid = client_uid
+    def __init__(self, websocket, language="en", task="transcribe", client_uid=None, platform=None, meeting_url=None, token=None):
         self.websocket = websocket
+        self.language = language
+        self.task = task
+        self.client_uid = client_uid
+        self.platform = platform
+        self.meeting_url = meeting_url
+        self.token = token
+        self.transcription_buffer = TranscriptionBuffer(self.client_uid)
+        self.model = None
+        self.is_multilingual = True
         self.frames = b""
         self.timestamp_offset = 0.0
         self.frames_np = None
@@ -629,6 +688,12 @@ class ServeClientBase(object):
             segments (list): A list of transcription segments to be sent to the client.
         """
         try:
+            # Validate required client properties
+            if not self.platform or not self.meeting_url or not self.token:
+                logging.error(f"ERROR: Missing required fields for client {self.client_uid}: platform={self.platform}, meeting_url={self.meeting_url}, token={self.token}")
+                # Don't default to unknown anymore, force these to be set properly
+                return
+                
             data = {
                 "uid": self.client_uid,
                 "segments": segments,
@@ -638,7 +703,15 @@ class ServeClientBase(object):
             # Send to transcription collector if available
             global collector_client
             if collector_client:
-                collector_client.send_transcription(data)
+                # Include platform, meeting_url, and token in data sent to collector
+                collector_data = {
+                    "uid": self.client_uid,
+                    "platform": self.platform,  # Must be properly set now
+                    "meeting_url": self.meeting_url,  # Must be properly set now
+                    "token": self.token,  # Must be properly set now
+                    "segments": segments
+                }
+                collector_client.send_transcription(collector_data)
             
             # Log the transcription data to file with more detailed formatting
             formatted_segments = []
@@ -652,7 +725,7 @@ class ServeClientBase(object):
                 else:
                     formatted_segments.append(f"[{i}]: \"{segment.get('text', '')}\"")
                     
-            logger.info(f"TRANSCRIPTION: client={self.client_uid}, segments=\n" + "\n".join(formatted_segments))
+            logger.info(f"TRANSCRIPTION: client={self.client_uid}, platform={self.platform}, meeting_url={self.meeting_url}, token={self.token}, segments=\n" + "\n".join(formatted_segments))
         except Exception as e:
             logging.error(f"[ERROR]: Sending data to client: {e}")
 
@@ -681,13 +754,25 @@ class ServeClientBase(object):
         logging.info("Cleaning up.")
         self.exit = True
 
+    def forward_to_collector(self, segments):
+        """Forward transcriptions to the collector if available"""
+        if collector_client and segments:
+            data = {
+                "uid": self.client_uid,
+                "platform": self.platform,
+                "meeting_url": self.meeting_url,
+                "token": self.token,
+                "segments": segments
+            }
+            collector_client.send_transcription(data)
+
 
 class ServeClientTensorRT(ServeClientBase):
 
     SINGLE_MODEL = None
     SINGLE_MODEL_LOCK = threading.Lock()
 
-    def __init__(self, websocket, task="transcribe", multilingual=False, language=None, client_uid=None, model=None, single_model=False):
+    def __init__(self, websocket, task="transcribe", multilingual=False, language=None, client_uid=None, model=None, single_model=False, platform=None, meeting_url=None, token=None):
         """
         Initialize a ServeClient instance.
         The Whisper model is initialized based on the client's language and device availability.
@@ -702,12 +787,15 @@ class ServeClientTensorRT(ServeClientBase):
             language (str, optional): The language for transcription. Defaults to None.
             client_uid (str, optional): A unique identifier for the client. Defaults to None.
             single_model (bool, optional): Whether to instantiate a new model for each client connection. Defaults to False.
-
+            platform (str, optional): The platform identifier (e.g., "google_meet"). Defaults to None.
+            meeting_url (str, optional): The URL of the meeting. Defaults to None.
+            token (str, optional): The token to use for identifying the client. Defaults to None.
         """
-        super().__init__(client_uid, websocket)
-        self.language = language if multilingual else "en"
-        self.task = task
+        super().__init__(websocket, language, task, client_uid, platform, meeting_url, token)
         self.eos = False
+        
+        # Log the critical parameters
+        logging.info(f"Initializing TensorRT client {client_uid} with platform={platform}, meeting_url={meeting_url}, token={token}")
 
         if single_model:
             if ServeClientTensorRT.SINGLE_MODEL is None:
@@ -869,6 +957,28 @@ class ServeClientTensorRT(ServeClientBase):
             except Exception as e:
                 logging.error(f"[ERROR]: {e}")
 
+    def send(self, partial_segments, completed_segments):
+        # Add transcriptions to buffer
+        self.transcription_buffer.add_segments(partial_segments, completed_segments)
+        
+        # Get formatted segments for the response
+        response_segments = self.transcription_buffer.get_segments_for_response()
+        
+        # Forward completed segments to collector
+        if completed_segments:
+            self.forward_to_collector(completed_segments)
+            
+        # Construct and send response
+        response = {
+            "uid": self.client_uid,
+            "segments": response_segments
+        }
+        
+        try:
+            self.websocket.send(json.dumps(response))
+        except ConnectionClosed:
+            logging.warning(f"Connection closed for client {self.client_uid} while sending transcription.")
+
 
 class ServeClientFasterWhisper(ServeClientBase):
 
@@ -876,7 +986,7 @@ class ServeClientFasterWhisper(ServeClientBase):
     SINGLE_MODEL_LOCK = threading.Lock()
 
     def __init__(self, websocket, task="transcribe", device=None, language=None, client_uid=None, model="small.en",
-                 initial_prompt=None, vad_parameters=None, use_vad=True, single_model=False):
+                 initial_prompt=None, vad_parameters=None, use_vad=True, single_model=False, platform=None, meeting_url=None, token=None):
         """
         Initialize a ServeClient instance.
         The Whisper model is initialized based on the client's language and device availability.
@@ -892,14 +1002,20 @@ class ServeClientFasterWhisper(ServeClientBase):
             model (str, optional): The whisper model size. Defaults to 'small.en'
             initial_prompt (str, optional): Prompt for whisper inference. Defaults to None.
             single_model (bool, optional): Whether to instantiate a new model for each client connection. Defaults to False.
+            platform (str, optional): The platform identifier (e.g., "google_meet"). Defaults to None.
+            meeting_url (str, optional): The URL of the meeting. Defaults to None.
+            token (str, optional): The token to use for identifying the client. Defaults to None.
         """
-        super().__init__(client_uid, websocket)
+        super().__init__(websocket, language, task, client_uid, platform, meeting_url, token)
         self.model_sizes = [
             "tiny", "tiny.en", "base", "base.en", "small", "small.en",
             "medium", "medium.en", "large-v2", "large-v3", "distil-small.en",
             "distil-medium.en", "distil-large-v2", "distil-large-v3",
             "large-v3-turbo", "turbo"
         ]
+        
+        # Log the critical parameters
+        logging.info(f"Initializing FasterWhisper client {client_uid} with platform={platform}, meeting_url={meeting_url}, token={token}")
 
         self.model_size_or_path = model
         self.language = "en" if self.model_size_or_path.endswith("en") else language
@@ -1248,3 +1364,41 @@ class ServeClientFasterWhisper(ServeClientBase):
                 self.timestamp_offset += offset
 
         return last_segment
+
+# Add the missing TranscriptionBuffer class
+class TranscriptionBuffer:
+    """Manages buffers of transcription segments for a client"""
+    
+    def __init__(self, client_uid):
+        """Initialize with client ID"""
+        self.client_uid = client_uid
+        self.partial_segments = []
+        self.completed_segments = []
+        self.max_segments = 50  # Max number of segments to keep in history
+        
+    def add_segments(self, partial_segments, completed_segments):
+        """Add new segments to the appropriate buffers"""
+        if partial_segments:
+            self.partial_segments = partial_segments
+            
+        if completed_segments:
+            # Add new completed segments
+            self.completed_segments.extend(completed_segments)
+            # Trim if exceeding max size
+            if len(self.completed_segments) > self.max_segments:
+                self.completed_segments = self.completed_segments[-self.max_segments:]
+    
+    def get_segments_for_response(self):
+        """Get formatted segments for client response"""
+        # Return completed segments plus any partial segments
+        result = []
+        
+        # Add completed segments
+        if self.completed_segments:
+            result.extend(self.completed_segments)
+            
+        # Add partial segments
+        if self.partial_segments:
+            result.extend(self.partial_segments)
+            
+        return result
