@@ -6,6 +6,8 @@ import functools
 import logging
 from enum import Enum
 from typing import List, Optional
+import datetime
+import websocket
 
 import torch
 import numpy as np
@@ -18,8 +20,78 @@ try:
 except Exception:
     pass
 
+# Setup basic logging
 logging.basicConfig(level=logging.INFO)
 
+# Add file logging for transcription data
+LOG_DIR = "transcription_logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+log_filename = os.path.join(LOG_DIR, f"transcription_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+file_handler = logging.FileHandler(log_filename)
+file_handler.setLevel(logging.INFO)
+file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(file_formatter)
+logger = logging.getLogger("transcription")
+logger.setLevel(logging.INFO)
+logger.addHandler(file_handler)
+
+# Transcription Collector client
+class TranscriptionCollectorClient:
+    def __init__(self, collector_url):
+        self.collector_url = collector_url
+        self.ws = None
+        self.connected = False
+        self.reconnect_thread = None
+        self.connect()
+    
+    def connect(self):
+        try:
+            self.ws = websocket.WebSocketApp(
+                self.collector_url,
+                on_open=self._on_open,
+                on_close=self._on_close,
+                on_error=self._on_error
+            )
+            threading.Thread(target=self.ws.run_forever, daemon=True).start()
+        except Exception as e:
+            logging.error(f"Error connecting to collector: {e}")
+            self._schedule_reconnect()
+    
+    def _on_open(self, ws):
+        self.connected = True
+        logging.info("Connected to transcription collector")
+    
+    def _on_close(self, ws, close_status_code, close_msg):
+        self.connected = False
+        logging.info("Disconnected from transcription collector")
+        self._schedule_reconnect()
+    
+    def _on_error(self, ws, error):
+        logging.error(f"Collector connection error: {error}")
+        self.connected = False
+        self._schedule_reconnect()
+    
+    def _schedule_reconnect(self):
+        if self.reconnect_thread is None or not self.reconnect_thread.is_alive():
+            self.reconnect_thread = threading.Timer(5.0, self.connect)
+            self.reconnect_thread.daemon = True
+            self.reconnect_thread.start()
+    
+    def send_transcription(self, data):
+        if self.connected and self.ws:
+            try:
+                self.ws.send(json.dumps(data))
+            except Exception as e:
+                logging.error(f"Error sending to collector: {e}")
+
+# Initialize collector client
+collector_client = None
+collector_url = os.environ.get("TRANSCRIPTION_COLLECTOR_URL")
+if collector_url:
+    logging.info(f"Initializing transcription collector client to {collector_url}")
+    collector_client = TranscriptionCollectorClient(collector_url)
+else:
+    logging.info("No transcription collector URL provided, skipping collector integration")
 
 class ClientManager:
     def __init__(self, max_clients=4, max_connection_time=600):
@@ -350,6 +422,10 @@ class TranscriptionServer:
                 logging.info("Single model mode currently only works with custom models.")
         if not BackendType.is_valid(backend):
             raise ValueError(f"{backend} is not a valid backend type. Choose backend from {BackendType.valid_types()}")
+            
+        # Log server startup information
+        logger.info(f"SERVER_START: host={host}, port={port}, backend={backend}, single_model={single_model}")
+        
         with serve(
             functools.partial(
                 self.recv_audio,
@@ -361,6 +437,7 @@ class TranscriptionServer:
             host,
             port
         ) as server:
+            logger.info(f"SERVER_RUNNING: WhisperLive server running on {host}:{port}")
             server.serve_forever()
 
     def voice_activity(self, websocket, frame_np):
@@ -552,12 +629,30 @@ class ServeClientBase(object):
             segments (list): A list of transcription segments to be sent to the client.
         """
         try:
-            self.websocket.send(
-                json.dumps({
-                    "uid": self.client_uid,
-                    "segments": segments,
-                })
-            )
+            data = {
+                "uid": self.client_uid,
+                "segments": segments,
+            }
+            self.websocket.send(json.dumps(data))
+            
+            # Send to transcription collector if available
+            global collector_client
+            if collector_client:
+                collector_client.send_transcription(data)
+            
+            # Log the transcription data to file with more detailed formatting
+            formatted_segments = []
+            for i, segment in enumerate(segments):
+                if 'start' in segment and 'end' in segment:
+                    formatted_segments.append(
+                        f"[{i}] ({segment.get('start', 'N/A')}-{segment.get('end', 'N/A')}) "
+                        f"[{'COMPLETE' if segment.get('completed', False) else 'PARTIAL'}]: "
+                        f"\"{segment.get('text', '')}\""
+                    )
+                else:
+                    formatted_segments.append(f"[{i}]: \"{segment.get('text', '')}\"")
+                    
+            logger.info(f"TRANSCRIPTION: client={self.client_uid}, segments=\n" + "\n".join(formatted_segments))
         except Exception as e:
             logging.error(f"[ERROR]: Sending data to client: {e}")
 
@@ -713,12 +808,25 @@ class ServeClientTensorRT(ServeClientBase):
             last_segment (str): Last transcribed audio from the whisper model.
             duration (float): Duration of the last audio chunk.
         """
-        if not len(self.transcript):
-            self.transcript.append({"text": last_segment + " "})
-        elif self.transcript[-1]["text"].strip() != last_segment:
-            self.transcript.append({"text": last_segment + " "})
-        
         with self.lock:
+            start_time = self.timestamp_offset
+            end_time = self.timestamp_offset + duration
+            
+            if not len(self.transcript):
+                self.transcript.append({
+                    "text": last_segment + " ", 
+                    "start": "{:.3f}".format(start_time),
+                    "end": "{:.3f}".format(end_time),
+                    "completed": True
+                })
+            elif self.transcript[-1]["text"].strip() != last_segment:
+                self.transcript.append({
+                    "text": last_segment + " ", 
+                    "start": "{:.3f}".format(start_time),
+                    "end": "{:.3f}".format(end_time),
+                    "completed": True
+                })
+            
             self.timestamp_offset += duration
 
     def speech_to_text(self):
@@ -894,8 +1002,16 @@ class ServeClientFasterWhisper(ServeClientBase):
         if info.language_probability > 0.5:
             self.language = info.language
             logging.info(f"Detected language {self.language} with probability {info.language_probability}")
-            self.websocket.send(json.dumps(
-                {"uid": self.client_uid, "language": self.language, "language_prob": info.language_probability}))
+            
+            language_data = {
+                "uid": self.client_uid, 
+                "language": self.language, 
+                "language_prob": info.language_probability
+            }
+            self.websocket.send(json.dumps(language_data))
+            
+            # Log the language detection to file in a more readable format
+            logger.info(f"LANGUAGE_DETECTION: client={self.client_uid}, language={self.language}, confidence={info.language_probability:.4f}")
 
     def transcribe_audio(self, input_sample):
         """
