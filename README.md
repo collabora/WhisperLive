@@ -182,3 +182,8 @@ We are available to help you with both Open Source and proprietary AI projects. 
   howpublished = {\url{https://github.com/snakers4/silero-vad}},
   email = {hello@silero.ai}
 }
+
+
+
+(whisperlive) dima@bbb:~/test1/vexa/vexa/WhisperLive_fresh$ export LD_LIBRARY_PATH=$CONDA_PREFIX/lib/python3.10/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
+(whisperlive) dima@bbb:~/test1/vexa/vexa/WhisperLive_fresh$ python3 run_server.py --port 9090 --backend faster_whisper -m

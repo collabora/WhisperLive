@@ -125,3 +125,4 @@ model_weights/
 # Docker
 .docker/
 docker-volumes/
+models/

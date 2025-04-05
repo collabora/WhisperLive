@@ -18,9 +18,16 @@ docker run -p 9090:9090 --runtime=nvidia --gpus all --entrypoint /bin/bash -it g
 bash build_whisper_tensorrt.sh /app/TensorRT-LLM-examples small.en        # float16
 bash build_whisper_tensorrt.sh /app/TensorRT-LLM-examples small.en int8   # int8 weight only quantization
 bash build_whisper_tensorrt.sh /app/TensorRT-LLM-examples small.en int4   # int4 weight only quantization
+bash build_whisper_tensorrt.sh /app/TensorRT-LLM-examples medium
 
 # convert small multilingual model
 bash build_whisper_tensorrt.sh /app/TensorRT-LLM-examples small
+```
+
+we have committed a docker image for medium, reuse this one!
+```
+REPOSITORY                         TAG                IMAGE ID       CREATED          SIZE
+whisperlive-trt-medium-ready       latest             8596e0157dbf   2 seconds ago    19.1GB
 ```
 
 ## Run WhisperLive Server with TensorRT Backend
@@ -36,3 +43,9 @@ python3 run_server.py --port 9090 \
                       --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_float16" \
                       --trt_multilingual
 ```
+
+
+python3 run_server.py --port 9090 \
+                      --backend tensorrt \
+                      --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_medium_float16" \
+                      --trt_multilingual

@@ -33,6 +33,9 @@ class Client:
         log_transcription=True,
         max_clients=4,
         max_connection_time=600,
+        platform="test_platform",
+        meeting_url="test_url",
+        token="test_token"
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -52,6 +55,9 @@ class Client:
             log_transcription (bool, optional): Whether to log transcription output to the console. Default is True.
             max_clients (int, optional): Maximum number of client connections allowed. Default is 4.
             max_connection_time (int, optional): Maximum allowed connection time in seconds. Default is 600.
+            platform (str, optional): Platform identifier sent to the server. Defaults to "test_platform".
+            meeting_url (str, optional): Meeting URL identifier sent to the server. Defaults to "test_url".
+            token (str, optional): Token identifier sent to the server. Defaults to "test_token".
         """
         self.recording = False
         self.task = "transcribe"
@@ -69,6 +75,9 @@ class Client:
         self.log_transcription = log_transcription
         self.max_clients = max_clients
         self.max_connection_time = max_connection_time
+        self.platform = platform
+        self.meeting_url = meeting_url
+        self.token = token
 
         if translate:
             self.task = "translate"
@@ -195,26 +204,26 @@ class Client:
         Callback function called when the WebSocket connection is successfully opened.
 
         Sends an initial configuration message to the server, including client UID,
-        language selection, and task type.
+        language selection, task type, and potentially platform, meeting_url, token.
 
         Args:
             ws (websocket.WebSocketApp): The WebSocket client instance.
 
         """
         print("[INFO]: Opened connection")
-        ws.send(
-            json.dumps(
-                {
-                    "uid": self.uid,
-                    "language": self.language,
-                    "task": self.task,
-                    "model": self.model,
-                    "use_vad": self.use_vad,
-                    "max_clients": self.max_clients,
-                    "max_connection_time": self.max_connection_time,
-                }
-            )
-        )
+        initial_payload = {
+            "uid": self.uid,
+            "language": self.language,
+            "task": self.task,
+            "model": self.model,
+            "use_vad": self.use_vad,
+            "max_clients": self.max_clients,
+            "max_connection_time": self.max_connection_time,
+            "platform": self.platform,
+            "meeting_url": self.meeting_url,
+            "token": self.token,
+        }
+        ws.send(json.dumps(initial_payload))
 
     def send_packet_to_server(self, message):
         """
@@ -682,6 +691,9 @@ class TranscriptionClient(TranscriptionTeeClient):
         max_clients (int, optional): Maximum number of client connections allowed. Default is 4.
         max_connection_time (int, optional): Maximum allowed connection time in seconds. Default is 600.
         mute_audio_playback (bool, optional): If True, mutes audio playback during file playback. Default is False.
+        platform (str, optional): Platform identifier sent to the server. Defaults to "test_platform".
+        meeting_url (str, optional): Meeting URL identifier sent to the server. Defaults to "test_url".
+        token (str, optional): Token identifier sent to the server. Defaults to "test_token".
 
     Attributes:
         client (Client): An instance of the underlying Client class responsible for handling the WebSocket connection.
@@ -708,11 +720,17 @@ class TranscriptionClient(TranscriptionTeeClient):
         max_clients=4,
         max_connection_time=600,
         mute_audio_playback=False,
+        platform="test_platform",
+        meeting_url="test_url",
+        token="test_token"
     ):
         self.client = Client(
             host, port, lang, translate, model, srt_file_path=output_transcription_path,
             use_vad=use_vad, log_transcription=log_transcription, max_clients=max_clients,
-            max_connection_time=max_connection_time
+            max_connection_time=max_connection_time,
+            platform=platform,
+            meeting_url=meeting_url,
+            token=token
         )
 
         if save_output_recording and not output_recording_filename.endswith(".wav"):
