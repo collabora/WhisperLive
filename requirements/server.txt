@@ -1,5 +1,6 @@
 faster-whisper==1.1.0
 websockets
+websocket-client
 onnxruntime==1.17.0
 numba
 kaldialign

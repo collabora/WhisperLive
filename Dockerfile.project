@@ -1,0 +1,51 @@
+FROM nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04
+WORKDIR /root
+RUN apt-get update -y && apt-get install -y python3-pip
+RUN pip3 install faster-whisper
+
+
+# Set DEBIAN_FRONTEND to noninteractive to avoid prompts during apt-get install
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    libsndfile1 \
+    ffmpeg \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Install PyTorch compatible with CUDA 11.8 (matching base image)
+# Use python3 explicitly if needed
+RUN python3 -m pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+# Set working directory
+WORKDIR /app
+
+# Copy only the requirements file first
+COPY services/WhisperLive/requirements/server.txt /tmp/requirements.txt
+
+# Remove openai-whisper and onnxruntime lines from the copied requirements file
+RUN sed -i '/openai-whisper/d' /tmp/requirements.txt || true \
+    && sed -i '/onnxruntime==/d' /tmp/requirements.txt || true
+
+# Install remaining Python dependencies from the modified requirements file
+RUN python3 -m pip install --no-cache-dir -r /tmp/requirements.txt
+
+# Now copy the application code
+COPY services/WhisperLive/ /app/
+
+# Copy our entrypoint script
+COPY services/WhisperLive/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Set it as the entrypoint
+ENTRYPOINT ["/entrypoint.sh"]
+
+# Default command to run the server with faster_whisper backend
+CMD ["--port", "9090", "--backend", "faster_whisper"]
