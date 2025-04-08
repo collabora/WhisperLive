@@ -54,7 +54,14 @@ setup(
         "openai-whisper==20240930",
         "kaldialign",
         "soundfile",
-        "tokenizers==0.20.3"
+        "tokenizers==0.20.3",
+        "librosa",
+        "numpy==1.26.4"
+        "openvino",
+        "openvino-genai",
+        "openvino-tokenizers",
+        "optimum", 
+        "optimum-intel",
     ],
-    python_requires=">=3.8"
+    python_requires=">=3.9"
 )
