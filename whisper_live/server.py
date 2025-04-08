@@ -252,7 +252,8 @@ class TranscriptionServer:
         platform = options.get("platform")
         meeting_url = options.get("meeting_url")
         token = options.get("token")
-        logging.info(f"Initializing client with uid={options['uid']}, platform={platform}, meeting_url={meeting_url}, token={token}")
+        meeting_id = options.get("meeting_id")  # Extract meeting_id from options
+        logging.info(f"Initializing client with uid={options['uid']}, platform={platform}, meeting_url={meeting_url}, token={token}, meeting_id={meeting_id}")
         
         if not platform or not meeting_url or not token:
             logging.warning(f"Missing critical fields for client {options['uid']}: platform={platform}, meeting_url={meeting_url}, token={token}")
@@ -268,6 +269,7 @@ class TranscriptionServer:
                     platform=platform,
                     meeting_url=meeting_url,
                     token=token,
+                    meeting_id=meeting_id,  # Pass meeting_id to constructor
                     model=whisper_tensorrt_path,
                     single_model=self.single_model,
                 )
@@ -296,6 +298,7 @@ class TranscriptionServer:
                     platform=platform,
                     meeting_url=meeting_url,
                     token=token,
+                    meeting_id=meeting_id,  # Pass meeting_id to constructor
                     model=options["model"],
                     initial_prompt=options.get("initial_prompt"),
                     vad_parameters=options.get("vad_parameters"),
@@ -335,7 +338,7 @@ class TranscriptionServer:
             options = json.loads(options)
             
             # Validate required parameters
-            required_fields = ["uid", "platform", "meeting_url", "token"]
+            required_fields = ["uid", "platform", "meeting_url", "token", "meeting_id"]
             missing_fields = [field for field in required_fields if field not in options or not options[field]]
             
             if missing_fields:
@@ -350,7 +353,7 @@ class TranscriptionServer:
                 return False
                 
             # Log the connection with critical parameters
-            logging.info(f"Connection parameters received: uid={options['uid']}, platform={options['platform']}, meeting_url={options['meeting_url']}, token={options['token']}")
+            logging.info(f"Connection parameters received: uid={options['uid']}, platform={options['platform']}, meeting_url={options['meeting_url']}, token={options['token']}, meeting_id={options['meeting_id']}")
 
             if self.client_manager is None:
                 max_clients = options.get('max_clients', 4)
@@ -537,7 +540,7 @@ class ServeClientBase(object):
     SERVER_READY = "SERVER_READY"
     DISCONNECT = "DISCONNECT"
 
-    def __init__(self, websocket, language="en", task="transcribe", client_uid=None, platform=None, meeting_url=None, token=None):
+    def __init__(self, websocket, language="en", task="transcribe", client_uid=None, platform=None, meeting_url=None, token=None, meeting_id=None):
         self.websocket = websocket
         self.language = language
         self.task = task
@@ -545,6 +548,7 @@ class ServeClientBase(object):
         self.platform = platform
         self.meeting_url = meeting_url
         self.token = token
+        self.meeting_id = meeting_id
         self.transcription_buffer = TranscriptionBuffer(self.client_uid)
         self.model = None
         self.is_multilingual = True
@@ -709,6 +713,7 @@ class ServeClientBase(object):
                     "platform": self.platform,  # Must be properly set now
                     "meeting_url": self.meeting_url,  # Must be properly set now
                     "token": self.token,  # Must be properly set now
+                    "meeting_id": self.meeting_id,  # Include meeting_id in the data
                     "segments": segments
                 }
                 collector_client.send_transcription(collector_data)
@@ -725,7 +730,7 @@ class ServeClientBase(object):
                 else:
                     formatted_segments.append(f"[{i}]: \"{segment.get('text', '')}\"")
                     
-            logger.info(f"TRANSCRIPTION: client={self.client_uid}, platform={self.platform}, meeting_url={self.meeting_url}, token={self.token}, segments=\n" + "\n".join(formatted_segments))
+            logger.info(f"TRANSCRIPTION: client={self.client_uid}, platform={self.platform}, meeting_url={self.meeting_url}, token={self.token}, meeting_id={self.meeting_id}, segments=\n" + "\n".join(formatted_segments))
         except Exception as e:
             logging.error(f"[ERROR]: Sending data to client: {e}")
 
@@ -762,6 +767,7 @@ class ServeClientBase(object):
                 "platform": self.platform,
                 "meeting_url": self.meeting_url,
                 "token": self.token,
+                "meeting_id": self.meeting_id,
                 "segments": segments
             }
             collector_client.send_transcription(data)
@@ -772,7 +778,7 @@ class ServeClientTensorRT(ServeClientBase):
     SINGLE_MODEL = None
     SINGLE_MODEL_LOCK = threading.Lock()
 
-    def __init__(self, websocket, task="transcribe", multilingual=False, language=None, client_uid=None, model=None, single_model=False, platform=None, meeting_url=None, token=None):
+    def __init__(self, websocket, task="transcribe", multilingual=False, language=None, client_uid=None, model=None, single_model=False, platform=None, meeting_url=None, token=None, meeting_id=None):
         """
         Initialize a ServeClient instance.
         The Whisper model is initialized based on the client's language and device availability.
@@ -791,7 +797,7 @@ class ServeClientTensorRT(ServeClientBase):
             meeting_url (str, optional): The URL of the meeting. Defaults to None.
             token (str, optional): The token to use for identifying the client. Defaults to None.
         """
-        super().__init__(websocket, language, task, client_uid, platform, meeting_url, token)
+        super().__init__(websocket, language, task, client_uid, platform, meeting_url, token, meeting_id)
         self.eos = False
         
         # Log the critical parameters
@@ -986,7 +992,7 @@ class ServeClientFasterWhisper(ServeClientBase):
     SINGLE_MODEL_LOCK = threading.Lock()
 
     def __init__(self, websocket, task="transcribe", device=None, language=None, client_uid=None, model="small.en",
-                 initial_prompt=None, vad_parameters=None, use_vad=True, single_model=False, platform=None, meeting_url=None, token=None):
+                 initial_prompt=None, vad_parameters=None, use_vad=True, single_model=False, platform=None, meeting_url=None, token=None, meeting_id=None):
         """
         Initialize a ServeClient instance.
         The Whisper model is initialized based on the client's language and device availability.
@@ -1006,7 +1012,7 @@ class ServeClientFasterWhisper(ServeClientBase):
             meeting_url (str, optional): The URL of the meeting. Defaults to None.
             token (str, optional): The token to use for identifying the client. Defaults to None.
         """
-        super().__init__(websocket, language, task, client_uid, platform, meeting_url, token)
+        super().__init__(websocket, language, task, client_uid, platform, meeting_url, token, meeting_id)
         self.model_sizes = [
             "tiny", "tiny.en", "base", "base.en", "small", "small.en",
             "medium", "medium.en", "large-v2", "large-v3", "distil-small.en",
