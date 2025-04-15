@@ -56,7 +56,7 @@ setup(
         "soundfile",
         "tokenizers==0.20.3",
         "librosa",
-        "numpy==1.26.4",
+        "numpy<2.0",
         "openvino",
         "openvino-genai",
         "openvino-tokenizers",
