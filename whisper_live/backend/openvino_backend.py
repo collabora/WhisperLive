@@ -38,6 +38,7 @@ class ServeClientOpenVINO(ServeClientBase):
         self.task = "transcribe" if task is None else task
         self.same_output_threshold = 10
         self.end_time_for_same_output = None
+        self.clip_audio = True
 
         core = Core()
         available_devices = core.available_devices

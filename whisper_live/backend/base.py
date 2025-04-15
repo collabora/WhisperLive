@@ -28,6 +28,7 @@ class ServeClientBase(object):
         self.transcript = []
         self.send_last_n_segments = 10
         self.no_speech_thresh = 0.45
+        self.clip_audio = False
 
         # text formatting
         self.pick_previous_segments = 2
@@ -60,7 +61,8 @@ class ServeClientBase(object):
             if self.frames_np is None:
                 continue
 
-            self.clip_audio_if_no_valid_segment()
+            if self.clip_audio:
+                self.clip_audio_if_no_valid_segment()
 
             input_bytes, duration = self.get_audio_chunk_for_processing()
             if duration < 1.0:
