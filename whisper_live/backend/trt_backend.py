@@ -149,9 +149,7 @@ class ServeClientTensorRT(ServeClientBase):
 
         If the client's language is not detected, it waits for 30 seconds of audio input to make a language prediction.
         It utilizes the Whisper ASR model to transcribe the audio, continuously processing and streaming results. Segments
-        are sent to the client in real-time, and a history of segments is maintained to provide context.Pauses in speech
-        (no output from Whisper) are handled by showing the previous output for a set duration. A blank segment is added if
-        there is no speech for a specified duration to indicate a pause.
+        are sent to the client in real-time, and a history of segments is maintained to provide context.
 
         Raises:
             Exception: If there is an issue with audio processing or WebSocket communication.
