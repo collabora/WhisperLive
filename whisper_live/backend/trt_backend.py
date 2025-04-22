@@ -11,7 +11,18 @@ class ServeClientTensorRT(ServeClientBase):
     SINGLE_MODEL = None
     SINGLE_MODEL_LOCK = threading.Lock()
 
-    def __init__(self, websocket, task="transcribe", multilingual=False, language=None, client_uid=None, model=None, single_model=False):
+    def __init__(
+        self,
+        websocket,
+        task="transcribe",
+        multilingual=False,
+        language=None,
+        client_uid=None,
+        model=None,
+        single_model=False,
+        use_py_session=False,
+        max_new_tokens=225,
+    ):
         """
         Initialize a ServeClient instance.
         The Whisper model is initialized based on the client's language and device availability.
@@ -26,21 +37,24 @@ class ServeClientTensorRT(ServeClientBase):
             language (str, optional): The language for transcription. Defaults to None.
             client_uid (str, optional): A unique identifier for the client. Defaults to None.
             single_model (bool, optional): Whether to instantiate a new model for each client connection. Defaults to False.
+            use_py_session (bool, optional): Use python session or cpp session. Defaults to Cpp Session.
+            max_new_tokens (int, optional): Max number of tokens to generate.
 
         """
         super().__init__(client_uid, websocket)
         self.language = language if multilingual else "en"
         self.task = task
         self.eos = False
+        self.max_new_tokens = max_new_tokens
 
         if single_model:
             if ServeClientTensorRT.SINGLE_MODEL is None:
-                self.create_model(model, multilingual)
+                self.create_model(model, multilingual, use_py_session=use_py_session)
                 ServeClientTensorRT.SINGLE_MODEL = self.transcriber
             else:
                 self.transcriber = ServeClientTensorRT.SINGLE_MODEL
         else:
-            self.create_model(model, multilingual)
+            self.create_model(model, multilingual, use_py_session=use_py_session)
 
         # threading
         self.trans_thread = threading.Thread(target=self.speech_to_text)
@@ -52,7 +66,7 @@ class ServeClientTensorRT(ServeClientBase):
             "backend": "tensorrt"
         }))
 
-    def create_model(self, model, multilingual, warmup=True):
+    def create_model(self, model, multilingual, warmup=True, use_py_session=False):
         """
         Instantiates a new model, sets it as the transcriber and does warmup if desired.
         """
@@ -62,7 +76,9 @@ class ServeClientTensorRT(ServeClientBase):
             device="cuda",
             is_multilingual=multilingual,
             language=self.language,
-            task=self.task
+            task=self.task,
+            use_py_session=use_py_session,
+            max_output_len=self.max_new_tokens,
         )
         if warmup:
             self.warmup()
@@ -117,7 +133,7 @@ class ServeClientTensorRT(ServeClientBase):
         mel, duration = self.transcriber.log_mel_spectrogram(input_bytes)
         last_segment = self.transcriber.transcribe(
             mel,
-            text_prefix=f"<|startoftranscript|><|{self.language}|><|{self.task}|><|notimestamps|>"
+            text_prefix=f"<|startoftranscript|><|{self.language}|><|{self.task}|><|notimestamps|>",
         )
         if ServeClientTensorRT.SINGLE_MODEL:
             ServeClientTensorRT.SINGLE_MODEL_LOCK.release()

@@ -1,6 +1,6 @@
 # WhisperLive-TensorRT
 We have only tested the TensorRT backend in docker so, we recommend docker for a smooth TensorRT backend setup.
-**Note**: We use `tensorrt_llm==0.15.0.dev2024111200`
+**Note**: We use `tensorrt_llm==0.18.2`
 
 ## Installation
 - Install [docker](https://docs.docker.com/engine/install/)
@@ -35,4 +35,12 @@ python3 run_server.py --port 9090 \
                       --backend tensorrt \
                       --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_float16" \
                       --trt_multilingual
+```
+
+By default trt_backend uses cpp_session, to use python session pass `--trt_py_session` to run_server.py
+```bash
+python3 run_server.py --port 9090 \
+                      --backend tensorrt \
+                      --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_float16" \
+                      --trt_py_session
 ```
