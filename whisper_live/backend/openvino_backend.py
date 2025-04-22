@@ -118,9 +118,6 @@ class ServeClientOpenVINO(ServeClientBase):
             self.t_start = None
             last_segment = self.update_segments(result, duration)
             segments = self.prepare_segments(last_segment)
-        else:
-            # show previous output if there is pause i.e. no output from whisper
-            segments = self.get_previous_output()
 
         if len(segments):
             self.send_transcription_to_client(segments)

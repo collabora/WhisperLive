@@ -175,33 +175,6 @@ class ServeClientFasterWhisper(ServeClientBase):
             self.set_language(info)
         return result
 
-    def get_previous_output(self):
-        """
-        Retrieves previously generated transcription outputs if no new transcription is available
-        from the current audio chunks.
-
-        Checks the time since the last transcription output and, if it is within a specified
-        threshold, returns the most recent segments of transcribed text. It also manages
-        adding a pause (blank segment) to indicate a significant gap in speech based on a defined
-        threshold.
-
-        Returns:
-            segments (list): A list of transcription segments. This may include the most recent
-                            transcribed text segments or a blank segment to indicate a pause
-                            in speech.
-        """
-        segments = []
-        if self.t_start is None:
-            self.t_start = time.time()
-        if time.time() - self.t_start < self.show_prev_out_thresh:
-            segments = self.prepare_segments()
-
-        # add a blank if there is no speech for 3 seconds
-        if len(self.text) and self.text[-1] != '':
-            if time.time() - self.t_start > self.add_pause_thresh:
-                self.text.append('')
-        return segments
-
     def handle_transcription_output(self, result, duration):
         """
         Handle the transcription output, updating the transcript and sending data to the client.
@@ -215,9 +188,6 @@ class ServeClientFasterWhisper(ServeClientBase):
             self.t_start = None
             last_segment = self.update_segments(result, duration)
             segments = self.prepare_segments(last_segment)
-        else:
-            # show previous output if there is pause i.e. no output from whisper
-            segments = self.get_previous_output()
 
         if len(segments):
             self.send_transcription_to_client(segments)

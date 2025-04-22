@@ -20,18 +20,12 @@ class ServeClientBase(object):
         self.text = []
         self.current_out = ''
         self.prev_out = ''
-        self.t_start = None
         self.exit = False
         self.same_output_count = 0
-        self.show_prev_out_thresh = 5   # if pause(no output from whisper) show previous output for 5 seconds
-        self.add_pause_thresh = 3       # add a blank to segment list as a pause(no speech) for 3 seconds
         self.transcript = []
         self.send_last_n_segments = 10
         self.no_speech_thresh = 0.45
         self.clip_audio = False
-
-        # text formatting
-        self.pick_previous_segments = 2
 
         # threading
         self.lock = threading.Lock()
@@ -45,9 +39,7 @@ class ServeClientBase(object):
 
         If the client's language is not detected, it waits for 30 seconds of audio input to make a language prediction.
         It utilizes the Whisper ASR model to transcribe the audio, continuously processing and streaming results. Segments
-        are sent to the client in real-time, and a history of segments is maintained to provide context.Pauses in speech
-        (no output from Whisper) are handled by showing the previous output for a set duration. A blank segment is added if
-        there is no speech for a specified duration to indicate a pause.
+        are sent to the client in real-time, and a history of segments is maintained to provide context.
 
         Raises:
             Exception: If there is an issue with audio processing or WebSocket communication.
@@ -85,7 +77,7 @@ class ServeClientBase(object):
     def transcribe_audio(self):
         raise NotImplementedError
 
-    def handle_transcription_output(self):
+    def handle_transcription_output(self, result, duration):
         raise NotImplementedError
     
     def format_segment(self, start, end, text, completed=False):
@@ -227,33 +219,6 @@ class ServeClientBase(object):
             )
         except Exception as e:
             logging.error(f"[ERROR]: Sending data to client: {e}")
-
-    def get_previous_output(self):
-        """
-        Retrieves previously generated transcription outputs if no new transcription is available
-        from the current audio chunks.
-
-        Checks the time since the last transcription output and, if it is within a specified
-        threshold, returns the most recent segments of transcribed text. It also manages
-        adding a pause (blank segment) to indicate a significant gap in speech based on a defined
-        threshold.
-
-        Returns:
-            segments (list): A list of transcription segments. This may include the most recent
-                            transcribed text segments or a blank segment to indicate a pause
-                            in speech.
-        """
-        segments = []
-        if self.t_start is None:
-            self.t_start = time.time()
-        if time.time() - self.t_start < self.show_prev_out_thresh:
-            segments = self.prepare_segments()
-
-        # add a blank if there is no speech for 3 seconds
-        if len(self.text) and self.text[-1] != '':
-            if time.time() - self.t_start > self.add_pause_thresh:
-                self.text.append('')
-        return segments
 
     def disconnect(self):
         """
