@@ -9,12 +9,26 @@ from whisper_live.backend.base import ServeClientBase
 
 
 class ServeClientFasterWhisper(ServeClientBase):
-
     SINGLE_MODEL = None
     SINGLE_MODEL_LOCK = threading.Lock()
 
-    def __init__(self, websocket, task="transcribe", device=None, language=None, client_uid=None, model="small.en",
-                 initial_prompt=None, vad_parameters=None, use_vad=True, single_model=False):
+    def __init__(
+        self,
+        websocket,
+        task="transcribe",
+        device=None,
+        language=None,
+        client_uid=None,
+        model="small.en",
+        initial_prompt=None,
+        vad_parameters=None,
+        use_vad=True,
+        single_model=False,
+        send_last_n_segments=10,
+        no_speech_thresh=0.45,
+        clip_audio=False,
+        same_output_threshold=10,
+    ):
         """
         Initialize a ServeClient instance.
         The Whisper model is initialized based on the client's language and device availability.
@@ -23,15 +37,27 @@ class ServeClientFasterWhisper(ServeClientBase):
 
         Args:
             websocket (WebSocket): The WebSocket connection for the client.
-            task (str, optional): The task type, e.g., "transcribe." Defaults to "transcribe".
+            task (str, optional): The task type, e.g., "transcribe". Defaults to "transcribe".
             device (str, optional): The device type for Whisper, "cuda" or "cpu". Defaults to None.
             language (str, optional): The language for transcription. Defaults to None.
             client_uid (str, optional): A unique identifier for the client. Defaults to None.
             model (str, optional): The whisper model size. Defaults to 'small.en'
             initial_prompt (str, optional): Prompt for whisper inference. Defaults to None.
             single_model (bool, optional): Whether to instantiate a new model for each client connection. Defaults to False.
+            send_last_n_segments (int, optional): Number of most recent segments to send to the client. Defaults to 10.
+            no_speech_thresh (float, optional): Segments with no speech probability above this threshold will be discarded. Defaults to 0.45.
+            clip_audio (bool, optional): Whether to clip audio with no valid segments. Defaults to False.
+            same_output_threshold (int, optional): Number of repeated outputs before considering it as a valid segment. Defaults to 10.
+
         """
-        super().__init__(client_uid, websocket)
+        super().__init__(
+            client_uid,
+            websocket,
+            send_last_n_segments,
+            no_speech_thresh,
+            clip_audio,
+            same_output_threshold,
+        )
         self.model_sizes = [
             "tiny", "tiny.en", "base", "base.en", "small", "small.en",
             "medium", "medium.en", "large-v2", "large-v3", "distil-small.en",
@@ -44,9 +70,6 @@ class ServeClientFasterWhisper(ServeClientBase):
         self.task = task
         self.initial_prompt = initial_prompt
         self.vad_parameters = vad_parameters or {"onset": 0.5}
-
-        self.same_output_threshold = 10
-        self.end_time_for_same_output = None
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         if device == "cuda":
