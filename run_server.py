@@ -21,6 +21,9 @@ if __name__ == "__main__":
     parser.add_argument('--trt_multilingual', '-m',
                         action="store_true",
                         help='Boolean only for TensorRT model. True if multilingual.')
+    parser.add_argument('--trt_py_session',
+                        action="store_true",
+                        help='Boolean only for TensorRT model. Use python session or cpp session, By default uses Cpp.')
     parser.add_argument('--omp_num_threads', '-omp',
                         type=int,
                         default=1,
@@ -46,5 +49,6 @@ if __name__ == "__main__":
         faster_whisper_custom_model_path=args.faster_whisper_custom_model_path,
         whisper_tensorrt_path=args.trt_model_path,
         trt_multilingual=args.trt_multilingual,
+        trt_py_session=args.trt_py_session,
         single_model=not args.no_single_model,
     )

@@ -54,7 +54,7 @@ download_and_build_model() {
     local inference_precision="float16"
     local weight_only_precision="${2:-float16}"
     local max_beam_width=4
-    local max_batch_size=1
+    local max_batch_size=4
 
     echo "Downloading $model_name..."
     # wget --directory-prefix=assets "$model_url"
@@ -80,7 +80,6 @@ download_and_build_model() {
         --checkpoint_dir "${checkpoint_dir}/encoder" \
         --output_dir "${output_dir}/encoder" \
         --moe_plugin disable \
-        --enable_xqa disable \
         --max_batch_size "$max_batch_size" \
         --gemm_plugin disable \
         --bert_attention_plugin "$inference_precision" \
@@ -92,11 +91,10 @@ download_and_build_model() {
         --checkpoint_dir "${checkpoint_dir}/decoder" \
         --output_dir "${output_dir}/decoder" \
         --moe_plugin disable \
-        --enable_xqa disable \
         --max_beam_width "$max_beam_width" \
         --max_batch_size "$max_batch_size" \
-        --max_seq_len 200 \
-        --max_input_len 14 \
+        --max_seq_len 225 \
+        --max_input_len 32 \
         --max_encoder_input_len 3000 \
         --gemm_plugin "$inference_precision" \
         --bert_attention_plugin "$inference_precision" \
