@@ -94,7 +94,7 @@ class Client:
 
         # start websocket client in a thread
         self.ws_thread = threading.Thread(target=self.client_socket.run_forever)
-        self.ws_thread.setDaemon(True)
+        self.ws_thread.daemon = True
         self.ws_thread.start()
 
         self.transcript = []
