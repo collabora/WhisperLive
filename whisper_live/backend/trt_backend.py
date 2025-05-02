@@ -20,6 +20,8 @@ class ServeClientTensorRT(ServeClientBase):
         client_uid=None,
         model=None,
         single_model=False,
+        use_py_session=False,
+        max_new_tokens=225,
         send_last_n_segments=10,
         no_speech_thresh=0.45,
         clip_audio=False,
@@ -39,6 +41,8 @@ class ServeClientTensorRT(ServeClientBase):
             language (str, optional): The language for transcription. Defaults to None.
             client_uid (str, optional): A unique identifier for the client. Defaults to None.
             single_model (bool, optional): Whether to instantiate a new model for each client connection. Defaults to False.
+            use_py_session (bool, optional): Use python session or cpp session. Defaults to Cpp Session.
+            max_new_tokens (int, optional): Max number of tokens to generate.
             send_last_n_segments (int, optional): Number of most recent segments to send to the client. Defaults to 10.
             no_speech_thresh (float, optional): Segments with no speech probability above this threshold will be discarded. Defaults to 0.45.
             clip_audio (bool, optional): Whether to clip audio with no valid segments. Defaults to False.
@@ -52,18 +56,20 @@ class ServeClientTensorRT(ServeClientBase):
             clip_audio,
             same_output_threshold,
         )
+
         self.language = language if multilingual else "en"
         self.task = task
         self.eos = False
+        self.max_new_tokens = max_new_tokens
 
         if single_model:
             if ServeClientTensorRT.SINGLE_MODEL is None:
-                self.create_model(model, multilingual)
+                self.create_model(model, multilingual, use_py_session=use_py_session)
                 ServeClientTensorRT.SINGLE_MODEL = self.transcriber
             else:
                 self.transcriber = ServeClientTensorRT.SINGLE_MODEL
         else:
-            self.create_model(model, multilingual)
+            self.create_model(model, multilingual, use_py_session=use_py_session)
 
         # threading
         self.trans_thread = threading.Thread(target=self.speech_to_text)
@@ -75,7 +81,7 @@ class ServeClientTensorRT(ServeClientBase):
             "backend": "tensorrt"
         }))
 
-    def create_model(self, model, multilingual, warmup=True):
+    def create_model(self, model, multilingual, warmup=True, use_py_session=False):
         """
         Instantiates a new model, sets it as the transcriber and does warmup if desired.
         """
@@ -85,7 +91,9 @@ class ServeClientTensorRT(ServeClientBase):
             device="cuda",
             is_multilingual=multilingual,
             language=self.language,
-            task=self.task
+            task=self.task,
+            use_py_session=use_py_session,
+            max_output_len=self.max_new_tokens,
         )
         if warmup:
             self.warmup()
@@ -140,7 +148,7 @@ class ServeClientTensorRT(ServeClientBase):
         mel, duration = self.transcriber.log_mel_spectrogram(input_bytes)
         last_segment = self.transcriber.transcribe(
             mel,
-            text_prefix=f"<|startoftranscript|><|{self.language}|><|{self.task}|><|notimestamps|>"
+            text_prefix=f"<|startoftranscript|><|{self.language}|><|{self.task}|><|notimestamps|>",
         )
         if ServeClientTensorRT.SINGLE_MODEL:
             ServeClientTensorRT.SINGLE_MODEL_LOCK.release()

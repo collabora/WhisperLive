@@ -153,7 +153,7 @@ class TranscriptionServer:
 
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
-        whisper_tensorrt_path, trt_multilingual
+        whisper_tensorrt_path, trt_multilingual, trt_py_session=False,
     ):
         client: Optional[ServeClientBase] = None
 
@@ -168,6 +168,7 @@ class TranscriptionServer:
                     client_uid=options["uid"],
                     model=whisper_tensorrt_path,
                     single_model=self.single_model,
+                    use_py_session=trt_py_session,
                     send_last_n_segments=options.get("send_last_n_segments", 10),
                     no_speech_thresh=options.get("no_speech_thresh", 0.45),
                     clip_audio=options.get("clip_audio", False),
@@ -260,7 +261,7 @@ class TranscriptionServer:
         return np.frombuffer(frame_data, dtype=np.float32)
 
     def handle_new_connection(self, websocket, faster_whisper_custom_model_path,
-                              whisper_tensorrt_path, trt_multilingual):
+                              whisper_tensorrt_path, trt_multilingual, trt_py_session=False):
         try:
             logging.info("New client connected")
             options = websocket.recv()
@@ -279,7 +280,7 @@ class TranscriptionServer:
             if self.backend.is_tensorrt():
                 self.vad_detector = VoiceActivityDetector(frame_rate=self.RATE)
             self.initialize_client(websocket, options, faster_whisper_custom_model_path,
-                                   whisper_tensorrt_path, trt_multilingual)
+                                   whisper_tensorrt_path, trt_multilingual, trt_py_session=trt_py_session)
             return True
         except json.JSONDecodeError:
             logging.error("Failed to decode JSON from client")
@@ -311,11 +312,12 @@ class TranscriptionServer:
         return True
 
     def recv_audio(self,
-                   websocket,
+                   websocket,   
                    backend: BackendType = BackendType.FASTER_WHISPER,
                    faster_whisper_custom_model_path=None,
                    whisper_tensorrt_path=None,
-                   trt_multilingual=False):
+                   trt_multilingual=False,
+                   trt_py_session=False):
         """
         Receive audio chunks from a client in an infinite loop.
 
@@ -342,7 +344,7 @@ class TranscriptionServer:
         """
         self.backend = backend
         if not self.handle_new_connection(websocket, faster_whisper_custom_model_path,
-                                          whisper_tensorrt_path, trt_multilingual):
+                                          whisper_tensorrt_path, trt_multilingual, trt_py_session=trt_py_session):
             return
 
         try:
@@ -366,6 +368,7 @@ class TranscriptionServer:
             faster_whisper_custom_model_path=None,
             whisper_tensorrt_path=None,
             trt_multilingual=False,
+            trt_py_session=False,
             single_model=False):
         """
         Run the transcription server.
@@ -393,7 +396,8 @@ class TranscriptionServer:
                 backend=BackendType(backend),
                 faster_whisper_custom_model_path=faster_whisper_custom_model_path,
                 whisper_tensorrt_path=whisper_tensorrt_path,
-                trt_multilingual=trt_multilingual
+                trt_multilingual=trt_multilingual,
+                trt_py_session=trt_py_session,
             ),
             host,
             port
