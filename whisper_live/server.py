@@ -169,6 +169,10 @@ class TranscriptionServer:
                     model=whisper_tensorrt_path,
                     single_model=self.single_model,
                     use_py_session=trt_py_session,
+                    send_last_n_segments=options.get("send_last_n_segments", 10),
+                    no_speech_thresh=options.get("no_speech_thresh", 0.45),
+                    clip_audio=options.get("clip_audio", False),
+                    same_output_threshold=options.get("same_output_threshold", 10),
                 )
                 logging.info("Running TensorRT backend.")
             except Exception as e:
@@ -192,6 +196,10 @@ class TranscriptionServer:
                     client_uid=options["uid"],
                     model=options["model"],
                     single_model=self.single_model,
+                    send_last_n_segments=options.get("send_last_n_segments", 10),
+                    no_speech_thresh=options.get("no_speech_thresh", 0.45),
+                    clip_audio=options.get("clip_audio", False),
+                    same_output_threshold=options.get("same_output_threshold", 10),
                 )
                 logging.info("Running OpenVINO backend.")
             except Exception as e:
@@ -221,6 +229,10 @@ class TranscriptionServer:
                     vad_parameters=options.get("vad_parameters"),
                     use_vad=self.use_vad,
                     single_model=self.single_model,
+                    send_last_n_segments=options.get("send_last_n_segments", 10),
+                    no_speech_thresh=options.get("no_speech_thresh", 0.45),
+                    clip_audio=options.get("clip_audio", False),
+                    same_output_threshold=options.get("same_output_threshold", 10),
                 )
 
                 logging.info("Running faster_whisper backend.")

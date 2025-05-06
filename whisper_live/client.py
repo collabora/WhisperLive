@@ -33,6 +33,10 @@ class Client:
         log_transcription=True,
         max_clients=4,
         max_connection_time=600,
+        send_last_n_segments=10,
+        no_speech_thresh=0.45,
+        clip_audio=False,
+        same_output_threshold=10,
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -52,6 +56,10 @@ class Client:
             log_transcription (bool, optional): Whether to log transcription output to the console. Default is True.
             max_clients (int, optional): Maximum number of client connections allowed. Default is 4.
             max_connection_time (int, optional): Maximum allowed connection time in seconds. Default is 600.
+            send_last_n_segments (int, optional): Number of most recent segments to send to the client. Defaults to 10.
+            no_speech_thresh (float, optional): Segments with no speech probability above this threshold will be discarded. Defaults to 0.45.
+            clip_audio (bool, optional): Whether to clip audio with no valid segments. Defaults to False.
+            same_output_threshold (int, optional): Number of repeated outputs before considering it as a valid segment. Defaults to 10.
         """
         self.recording = False
         self.task = "transcribe"
@@ -69,6 +77,10 @@ class Client:
         self.log_transcription = log_transcription
         self.max_clients = max_clients
         self.max_connection_time = max_connection_time
+        self.send_last_n_segments = send_last_n_segments
+        self.no_speech_thresh = no_speech_thresh
+        self.clip_audio = clip_audio
+        self.same_output_threshold = same_output_threshold
 
         if translate:
             self.task = "translate"
@@ -212,6 +224,10 @@ class Client:
                     "use_vad": self.use_vad,
                     "max_clients": self.max_clients,
                     "max_connection_time": self.max_connection_time,
+                    "send_last_n_segments": self.send_last_n_segments,
+                    "no_speech_thresh": self.no_speech_thresh,
+                    "clip_audio": self.clip_audio,
+                    "same_output_threshold": self.same_output_threshold,
                 }
             )
         )
@@ -682,6 +698,10 @@ class TranscriptionClient(TranscriptionTeeClient):
         max_clients (int, optional): Maximum number of client connections allowed. Default is 4.
         max_connection_time (int, optional): Maximum allowed connection time in seconds. Default is 600.
         mute_audio_playback (bool, optional): If True, mutes audio playback during file playback. Default is False.
+        send_last_n_segments (int, optional): Number of most recent segments to send to the client. Defaults to 10.
+        no_speech_thresh (float, optional): Segments with no speech probability above this threshold will be discarded. Defaults to 0.45.
+        clip_audio (bool, optional): Whether to clip audio with no valid segments. Defaults to False.
+        same_output_threshold (int, optional): Number of repeated outputs before considering it as a valid segment. Defaults to 10.
 
     Attributes:
         client (Client): An instance of the underlying Client class responsible for handling the WebSocket connection.
@@ -708,11 +728,26 @@ class TranscriptionClient(TranscriptionTeeClient):
         max_clients=4,
         max_connection_time=600,
         mute_audio_playback=False,
+        send_last_n_segments=10,
+        no_speech_thresh=0.45,
+        clip_audio=False,
+        same_output_threshold=10,
     ):
         self.client = Client(
-            host, port, lang, translate, model, srt_file_path=output_transcription_path,
-            use_vad=use_vad, log_transcription=log_transcription, max_clients=max_clients,
-            max_connection_time=max_connection_time
+            host,
+            port,
+            lang,
+            translate,
+            model,
+            srt_file_path=output_transcription_path,
+            use_vad=use_vad,
+            log_transcription=log_transcription,
+            max_clients=max_clients,
+            max_connection_time=max_connection_time,
+            send_last_n_segments=send_last_n_segments,
+            no_speech_thresh=no_speech_thresh,
+            clip_audio=clip_audio,
+            same_output_threshold=same_output_threshold,
         )
 
         if save_output_recording and not output_recording_filename.endswith(".wav"):

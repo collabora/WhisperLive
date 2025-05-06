@@ -10,22 +10,46 @@ class ServeClientBase(object):
     SERVER_READY = "SERVER_READY"
     DISCONNECT = "DISCONNECT"
 
-    def __init__(self, client_uid, websocket):
+    client_uid: str
+    """A unique identifier for the client."""
+    websocket: object
+    """The WebSocket connection for the client."""
+    send_last_n_segments: int
+    """Number of most recent segments to send to the client."""
+    no_speech_thresh: float
+    """Segments with no speech probability above this threshold will be discarded."""
+    clip_audio: bool
+    """Whether to clip audio with no valid segments."""
+    same_output_threshold: int
+    """Number of repeated outputs before considering it as a valid segment."""
+
+    def __init__(
+        self,
+        client_uid,
+        websocket,
+        send_last_n_segments=10,
+        no_speech_thresh=0.45,
+        clip_audio=False,
+        same_output_threshold=10,
+    ):
         self.client_uid = client_uid
         self.websocket = websocket
+        self.send_last_n_segments = send_last_n_segments
+        self.no_speech_thresh = no_speech_thresh
+        self.clip_audio = clip_audio
+        self.same_output_threshold = same_output_threshold
+
         self.frames = b""
         self.timestamp_offset = 0.0
         self.frames_np = None
         self.frames_offset = 0.0
         self.text = []
-        self.current_out = ''
-        self.prev_out = ''
+        self.current_out = ""
+        self.prev_out = ""
         self.exit = False
         self.same_output_count = 0
         self.transcript = []
-        self.send_last_n_segments = 10
-        self.no_speech_thresh = 0.45
-        self.clip_audio = False
+        self.end_time_for_same_output = None
 
         # threading
         self.lock = threading.Lock()

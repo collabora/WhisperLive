@@ -22,6 +22,10 @@ class ServeClientTensorRT(ServeClientBase):
         single_model=False,
         use_py_session=False,
         max_new_tokens=225,
+        send_last_n_segments=10,
+        no_speech_thresh=0.45,
+        clip_audio=False,
+        same_output_threshold=10,
     ):
         """
         Initialize a ServeClient instance.
@@ -39,9 +43,20 @@ class ServeClientTensorRT(ServeClientBase):
             single_model (bool, optional): Whether to instantiate a new model for each client connection. Defaults to False.
             use_py_session (bool, optional): Use python session or cpp session. Defaults to Cpp Session.
             max_new_tokens (int, optional): Max number of tokens to generate.
-
+            send_last_n_segments (int, optional): Number of most recent segments to send to the client. Defaults to 10.
+            no_speech_thresh (float, optional): Segments with no speech probability above this threshold will be discarded. Defaults to 0.45.
+            clip_audio (bool, optional): Whether to clip audio with no valid segments. Defaults to False.
+            same_output_threshold (int, optional): Number of repeated outputs before considering it as a valid segment. Defaults to 10.
         """
-        super().__init__(client_uid, websocket)
+        super().__init__(
+            client_uid,
+            websocket,
+            send_last_n_segments,
+            no_speech_thresh,
+            clip_audio,
+            same_output_threshold,
+        )
+
         self.language = language if multilingual else "en"
         self.task = task
         self.eos = False
