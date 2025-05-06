@@ -88,7 +88,10 @@ class Client:
         self.audio_bytes = None
 
         if host is not None and port is not None:
-            socket_url = f"ws://{host}:{port}"
+            if port == 443:
+                socket_url = f"wss://{host}"
+            else:
+                socket_url = f"ws://{host}:{port}"
             self.client_socket = websocket.WebSocketApp(
                 socket_url,
                 on_open=lambda ws: self.on_open(ws),
@@ -97,6 +100,7 @@ class Client:
                 on_close=lambda ws, close_status_code, close_msg: self.on_close(
                     ws, close_status_code, close_msg
                 ),
+                header=['User-Agent: WhisperLiveClient']
             )
         else:
             print("[ERROR]: No host or port specified.")
