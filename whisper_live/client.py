@@ -745,6 +745,7 @@ class TranscriptionClient(TranscriptionTeeClient):
             model,
             srt_file_path=output_transcription_path,
             use_vad=use_vad,
+            use_wss=use_wss,
             log_transcription=log_transcription,
             max_clients=max_clients,
             max_connection_time=max_connection_time,
