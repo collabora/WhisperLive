@@ -716,6 +716,7 @@ class TranscriptionClient(TranscriptionTeeClient):
         no_speech_thresh (float, optional): Segments with no speech probability above this threshold will be discarded. Defaults to 0.45.
         clip_audio (bool, optional): Whether to clip audio with no valid segments. Defaults to False.
         same_output_threshold (int, optional): Number of repeated outputs before considering it as a valid segment. Defaults to 10.
+        transcription_callback (callable, optional): A callback function to handle transcription results. Default is None.
 
     Attributes:
         client (Client): An instance of the underlying Client class responsible for handling the WebSocket connection.
@@ -747,6 +748,7 @@ class TranscriptionClient(TranscriptionTeeClient):
         no_speech_thresh=0.45,
         clip_audio=False,
         same_output_threshold=10,
+        transcription_callback=None,
     ):
         self.client = Client(
             host,
@@ -764,6 +766,7 @@ class TranscriptionClient(TranscriptionTeeClient):
             no_speech_thresh=no_speech_thresh,
             clip_audio=clip_audio,
             same_output_threshold=same_output_threshold,
+            transcription_callback=transcription_callback,
         )
 
         if save_output_recording and not output_recording_filename.endswith(".wav"):
