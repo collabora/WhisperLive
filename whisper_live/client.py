@@ -38,6 +38,7 @@ class Client:
         no_speech_thresh=0.45,
         clip_audio=False,
         same_output_threshold=10,
+        transcription_callback=None,
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -61,6 +62,7 @@ class Client:
             no_speech_thresh (float, optional): Segments with no speech probability above this threshold will be discarded. Defaults to 0.45.
             clip_audio (bool, optional): Whether to clip audio with no valid segments. Defaults to False.
             same_output_threshold (int, optional): Number of repeated outputs before considering it as a valid segment. Defaults to 10.
+            transcription_callback (callable, optional): A callback function to handle transcription results. Default is None.
         """
         self.recording = False
         self.task = "transcribe"
@@ -83,6 +85,7 @@ class Client:
         self.no_speech_thresh = no_speech_thresh
         self.clip_audio = clip_audio
         self.same_output_threshold = same_output_threshold
+        self.transcription_callback = transcription_callback
 
         if translate:
             self.task = "translate"
@@ -144,6 +147,14 @@ class Client:
             self.last_response_received = time.time()
             self.last_received_segment = segments[-1]["text"]
 
+        # call the transcription callback if provided
+        if self.transcription_callback and callable(self.transcription_callback):
+            try:
+                self.transcription_callback(" ".join(text), segments) # string, list
+            except Exception as e:
+                print(f"[WARN] transcription_callback raised: {e}")
+            return
+        
         if self.log_transcription:
             # Truncate to last 3 entries for brevity.
             text = text[-3:]
