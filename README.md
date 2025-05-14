@@ -142,12 +142,18 @@ client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/b
 ## Browser Extensions
 - Run the server with your desired backend as shown [here](https://github.com/collabora/WhisperLive?tab=readme-ov-file#running-the-server).
 - Transcribe audio directly from your browser using our Chrome or Firefox extensions. Refer to [Audio-Transcription-Chrome](https://github.com/collabora/whisper-live/tree/main/Audio-Transcription-Chrome#readme) and https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md
+
+## Whisper Live Server in Docker
+- GPU
+  - Faster-Whisper
+  ```bash
   docker run -it --gpus all -p 9090:9090 ghcr.io/collabora/whisperlive-gpu:latest
   ```
 
   - TensorRT. Refer to [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) for setup and more tensorrt backend configurations.
   ```bash
-  docker run -p 9090:9090 --runtime=nvidia --gpus all --entrypoint /bin/bash -it ghcr.io/collabora/whisperlive-tensorrt
+  docker build . -f docker/Dockerfile.tensorrt -t whisperlive-tensorrt
+  docker run -p 9090:9090 --runtime=nvidia --gpus all --entrypoint /bin/bash -it whisperlive-tensorrt
 
   # Build small.en engine
   bash build_whisper_tensorrt.sh /app/TensorRT-LLM-examples small.en        # float16
@@ -172,8 +178,6 @@ client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/b
   ```bash
   docker run -it -p 9090:9090 ghcr.io/collabora/whisperlive-cpu:latest
   ```
-
-**Note**: By default we use "small" model size. To build docker image for a different model size, change the size in server.py and then build the docker image.
 
 ## Future Work
 - [ ] Add translation to other languages on top of transcription.

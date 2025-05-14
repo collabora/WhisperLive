@@ -8,7 +8,8 @@ We have only tested the TensorRT backend in docker so, we recommend docker for a
 
 - Run WhisperLive TensorRT in docker
 ```bash
-docker run -p 9090:9090 --runtime=nvidia --gpus all --entrypoint /bin/bash -it ghcr.io/collabora/whisperlive-tensorrt:latest
+docker build . -f docker/Dockerfile.tensorrt -t whisperlive-tensorrt
+docker run -p 9090:9090 --runtime=nvidia --gpus all --entrypoint /bin/bash -it whisperlive-tensorrt
 ```
 
 ## Whisper TensorRT Engine
