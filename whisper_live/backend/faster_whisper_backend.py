@@ -31,6 +31,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         no_speech_thresh=0.45,
         clip_audio=False,
         same_output_threshold=10,
+        cache_path="~/.cache/whisper-live/"
     ):
         """
         Initialize a ServeClient instance.
@@ -61,6 +62,7 @@ class ServeClientFasterWhisper(ServeClientBase):
             clip_audio,
             same_output_threshold,
         )
+        self.cache_path = cache_path
         self.model_sizes = [
             "tiny", "tiny.en", "base", "base.en", "small", "small.en",
             "medium", "medium.en", "large-v2", "large-v3", "distil-small.en",
@@ -140,7 +142,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 if ctranslate2.contains_model(local_snapshot):
                     model_to_load = local_snapshot
                 else:
-                    cache_root = os.path.expanduser("~/.cache/whisper-live/whisper-ct2-models/")
+                    cache_root = os.path.expanduser(os.path.join(self.cache_path, "whisper-ct2-models/"))
                     os.makedirs(cache_root, exist_ok=True)
                     safe_name = model_ref.replace("/", "--")
                     ct2_dir = os.path.join(cache_root, safe_name)

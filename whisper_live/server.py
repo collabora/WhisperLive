@@ -233,6 +233,7 @@ class TranscriptionServer:
                     no_speech_thresh=options.get("no_speech_thresh", 0.45),
                     clip_audio=options.get("clip_audio", False),
                     same_output_threshold=options.get("same_output_threshold", 10),
+                    cache_path=self.cache_path,
                 )
 
                 logging.info("Running faster_whisper backend.")
@@ -369,7 +370,8 @@ class TranscriptionServer:
             whisper_tensorrt_path=None,
             trt_multilingual=False,
             trt_py_session=False,
-            single_model=False):
+            single_model=False,
+            cache_path="~/.cache/whisper-live/"):
         """
         Run the transcription server.
 
@@ -377,6 +379,7 @@ class TranscriptionServer:
             host (str): The host address to bind the server.
             port (int): The port number to bind the server.
         """
+        self.cache_path = cache_path
         if faster_whisper_custom_model_path is not None and not os.path.exists(faster_whisper_custom_model_path):
             raise ValueError(f"Custom faster_whisper model '{faster_whisper_custom_model_path}' is not a valid path.")
         if whisper_tensorrt_path is not None and not os.path.exists(whisper_tensorrt_path):

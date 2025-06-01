@@ -44,10 +44,11 @@ The server supports 3 backends `faster_whisper`, `tensorrt` and `openvino`. If r
 python3 run_server.py --port 9090 \
                       --backend faster_whisper
   
-# running with custom model
+# running with custom model and cache_dir to save auto-converted ctranslate2 models
 python3 run_server.py --port 9090 \
                       --backend faster_whisper \
                       -fw "/path/to/custom/faster/whisper/model"
+                      -c ~/.cache/whisper-live/
 ```
 
 - TensorRT backend. Currently, we recommend to only use the docker setup for TensorRT. Follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) which works as expected. Make sure to build your TensorRT Engines before running the server with TensorRT backend.

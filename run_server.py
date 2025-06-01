@@ -31,6 +31,10 @@ if __name__ == "__main__":
     parser.add_argument('--no_single_model', '-nsm',
                         action='store_true',
                         help='Set this if every connection should instantiate its own model. Only relevant for custom model, passed using -trt or -fw.')
+    parser.add_argument('--cache_path', '-c',
+                        type=str,
+                        default="~/.cache/whisper-live/",
+                        help='Path to cache the converted ctranslate2 models.')
     args = parser.parse_args()
 
     if args.backend == "tensorrt":
@@ -51,4 +55,5 @@ if __name__ == "__main__":
         trt_multilingual=args.trt_multilingual,
         trt_py_session=args.trt_py_session,
         single_model=not args.no_single_model,
+        cache_path=args.cache_path
     )
