@@ -3,7 +3,7 @@
 This is an iOS client for [WhisperLive](https://github.com/collabora/WhisperLive), a real-time speech-to-text server based on OpenAI Whisper.  
 The app streams microphone audio to a WhisperLive server via WebSocket and displays live transcription results in real time.
 
-> ⚠️ This client is designed to work specifically with the [WhisperLive Python WebSocket server](https://github.com/whisperlive/whisperlive).  
+> ⚠️ This client is designed to work specifically with the [WhisperLive Python WebSocket server](https://github.com/collabora/WhisperLive?tab=readme-ov-file#running-the-server).  
 > Make sure the server is running and reachable from your iOS device.
 
 ## Features
