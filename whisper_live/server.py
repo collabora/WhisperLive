@@ -216,7 +216,8 @@ class TranscriptionServer:
         try:
             if self.backend.is_faster_whisper():
                 from whisper_live.backend.faster_whisper_backend import ServeClientFasterWhisper
-                if faster_whisper_custom_model_path is not None and os.path.exists(faster_whisper_custom_model_path):
+                # model is of the form namespace/repo_name and not a filesystem path
+                if faster_whisper_custom_model_path is not None: # and os.path.exists(faster_whisper_custom_model_path):
                     logging.info(f"Using custom model {faster_whisper_custom_model_path}")
                     options["model"] = faster_whisper_custom_model_path
                 client = ServeClientFasterWhisper(
@@ -380,8 +381,8 @@ class TranscriptionServer:
             port (int): The port number to bind the server.
         """
         self.cache_path = cache_path
-        if faster_whisper_custom_model_path is not None and not os.path.exists(faster_whisper_custom_model_path):
-            raise ValueError(f"Custom faster_whisper model '{faster_whisper_custom_model_path}' is not a valid path.")
+        #if faster_whisper_custom_model_path is not None and not os.path.exists(faster_whisper_custom_model_path):
+        #    raise ValueError(f"Custom faster_whisper model '{faster_whisper_custom_model_path}' is not a valid path.")
         if whisper_tensorrt_path is not None and not os.path.exists(whisper_tensorrt_path):
             raise ValueError(f"TensorRT model '{whisper_tensorrt_path}' is not a valid path.")
         if single_model:
