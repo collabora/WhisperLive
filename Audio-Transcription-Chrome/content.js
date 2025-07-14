@@ -1,10 +1,45 @@
-
-
 var elem_container = null;
 var elem_text = null;
 
 var segments = [];
 var text_segments = [];
+var allSegments = [];
+var lastIncompleteSegment = null;
+
+function formatTime(seconds) {
+  const date = new Date(seconds * 1000);
+  const hh = String(date.getUTCHours()).padStart(2, '0');
+  const mm = String(date.getUTCMinutes()).padStart(2, '0');
+  const ss = String(date.getUTCSeconds()).padStart(2, '0');
+  const mmm = String(date.getUTCMilliseconds()).padStart(3, '0');
+  return `${hh}:${mm}:${ss},${mmm}`;
+}
+
+function generateSRT() {
+    return allSegments
+    .map((seg, i) => {
+    const start = formatTime(seg.start);
+    const end   = formatTime(seg.end);
+    const text  = seg.text.trim().replace(/[\r\n]+/g, ' ');
+    return `${i + 1}\n${start} --> ${end}\n${text}`;
+    })
+    .join('\n\n');
+}
+
+function downloadSRT() {
+    console.log("downloadSRT called");
+    console.log("Total segments for SRT:", allSegments.length);
+    const srtBlob = new Blob([generateSRT()], { type: 'text/srt;charset=utf-8' });
+    const url = URL.createObjectURL(srtBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'captions.srt';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+}
 
 function initPopupElement() {
   if (document.getElementById('popupElement')) {
@@ -32,7 +67,7 @@ function initPopupElement() {
   closePopupButton.style.cursor = 'pointer';
   closePopupButton.addEventListener('click', async () => {
     popupContainer.style.display = 'none';
-    await browser.runtime.sendMessage({ action: 'toggleCaptureButtons', data: false });
+    await chrome.runtime.sendMessage({ action: 'toggleCaptureButtons', data: false });
   });
   buttonContainer.appendChild(closePopupButton);
   popupContainer.appendChild(buttonContainer);
@@ -169,8 +204,25 @@ function remove_element() {
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const { type, data } = request;
-    
-    if (type === "STOP") {
+    const saveCaptions = data.saveCaptions;
+
+    if (type === "STOP") {        
+        if (saveCaptions === true) {
+            // If there is a last incomplete segment, push it to allSegments
+            if (lastIncompleteSegment && lastIncompleteSegment.text && lastIncompleteSegment.text.trim() !== "") {
+                // Apply same Python logic: check if transcript is empty OR start >= last end
+                if (allSegments.length === 0 || parseFloat(lastIncompleteSegment.start) >= parseFloat(allSegments[allSegments.length - 1].end)) {
+                    allSegments.push({
+                        start: lastIncompleteSegment.start,
+                        end: lastIncompleteSegment.end,
+                        text: lastIncompleteSegment.text
+                    });
+                    console.log("Added final incomplete segment");
+                }
+            }
+        
+            downloadSRT();
+        }
         remove_element();
         sendResponse({data: "STOPPED"});
         return true;
@@ -184,53 +236,77 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     init_element();
 
-    message = JSON.parse(data);
-    message = message["segments"];
-
-    var text = '';
-    for (var i = 0; i < message.length; i++) {
-        text += message[i].text + ' ';
-    }
-    text = text.replace(/(\r\n|\n|\r)/gm, "");
-    
-    var elem = document.getElementById('t3');
-    elem.innerHTML = text;
-
-    var line_height_style = getStyle('t3', 'line-height');
-    var line_height = parseInt(line_height_style.substring(0, line_height_style.length - 2));
-    var divHeight = elem.offsetHeight;
-    var lines = divHeight / line_height;
-
-    text_segments = [];
-    text_segments = get_lines(elem, line_height);
-    
-    elem.innerHTML = '';
-
-    if (text_segments.length > 2) {
-        for (var i = 0; i < 3; i++) {
-            document.getElementById('t' + i).innerHTML = text_segments[text_segments.length - 3 + i];
+    try {
+        const message = JSON.parse(data.data);
+        const segments = message["segments"];
+        
+        if (saveCaptions === true) {
+            segments.forEach(seg => {
+                if (seg.completed === true && 
+                    (allSegments.length === 0 || parseFloat(seg.start) >= parseFloat(allSegments[allSegments.length - 1].end))) {
+                    allSegments.push({
+                        start: seg.start,
+                        end: seg.end,
+                        text: seg.text
+                    });
+                    
+                    lastIncompleteSegment = null;
+                } else if (seg.completed !== true) {
+                    lastIncompleteSegment = seg;
+                }
+            });
         }
-    } else {
-        for (var i = 0; i < 3; i++) {
-            document.getElementById('t' + i).innerHTML = '';
+        var text = '';
+        for (var i = 0; i < segments.length; i++) {
+            text += segments[i].text + ' ';
         }
-    }
+        text = text.replace(/(\r\n|\n|\r)/gm, "");
+        
+        var elem = document.getElementById('t3');
+        if (elem) {
+            elem.innerHTML = text;
 
-    if (text_segments.length <= 2) {
-        for (var i = 0; i < text_segments.length; i++) {
-            document.getElementById('t' + i).innerHTML = text_segments[i];
-        }
-    } else {
-        for (var i = 0; i < 3; i++) {
-            document.getElementById('t' + i).innerHTML = text_segments[text_segments.length - 3 + i];
-        }
-    }
+            var line_height_style = getStyle('t3', 'line-height');
+            var line_height = parseInt(line_height_style.substring(0, line_height_style.length - 2));
+            var divHeight = elem.offsetHeight;
+            var lines = divHeight / line_height;
 
-    for (var i = 1; i < 3; i++)
-    {
-        var parent_elem = document.getElementById('t' + (i - 1));
-        var elem = document.getElementById('t' + i);
-        elem.style.top = parent_elem.offsetHeight + parent_elem.offsetTop + 'px';
+            text_segments = [];
+            text_segments = get_lines(elem, line_height);
+            
+            elem.innerHTML = '';
+
+            if (text_segments.length > 2) {
+                for (var i = 0; i < 3; i++) {
+                    document.getElementById('t' + i).innerHTML = text_segments[text_segments.length - 3 + i];
+                }
+            } else {
+                for (var i = 0; i < 3; i++) {
+                    document.getElementById('t' + i).innerHTML = '';
+                }
+            }
+
+            if (text_segments.length <= 2) {
+                for (var i = 0; i < text_segments.length; i++) {
+                    document.getElementById('t' + i).innerHTML = text_segments[i];
+                }
+            } else {
+                for (var i = 0; i < 3; i++) {
+                    document.getElementById('t' + i).innerHTML = text_segments[text_segments.length - 3 + i];
+                }
+            }
+
+            for (var i = 1; i < 3; i++)
+            {
+                var parent_elem = document.getElementById('t' + (i - 1));
+                var elem = document.getElementById('t' + i);
+                if (parent_elem && elem) {
+                    elem.style.top = parent_elem.offsetHeight + parent_elem.offsetTop + 'px';
+                }
+            }
+        }
+    } catch (error) {
+        console.error("Error processing message:", error);
     }
 
     sendResponse({});
