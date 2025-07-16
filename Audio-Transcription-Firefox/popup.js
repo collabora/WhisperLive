@@ -4,6 +4,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
   const useServerCheckbox = document.getElementById("useServerCheckbox");
   const useVadCheckbox = document.getElementById("useVadCheckbox");
+  const saveCaptionCheckbox = document.getElementById("saveCaptionCheckbox");
   const languageDropdown = document.getElementById('languageDropdown');
   const taskDropdown = document.getElementById('taskDropdown');
   const modelSizeDropdown = document.getElementById('modelSizeDropdown');
@@ -38,6 +39,12 @@ document.addEventListener("DOMContentLoaded", function() {
   browser.storage.local.get("useVadState", ({ useVadState }) => {
     if (useVadState !== undefined) {
       useVadCheckbox.checked = useVadState;
+    }
+  });
+
+  browser.storage.local.get("saveCaptionState", ({ saveCaptionState }) => {
+    if (saveCaptionState !== undefined) {
+      saveCaptionCheckbox.checked = saveCaptionState;
     }
   });
 
@@ -85,6 +92,7 @@ document.addEventListener("DOMContentLoaded", function() {
               task: selectedTask,
               modelSize: selectedModelSize,
               useVad: useVadCheckbox.checked,
+              saveCaption: saveCaptionCheckbox.checked,
             } 
           });
         toggleCaptureButtons(true);
@@ -101,7 +109,7 @@ document.addEventListener("DOMContentLoaded", function() {
   stopButton.addEventListener("click", function() {
     browser.tabs.query({ active: true, currentWindow: true })
       .then(function(tabs) {
-        browser.tabs.sendMessage(tabs[0].id, { action: "stopCapture" })
+        browser.tabs.sendMessage(tabs[0].id, { action: "stopCapture", data: {saveCaption: saveCaptionCheckbox.checked, } })
           .then(function(response) {
             toggleCaptureButtons(false);
             browser.storage.local.set({ capturingState: { isCapturing: false } })
@@ -124,6 +132,7 @@ document.addEventListener("DOMContentLoaded", function() {
     stopButton.disabled = !isCapturing;
     useServerCheckbox.disabled = isCapturing;
     useVadCheckbox.disabled = isCapturing;
+    saveCaptionCheckbox.disabled = isCapturing;
     modelSizeDropdown.disabled = isCapturing;
     languageDropdown.disabled = isCapturing;
     taskDropdown.disabled = isCapturing; 
@@ -140,6 +149,11 @@ document.addEventListener("DOMContentLoaded", function() {
   useVadCheckbox.addEventListener("change", () => {
     const useVadState = useVadCheckbox.checked;
     browser.storage.local.set({ useVadState });
+  });
+
+  saveCaptionCheckbox.addEventListener("change", () => {
+    const saveCaptionState = saveCaptionCheckbox.checked;
+    browser.storage.local.set({ saveCaptionState });
   });
 
   languageDropdown.addEventListener('change', function() {
