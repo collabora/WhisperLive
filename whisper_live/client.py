@@ -420,14 +420,18 @@ class TranscriptionTeeClient:
 
         # read audio and create pyaudio stream
         with wave.open(filename, "rb") as wavfile:
-            self.stream = self.p.open(
-                format=self.p.get_format_from_width(wavfile.getsampwidth()),
-                channels=wavfile.getnchannels(),
-                rate=wavfile.getframerate(),
-                input=True,
-                output=True,
-                frames_per_buffer=self.chunk,
-            )
+            if self.mute_audio_playback:
+                self.stream = None
+            else:
+                self.stream = self.p.open(
+                    format=self.p.get_format_from_width(wavfile.getsampwidth()),
+                    channels=wavfile.getnchannels(),
+                    rate=wavfile.getframerate(),
+                    input=True,
+                    output=True,
+                    frames_per_buffer=self.chunk,
+                )
+
             chunk_duration = self.chunk / float(wavfile.getframerate())
             try:
                 while any(client.recording for client in self.clients):
@@ -448,7 +452,8 @@ class TranscriptionTeeClient:
                     client.wait_before_disconnect()
                 self.multicast_packet(Client.END_OF_AUDIO.encode('utf-8'), True)
                 self.write_all_clients_srt()
-                self.stream.close()
+                if self.stream:
+                    self.stream.close()
                 self.close_all_clients()
 
             except KeyboardInterrupt:
