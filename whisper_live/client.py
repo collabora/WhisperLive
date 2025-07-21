@@ -32,8 +32,6 @@ class Client:
         use_vad=True,
         use_wss=False,
         log_transcription=True,
-        max_clients=4,
-        max_connection_time=600,
         send_last_n_segments=10,
         no_speech_thresh=0.45,
         clip_audio=False,
@@ -56,8 +54,6 @@ class Client:
             srt_file_path (str, optional): The file path to save the output SRT file. Default is "output.srt".
             use_vad (bool, optional): Whether to enable voice activity detection. Default is True.
             log_transcription (bool, optional): Whether to log transcription output to the console. Default is True.
-            max_clients (int, optional): Maximum number of client connections allowed. Default is 4.
-            max_connection_time (int, optional): Maximum allowed connection time in seconds. Default is 600.
             send_last_n_segments (int, optional): Number of most recent segments to send to the client. Defaults to 10.
             no_speech_thresh (float, optional): Segments with no speech probability above this threshold will be discarded. Defaults to 0.45.
             clip_audio (bool, optional): Whether to clip audio with no valid segments. Defaults to False.
@@ -79,8 +75,6 @@ class Client:
         self.last_segment = None
         self.last_received_segment = None
         self.log_transcription = log_transcription
-        self.max_clients = max_clients
-        self.max_connection_time = max_connection_time
         self.send_last_n_segments = send_last_n_segments
         self.no_speech_thresh = no_speech_thresh
         self.clip_audio = clip_audio
@@ -236,8 +230,6 @@ class Client:
                     "task": self.task,
                     "model": self.model,
                     "use_vad": self.use_vad,
-                    "max_clients": self.max_clients,
-                    "max_connection_time": self.max_connection_time,
                     "send_last_n_segments": self.send_last_n_segments,
                     "no_speech_thresh": self.no_speech_thresh,
                     "clip_audio": self.clip_audio,
@@ -714,8 +706,6 @@ class TranscriptionClient(TranscriptionTeeClient):
         output_recording_filename (str, optional): Path to save the output recording WAV file. Default is "./output_recording.wav".
         output_transcription_path (str, optional): File path to save the output transcription (SRT file). Default is "./output.srt".
         log_transcription (bool, optional): Whether to log transcription output to the console. Default is True.
-        max_clients (int, optional): Maximum number of client connections allowed. Default is 4.
-        max_connection_time (int, optional): Maximum allowed connection time in seconds. Default is 600.
         mute_audio_playback (bool, optional): If True, mutes audio playback during file playback. Default is False.
         send_last_n_segments (int, optional): Number of most recent segments to send to the client. Defaults to 10.
         no_speech_thresh (float, optional): Segments with no speech probability above this threshold will be discarded. Defaults to 0.45.
@@ -746,8 +736,6 @@ class TranscriptionClient(TranscriptionTeeClient):
         output_recording_filename="./output_recording.wav",
         output_transcription_path="./output.srt",
         log_transcription=True,
-        max_clients=4,
-        max_connection_time=600,
         mute_audio_playback=False,
         send_last_n_segments=10,
         no_speech_thresh=0.45,
@@ -765,8 +753,6 @@ class TranscriptionClient(TranscriptionTeeClient):
             use_vad=use_vad,
             use_wss=use_wss,
             log_transcription=log_transcription,
-            max_clients=max_clients,
-            max_connection_time=max_connection_time,
             send_last_n_segments=send_last_n_segments,
             no_speech_thresh=no_speech_thresh,
             clip_audio=clip_audio,
