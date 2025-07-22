@@ -11,10 +11,11 @@ def clear_screen():
     os.system("cls" if os.name == "nt" else "clear")
 
 
-def print_transcript(text):
+def print_transcript(text, translated=False):
     """Prints formatted transcript text."""
     wrapper = textwrap.TextWrapper(width=60)
-    for line in wrapper.wrap(text="".join(text)):
+    text=" ".join(text) if translated else "".join(text)
+    for line in wrapper.wrap(text=text):
         print(line)
 
 

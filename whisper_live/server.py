@@ -1,6 +1,7 @@
 import os
 import time
 import threading
+import queue
 import json
 import functools
 import logging
@@ -12,9 +13,9 @@ from websockets.sync.server import serve
 from websockets.exceptions import ConnectionClosed
 from whisper_live.vad import VoiceActivityDetector
 from whisper_live.backend.base import ServeClientBase
+from whisper_live.backend.translation_backend import ServeClientTranslation
 
 logging.basicConfig(level=logging.INFO)
-
 
 class ClientManager:
     def __init__(self, max_clients=4, max_connection_time=600):
@@ -157,6 +158,34 @@ class TranscriptionServer:
     ):
         client: Optional[ServeClientBase] = None
 
+        # Check if client wants translation
+        enable_translation = options.get("enable_translation", False)
+        target_language = options.get("target_language", "fr")
+        
+        # Create translation queue if translation is enabled
+        translation_queue = None
+        translation_client = None
+        translation_thread = None
+        
+        if enable_translation:
+            translation_queue = queue.Queue()
+            translation_client = ServeClientTranslation(
+                client_uid=options["uid"],
+                websocket=websocket,
+                translation_queue=translation_queue,
+                target_language=target_language,
+                send_last_n_segments=options.get("send_last_n_segments", 10)
+            )
+            
+            # Start translation thread
+            translation_thread = threading.Thread(
+                target=translation_client.speech_to_text,
+                daemon=True
+            )
+            translation_thread.start()
+            
+            logging.info(f"Translation enabled for client {options['uid']} with target language: {target_language}")
+
         if self.backend.is_tensorrt():
             try:
                 from whisper_live.backend.trt_backend import ServeClientTensorRT
@@ -235,6 +264,7 @@ class TranscriptionServer:
                     clip_audio=options.get("clip_audio", False),
                     same_output_threshold=options.get("same_output_threshold", 10),
                     cache_path=self.cache_path,
+                    translation_queue=translation_queue
                 )
 
                 logging.info("Running faster_whisper backend.")
@@ -244,6 +274,10 @@ class TranscriptionServer:
 
         if client is None:
             raise ValueError(f"Backend type {self.backend.value} not recognised or not handled.")
+
+        if translation_client:
+            client.translation_client = translation_client
+            client.translation_thread = translation_thread
 
         self.client_manager.add_client(websocket, client)
 
@@ -443,6 +477,13 @@ class TranscriptionServer:
         Args:
             websocket: The websocket associated with the client to be cleaned up.
         """
-        if self.client_manager.get_client(websocket):
+        client = self.client_manager.get_client(websocket)
+        if client:
+            if hasattr(client, 'translation_client') and client.translation_client:
+                client.translation_client.cleanup()
+                
+            # Wait for translation thread to finish
+            if hasattr(client, 'translation_thread') and client.translation_thread:
+                client.translation_thread.join(timeout=2.0)
             self.client_manager.remove_client(websocket)
 

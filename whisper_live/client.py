@@ -37,6 +37,10 @@ class Client:
         clip_audio=False,
         same_output_threshold=10,
         transcription_callback=None,
+        enable_translation=False,
+        target_language="fr",
+        translation_callback=None,
+        translation_srt_file_path="output_translated.srt",
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -59,6 +63,10 @@ class Client:
             clip_audio (bool, optional): Whether to clip audio with no valid segments. Defaults to False.
             same_output_threshold (int, optional): Number of repeated outputs before considering it as a valid segment. Defaults to 10.
             transcription_callback (callable, optional): A callback function to handle transcription results. Default is None.
+            enable_translation (float, optional): Whether to enable translation from any to any language. Defaults to False.
+            target_language (str, optional): Target language for translation. Defaults to 'fr'.
+            translation_callback (callable, optional): A callback function to handle translation results. Default is None.
+            translation_srt_file_path (str, optional): The file path to save the translated output SRT file. Default is "output_translated.srt".
         """
         self.recording = False
         self.task = "transcribe"
@@ -81,6 +89,12 @@ class Client:
         self.same_output_threshold = same_output_threshold
         self.transcription_callback = transcription_callback
 
+        # Translation-specific attributes
+        self.enable_translation = enable_translation
+        self.target_language = target_language
+        self.translation_callback = translation_callback
+        self.translation_srt_file_path = translation_srt_file_path
+        self.last_translated_segment = None
         if translate:
             self.task = "translate"
 
@@ -110,6 +124,7 @@ class Client:
         self.ws_thread.start()
 
         self.transcript = []
+        self.translated_transcript = []
         print("[INFO]: * recording")
 
     def handle_status_messages(self, message_data):
@@ -124,36 +139,53 @@ class Client:
         elif status == "WARNING":
             print(f"Message from Server: {message_data['message']}")
 
-    def process_segments(self, segments):
+    def process_segments(self, segments, translated=False):
         """Processes transcript segments."""
         text = []
         for i, seg in enumerate(segments):
             if not text or text[-1] != seg["text"]:
-                text.append(seg["text"])
+                text.append(seg["text"].strip())
                 if i == len(segments) - 1 and not seg.get("completed", False):
                     self.last_segment = seg
-                elif (self.server_backend == "faster_whisper" and seg.get("completed", False) and
-                      (not self.transcript or
-                        float(seg['start']) >= float(self.transcript[-1]['end']))):
-                    self.transcript.append(seg)
+                elif self.server_backend == "faster_whisper" and seg.get("completed", False):
+                    if translated:
+                        if (not self.translated_transcript or float(seg['start']) >= float(self.translated_transcript[-1]['end'])):
+                            self.translated_transcript.append(seg)
+                    else:
+                        if (not self.transcript or float(seg['start']) >= float(self.transcript[-1]['end'])):
+                            self.transcript.append(seg)
         # update last received segment and last valid response time
-        if self.last_received_segment is None or self.last_received_segment != segments[-1]["text"]:
-            self.last_response_received = time.time()
-            self.last_received_segment = segments[-1]["text"]
+        if not translated:
+            if self.last_received_segment is None or self.last_received_segment != segments[-1]["text"]:
+                self.last_response_received = time.time()
+                self.last_received_segment = segments[-1]["text"]
 
         # call the transcription callback if provided
-        if self.transcription_callback and callable(self.transcription_callback):
-            try:
-                self.transcription_callback(" ".join(text), segments) # string, list
-            except Exception as e:
-                print(f"[WARN] transcription_callback raised: {e}")
-            return
+        if translated:
+            if self.translation_callback and callable(self.translation_callback):
+                try:
+                    self.translation_callback(" ".join(text), segments) # string, list
+                except Exception as e:
+                    print(f"[WARN] translation_callback raised: {e}")
+                return
+        else:
+            if self.transcription_callback and callable(self.transcription_callback):
+                try:
+                    self.transcription_callback(" ".join(text), segments) # string, list
+                except Exception as e:
+                    print(f"[WARN] transcription_callback raised: {e}")
+                return
         
         if self.log_transcription:
-            # Truncate to last 3 entries for brevity.
-            text = text[-3:]
+            original_text = [seg["text"] for seg in self.transcript[-4:]]
+            if self.last_segment is not None and self.last_segment["text"] not in original_text:
+                original_text.append(self.last_segment["text"])
+            
             utils.clear_screen()
-            utils.print_transcript(text)
+            utils.print_transcript(original_text)
+            if self.enable_translation:
+                print(f"\n\nTRANSLATION to {self.target_language}:")
+                utils.print_transcript([seg["text"] for seg in self.translated_transcript[-4:]], translated=True)
 
     def on_message(self, ws, message):
         """
@@ -199,6 +231,9 @@ class Client:
 
         if "segments" in message.keys():
             self.process_segments(message["segments"])
+        
+        if "translated_segments" in message.keys():
+            self.process_segments(message["translated_segments"], translated=True)
 
     def on_error(self, ws, error):
         print(f"[ERROR] WebSocket Error: {error}")
@@ -234,6 +269,8 @@ class Client:
                     "no_speech_thresh": self.no_speech_thresh,
                     "clip_audio": self.clip_audio,
                     "same_output_threshold": self.same_output_threshold,
+                    "enable_translation": self.enable_translation,
+                    "target_language": self.target_language,
                 }
             )
         )
@@ -292,6 +329,9 @@ class Client:
             elif self.last_segment and self.transcript[-1]["text"] != self.last_segment["text"]:
                 self.transcript.append(self.last_segment)
             utils.create_srt_file(self.transcript, output_path)
+
+        if self.enable_translation:
+            utils.create_srt_file(self.translated_transcript, self.translation_srt_file_path)
 
     def wait_before_disconnect(self):
         """Waits a bit before disconnecting in order to process pending responses."""
@@ -692,7 +732,7 @@ class TranscriptionClient(TranscriptionTeeClient):
     """
     Client for handling audio transcription tasks via a single WebSocket connection.
 
-    Acts as a high-level client for audio transcription tasks using a WebSocket connection. It can be used
+    Acts as a high-level client for audio transcription tasksoutput_transcription_path using a WebSocket connection. It can be used
     to send audio data for transcription to a server and receive transcribed text segments.
 
     Args:
@@ -712,6 +752,10 @@ class TranscriptionClient(TranscriptionTeeClient):
         clip_audio (bool, optional): Whether to clip audio with no valid segments. Defaults to False.
         same_output_threshold (int, optional): Number of repeated outputs before considering it as a valid segment. Defaults to 10.
         transcription_callback (callable, optional): A callback function to handle transcription results. Default is None.
+        enable_translation (float, optional): Whether to enable translation from any to any language. Defaults to False.
+        target_language (str, optional): Target language for translation. Defaults to 'fr'.
+        translation_callback (callable, optional): A callback function to handle translation results. Default is None.
+        translation_srt_file_path (str, optional): The file path to save the translated output SRT file. Default is "output_translated.srt".
 
     Attributes:
         client (Client): An instance of the underlying Client class responsible for handling the WebSocket connection.
@@ -742,6 +786,10 @@ class TranscriptionClient(TranscriptionTeeClient):
         clip_audio=False,
         same_output_threshold=10,
         transcription_callback=None,
+        enable_translation=False,
+        target_language="fr",
+        translation_callback=None,
+        translation_srt_file_path="./output_translated.srt",
     ):
         self.client = Client(
             host,
@@ -758,12 +806,18 @@ class TranscriptionClient(TranscriptionTeeClient):
             clip_audio=clip_audio,
             same_output_threshold=same_output_threshold,
             transcription_callback=transcription_callback,
+            enable_translation=enable_translation,
+            target_language=target_language,
+            translation_callback=translation_callback,
+            translation_srt_file_path=translation_srt_file_path,
         )
 
         if save_output_recording and not output_recording_filename.endswith(".wav"):
             raise ValueError(f"Please provide a valid `output_recording_filename`: {output_recording_filename}")
         if not output_transcription_path.endswith(".srt"):
             raise ValueError(f"Please provide a valid `output_transcription_path`: {output_transcription_path}. The file extension should be `.srt`.")
+        if not translation_srt_file_path.endswith(".srt"):
+            raise ValueError(f"Please provide a valid `translation_srt_file_path`: {translation_srt_file_path}. The file extension should be `.srt`.")
         TranscriptionTeeClient.__init__(
             self,
             [self.client],
