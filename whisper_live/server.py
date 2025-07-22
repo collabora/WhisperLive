@@ -13,7 +13,6 @@ from websockets.sync.server import serve
 from websockets.exceptions import ConnectionClosed
 from whisper_live.vad import VoiceActivityDetector
 from whisper_live.backend.base import ServeClientBase
-from whisper_live.backend.translation_backend import ServeClientTranslation
 
 logging.basicConfig(level=logging.INFO)
 
@@ -160,7 +159,6 @@ class TranscriptionServer:
 
         # Check if client wants translation
         enable_translation = options.get("enable_translation", False)
-        target_language = options.get("target_language", "fr")
         
         # Create translation queue if translation is enabled
         translation_queue = None
@@ -168,7 +166,9 @@ class TranscriptionServer:
         translation_thread = None
         
         if enable_translation:
+            target_language = options.get("target_language", "fr")
             translation_queue = queue.Queue()
+            from whisper_live.backend.translation_backend import ServeClientTranslation
             translation_client = ServeClientTranslation(
                 client_uid=options["uid"],
                 websocket=websocket,
