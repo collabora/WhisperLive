@@ -269,11 +269,6 @@ class TranscriptionServer:
             options = websocket.recv()
             options = json.loads(options)
 
-            if self.client_manager is None:
-                max_clients = options.get('max_clients', 4)
-                max_connection_time = options.get('max_connection_time', 600)
-                self.client_manager = ClientManager(max_clients, max_connection_time)
-
             self.use_vad = options.get('use_vad')
             if self.client_manager.is_server_full(websocket, options):
                 websocket.close()
@@ -372,6 +367,8 @@ class TranscriptionServer:
             trt_multilingual=False,
             trt_py_session=False,
             single_model=False,
+            max_clients=4,
+            max_connection_time=600,
             cache_path="~/.cache/whisper-live/"):
         """
         Run the transcription server.
@@ -381,6 +378,9 @@ class TranscriptionServer:
             port (int): The port number to bind the server.
         """
         self.cache_path = cache_path
+        self.client_manager = ClientManager(max_clients, max_connection_time)
+        if faster_whisper_custom_model_path is not None and not os.path.exists(faster_whisper_custom_model_path):
+            raise ValueError(f"Custom faster_whisper model '{faster_whisper_custom_model_path}' is not a valid path.")
         if whisper_tensorrt_path is not None and not os.path.exists(whisper_tensorrt_path):
             raise ValueError(f"TensorRT model '{whisper_tensorrt_path}' is not a valid path.")
         if single_model:

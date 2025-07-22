@@ -45,12 +45,16 @@ The server supports 3 backends `faster_whisper`, `tensorrt` and `openvino`. If r
 - [Faster Whisper](https://github.com/SYSTRAN/faster-whisper) backend
 ```bash
 python3 run_server.py --port 9090 \
-                      --backend faster_whisper
+                      --backend faster_whisper \
+                      --max_clients 4 \
+                      --max_connection_time 600
   
 # running with custom model and cache_dir to save auto-converted ctranslate2 models
 python3 run_server.py --port 9090 \
                       --backend faster_whisper \
-                      -fw "/path/to/custom/faster/whisper/model"
+                      --max_clients 4 \
+                      --max_connection_time 600 \
+                      -fw "/path/to/custom/faster/whisper/model" \
                       -c ~/.cache/whisper-live/
 ```
 
@@ -59,15 +63,20 @@ python3 run_server.py --port 9090 \
 # Run English only model
 python3 run_server.py -p 9090 \
                       -b tensorrt \
-                      -trt /home/TensorRT-LLM/examples/whisper/whisper_small_en
+                      -trt /home/TensorRT-LLM/examples/whisper/whisper_small_en \
+                      --max_clients 4 \
+                      --max_connection_time 600
 
 # Run Multilingual model
 python3 run_server.py -p 9090 \
                       -b tensorrt \
                       -trt /home/TensorRT-LLM/examples/whisper/whisper_small \
-                      -m
+                      -m \
+                      --max_clients 4 \
+                      --max_connection_time 600
 ```
-
+- Use `--max_clients` option to restrict the number of clients the server should allow. Defaults to 4.
+- Use `--max_connection_time` options to limit connection time for a client in seconds. Defaults to 600.
 - WhisperLive now supports the [OpenVINO](https://github.com/openvinotoolkit/openvino) backend for efficient inference on Intel CPUs, iGPU and dGPUs. Currently, we tested the models uploaded to [huggingface by OpenVINO](https://huggingface.co/OpenVINO?search_models=whisper).
   - > **Docker Recommended:** Running WhisperLive with OpenVINO inside Docker automatically enables GPU support (iGPU/dGPU) without requiring additional host setup.
   - > **Native (non-Docker) Use:** If you prefer running outside Docker, ensure the Intel drivers and OpenVINO runtime are installed and properly configured on your system. Refer to the documentation for [installing OpenVINO](https://docs.openvino.ai/2025/get-started/install-openvino.html?PACKAGE=OPENVINO_BASE&VERSION=v_2025_0_0&OP_SYSTEM=LINUX&DISTRIBUTION=PIP#).
@@ -101,8 +110,6 @@ If you don't want this, set `--no_single_model`.
   - `use_vad`: Whether to use `Voice Activity Detection` on the server.
   - `save_output_recording`: Set to True to save the microphone input as a `.wav` file during live transcription. This option is helpful for recording sessions for later playback or analysis. Defaults to `False`. 
   - `output_recording_filename`: Specifies the `.wav` file path where the microphone input will be saved if `save_output_recording` is set to `True`.
-  - `max_clients`: Specifies the maximum number of clients the server should allow. Defaults to 4.
-  - `max_connection_time`: Maximum connection time for each client in seconds. Defaults to 600.
   - `mute_audio_playback`: Whether to mute audio playback when transcribing an audio file. Defaults to False.
 
 ```python
@@ -116,8 +123,6 @@ client = TranscriptionClient(
   use_vad=False,
   save_output_recording=True,                         # Only used for microphone input, False by Default
   output_recording_filename="./output_recording.wav", # Only used for microphone input
-  max_clients=4,
-  max_connection_time=600,
   mute_audio_playback=False,                          # Only used for file input, False by Default
 )
 ```

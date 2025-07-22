@@ -49,8 +49,6 @@ class TestClientCallbacks(BaseTestCase):
             "task": self.client.task,
             "model": self.client.model,
             "use_vad": True,
-            "max_clients": 4,
-            "max_connection_time": 600,
             "send_last_n_segments": 10,
             "no_speech_thresh": 0.45,
             "clip_audio": False,
