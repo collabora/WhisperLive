@@ -4,10 +4,34 @@ import threading
 import time
 import queue
 from typing import Dict, Any, Optional
-import torch
 import threading
-from transformers import M2M100ForConditionalGeneration
-from whisper_live.backend.tokenization_small100 import SMALL100Tokenizer
+# import torch
+# wrap each suspect import in its own try/except
+try:
+    import torch
+    logging.debug("✅ torch imported, version=%s", torch.__version__)
+except Exception:
+    logging.error("❌ Failed to import torch", exc_info=True)
+
+try:
+    from transformers import M2M100ForConditionalGeneration
+    logging.debug("✅ M2M100ForConditionalGeneration imported, version")
+except Exception:
+    logging.error("❌ Failed to import transformers", exc_info=True)
+
+try:
+    from whisper_live.backend.tokenization_small100 import SMALL100Tokenizer
+    logging.debug("✅ SMALL100Tokenizer & AutoModelForSeq2SeqLM imported")
+except Exception:
+    logging.error("❌ Failed to import transformer classes", exc_info=True)
+
+# (and likewise for sentencepiece or any other heavy deps)
+try:
+    import sentencepiece
+    logging.debug("✅ sentencepiece imported")
+except Exception:
+    logging.error("❌ Failed to import sentencepiece", exc_info=True)
+
 
 from whisper_live.backend.base import ServeClientBase
 
