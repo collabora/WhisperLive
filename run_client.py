@@ -39,7 +39,15 @@ if __name__ == '__main__':
                           help='Mute audio playback during transcription.') 
     parser.add_argument('--save_output_recording', '-r',
                           action='store_true',
-                          help='Save the output recording, only used for microphone input.')                  
+                          help='Save the output recording, only used for microphone input.')
+    parser.add_argument('--enable_translation',
+                          action='store_true',
+                          help='Enable translation of the transcription output.')
+    parser.add_argument('--target_language', '-tl',
+                          type=str,
+                          default='fr',
+                          help='Target language for translation, e.g., "fr" for French.')
+
     args = parser.parse_args()
 
     # Validate audio files
@@ -70,5 +78,7 @@ if __name__ == '__main__':
             save_output_recording=args.save_output_recording,  # Only used for microphone input, False by Default
             output_recording_filename=args.output_file,        # Only used for microphone input
             mute_audio_playback=args.mute_audio_playback,      # Only used for file input, False by Default
+            enable_translation=args.enable_translation,        # Enable translation of the transcription output
+            target_language=args.target_language,              # Target language for translation, e.g., "fr
         )
         client(f)

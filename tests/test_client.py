@@ -53,6 +53,8 @@ class TestClientCallbacks(BaseTestCase):
             "no_speech_thresh": 0.45,
             "clip_audio": False,
             "same_output_threshold": 10,
+            "enable_translation": False,
+            "target_language": "fr",
         })
         self.client.on_open(self.mock_ws_app)
         self.mock_ws_app.send.assert_called_with(expected_message)
