@@ -2,6 +2,7 @@ import json
 import logging
 import threading
 import time
+import queue
 import numpy as np
 
 
@@ -31,6 +32,7 @@ class ServeClientBase(object):
         no_speech_thresh=0.45,
         clip_audio=False,
         same_output_threshold=10,
+        translation_queue=None,
     ):
         self.client_uid = client_uid
         self.websocket = websocket
@@ -50,6 +52,7 @@ class ServeClientBase(object):
         self.same_output_count = 0
         self.transcript = []
         self.end_time_for_same_output = None
+        self.translation_queue = translation_queue
 
         # threading
         self.lock = threading.Lock()
@@ -307,7 +310,14 @@ class ServeClientBase(object):
                     continue
                 if self.get_segment_no_speech_prob(s) > self.no_speech_thresh:
                     continue
-                self.transcript.append(self.format_segment(start, end, text_, completed=True))
+                completed_segment = self.format_segment(start, end, text_, completed=True)
+                self.transcript.append(completed_segment)
+
+                if self.translation_queue:
+                    try:
+                        self.translation_queue.put(completed_segment.copy(), timeout=0.1)
+                    except queue.Full:
+                        logging.warning("Translation queue is full, skipping segment")
                 offset = min(duration, self.get_segment_end(s))
 
         # Process the last segment if its no_speech_prob is acceptable.
@@ -340,12 +350,20 @@ class ServeClientBase(object):
             if not self.text or self.text[-1].strip().lower() != self.current_out.strip().lower():
                 self.text.append(self.current_out)
                 with self.lock:
-                    self.transcript.append(self.format_segment(
+                    completed_segment = self.format_segment(
                         self.timestamp_offset,
                         self.timestamp_offset + min(duration, self.end_time_for_same_output),
                         self.current_out,
                         completed=True
-                    ))
+                    )
+                    self.transcript.append(completed_segment)
+
+                    if self.translation_queue:
+                        try:
+                            self.translation_queue.put(completed_segment.copy(), timeout=0.1)
+                        except queue.Full:
+                            logging.warning("Translation queue is full, skipping segment")
+
             self.current_out = ''
             offset = min(duration, self.end_time_for_same_output)
             self.same_output_count = 0

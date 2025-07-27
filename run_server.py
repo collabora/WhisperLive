@@ -31,6 +31,14 @@ if __name__ == "__main__":
     parser.add_argument('--no_single_model', '-nsm',
                         action='store_true',
                         help='Set this if every connection should instantiate its own model. Only relevant for custom model, passed using -trt or -fw.')
+    parser.add_argument('--max_clients',
+                        type=int,
+                        default=4,
+                        help='Maximum clients supported by the server.')
+    parser.add_argument('--max_connection_time',
+                        type=int,
+                        default=300,
+                        help='Path to cache the converted ctranslate2 models.')
     parser.add_argument('--cache_path', '-c',
                         type=str,
                         default="~/.cache/whisper-live/",
@@ -55,5 +63,7 @@ if __name__ == "__main__":
         trt_multilingual=args.trt_multilingual,
         trt_py_session=args.trt_py_session,
         single_model=not args.no_single_model,
+        max_clients=args.max_clients,
+        max_connection_time=args.max_connection_time,
         cache_path=args.cache_path
     )

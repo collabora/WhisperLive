@@ -159,6 +159,7 @@ async function startCapture(options) {
           task: options.task,
           modelSize: options.modelSize,
           useVad: options.useVad,
+          saveCaptions: options.saveCaptions,
         },
       });
     } else {
@@ -174,14 +175,14 @@ async function startCapture(options) {
  * Stops the capture process and performs cleanup.
  * @returns {Promise<void>} - A Promise that resolves when the capture process is stopped successfully.
  */
-async function stopCapture() {
+async function stopCapture(options) {
   const optionTabId = await getLocalStorageValue("optionTabId");
   const currentTabId = await getLocalStorageValue("currentTabId");
 
   if (optionTabId) {
     res = await sendMessageToTab(currentTabId, {
       type: "STOP",
-      data: { currentTabId: currentTabId },
+      data: { currentTabId: currentTabId, saveCaptions: options.saveCaptions },
     });
     await removeChromeTab(optionTabId);
   }
@@ -196,7 +197,7 @@ chrome.runtime.onMessage.addListener(async (message) => {
   if (message.action === "startCapture") {
     startCapture(message);
   } else if (message.action === "stopCapture") {
-    stopCapture();
+    stopCapture(message);
   } else if (message.action === "updateSelectedLanguage") {
     const detectedLanguage = message.detectedLanguage;
     chrome.runtime.sendMessage({ action: "updateSelectedLanguage", detectedLanguage });
@@ -204,7 +205,7 @@ chrome.runtime.onMessage.addListener(async (message) => {
   } else if (message.action === "toggleCaptureButtons") {
     chrome.runtime.sendMessage({ action: "toggleCaptureButtons", data: false });
     chrome.storage.local.set({ capturingState: { isCapturing: false } })
-    stopCapture();
+    stopCapture({saveCaptions: message.saveCaptions});
   }
 });
 

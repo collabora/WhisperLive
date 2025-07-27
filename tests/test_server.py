@@ -42,6 +42,8 @@ class TestGetWaitTime(unittest.TestCase):
 class TestServerConnection(unittest.TestCase):
     def setUp(self):
         self.server = TranscriptionServer()
+        self.server.client_manager = ClientManager(max_clients=4, max_connection_time=600)
+        self.server.cache_path = "~/.cache/whisper-live/"
 
     @mock.patch('websockets.WebSocketCommonProtocol')
     def test_connection(self, mock_websocket):

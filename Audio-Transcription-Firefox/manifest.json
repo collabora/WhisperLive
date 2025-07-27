@@ -8,6 +8,9 @@
       "activeTab",
       "<all_urls>"
     ],
+    "web_accessible_resources": [
+      "audiopreprocessor.js"
+    ],
     "background": {
       "scripts": ["background.js"],
       "persistent": false

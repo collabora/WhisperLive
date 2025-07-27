@@ -31,41 +31,6 @@ function sendMessageToTab(tabId, data) {
   });
 }
 
-
-/**
- * Resamples the audio data to a target sample rate of 16kHz.
- * @param {Array|ArrayBuffer|TypedArray} audioData - The input audio data.
- * @param {number} [origSampleRate=44100] - The original sample rate of the audio data.
- * @returns {Float32Array} The resampled audio data at 16kHz.
- */
-function resampleTo16kHZ(audioData, origSampleRate = 44100) {
-  // Convert the audio data to a Float32Array
-  const data = new Float32Array(audioData);
-
-  // Calculate the desired length of the resampled data
-  const targetLength = Math.round(data.length * (16000 / origSampleRate));
-
-  // Create a new Float32Array for the resampled data
-  const resampledData = new Float32Array(targetLength);
-
-  // Calculate the spring factor and initialize the first and last values
-  const springFactor = (data.length - 1) / (targetLength - 1);
-  resampledData[0] = data[0];
-  resampledData[targetLength - 1] = data[data.length - 1];
-
-  // Resample the audio data
-  for (let i = 1; i < targetLength - 1; i++) {
-    const index = i * springFactor;
-    const leftIndex = Math.floor(index).toFixed();
-    const rightIndex = Math.ceil(index).toFixed();
-    const fraction = index - leftIndex;
-    resampledData[i] = data[leftIndex] + (data[rightIndex] - data[leftIndex]) * fraction;
-  }
-
-  // Return the resampled data
-  return resampledData;
-}
-
 function generateUUID() {
   let dt = new Date().getTime();
   const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -76,24 +41,99 @@ function generateUUID() {
   return uuid;
 }
 
+// Global variables for audio processing
+let audioContext = null;
+let preNode = null;
+let socket = null;
+let isServerReady = false;
+let currentStream = null;
+let currentOptions = null;
+
+// AudioWorklet URL - make sure this path matches your manifest.json
+const WORKLET_URL = chrome.runtime.getURL('audiopreprocessor.js');
+
+async function initAudioWorklet(stream) {
+  audioContext = new AudioContext();
+  if (audioContext.state === 'suspended') {
+    await audioContext.resume();
+  }
+
+  try {
+    await audioContext.audioWorklet.addModule(WORKLET_URL);
+    preNode = new AudioWorkletNode(audioContext, 'audiopreprocessor');
+    const mediaStream = audioContext.createMediaStreamSource(stream);
+    
+    mediaStream.connect(preNode);
+    preNode.connect(audioContext.destination);
+    preNode.port.onmessage = (event) => {
+      const data = event.data;
+      
+      
+      const audio16k = data; // Float32Array @ 16 kHz
+      
+      if (socket && socket.readyState === WebSocket.OPEN && isServerReady) {
+        socket.send(audio16k);
+      }
+    };
+        
+    // Test if we can hear audio (this will help verify the audio path)
+    
+  } catch (error) {
+    console.error("Error initializing AudioWorklet:", error);
+    throw error;
+  }
+}
+
+function cleanupAudio() {
+  
+  if (preNode) {
+    preNode.port.onmessage = null;
+    preNode.disconnect();
+    preNode = null;
+  }
+  
+  if (audioContext) {
+    audioContext.close();
+    audioContext = null;
+  }
+
+  if (currentStream) {
+    currentStream.getTracks().forEach(track => {
+      track.stop();
+      console.log("Stopped track:", track.kind);
+    });
+    currentStream = null;
+  }
+}
 
 /**
  * Starts recording audio from the captured tab.
  * @param {Object} option - The options object containing the currentTabId.
  */
 async function startRecord(option) {
+  currentOptions = option;
   const stream = await captureTabAudio();
   const uuid = generateUUID();
 
   if (stream) {
-    // call when the stream inactive
+    currentStream = stream;
     stream.oninactive = () => {
+      cleanupAudio();
       window.close();
     };
-    const socket = new WebSocket(`ws://${option.host}:${option.port}/`);
-    let isServerReady = false;
+
+    try {
+      await initAudioWorklet(stream);
+    } catch (error) {
+      console.error("Failed to initialize AudioWorklet:", error);
+      return;
+    }
+
+    socket = new WebSocket(`ws://${option.host}:${option.port}/`);
+    isServerReady = false;
     let language = option.language;
-    socket.onopen = function(e) { 
+
+    socket.onopen = function(e) {
       socket.send(
         JSON.stringify({
           uid: uuid,
@@ -129,7 +169,6 @@ async function startRecord(option) {
         language = data["language"];
         
         // send message to popup.js to update dropdown
-        // console.log(language);
         chrome.runtime.sendMessage({
           action: "updateSelectedLanguage",
           detectedLanguage: language,
@@ -139,42 +178,32 @@ async function startRecord(option) {
       }
 
       if (data["message"] === "DISCONNECT"){
-        chrome.runtime.sendMessage({ action: "toggleCaptureButtons", data: false })        
+        chrome.runtime.sendMessage({ action: "toggleCaptureButtons", data: false, saveCaptions: option.saveCaptions });        
         return;
       }
 
-      res = await sendMessageToTab(option.currentTabId, {
+      const res = await sendMessageToTab(option.currentTabId, {
         type: "transcript",
-        data: event.data,
+        data: {
+          data: event.data,
+          saveCaptions: option.saveCaptions,
+        },
       });
     };
 
-    
-    const audioDataCache = [];
-    const context = new AudioContext();
-    const mediaStream = context.createMediaStreamSource(stream);
-    const recorder = context.createScriptProcessor(4096, 1, 1);
-
-    recorder.onaudioprocess = async (event) => {
-      if (!context || !isServerReady) return;
-
-      const inputData = event.inputBuffer.getChannelData(0);
-      const audioData16kHz = resampleTo16kHZ(inputData, context.sampleRate);
-
-      audioDataCache.push(inputData);
-
-      socket.send(audioData16kHz);
+    socket.onclose = () => {
+      cleanupAudio();
     };
 
-    // Prevent page mute
-    mediaStream.connect(recorder);
-    recorder.connect(context.destination);
-    mediaStream.connect(context.destination);
-    // }
+    socket.onerror = (error) => {
+      cleanupAudio();
+    };
+
   } else {
     window.close();
   }
 }
+
 
 /**
  * Listener for incoming messages from the extension's background script.

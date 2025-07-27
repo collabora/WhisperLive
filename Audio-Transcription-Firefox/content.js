@@ -1,143 +1,161 @@
 let socket = null;
 let isCapturing = false;
-let mediaStream = null;
 let audioContext = null;
-let scriptProcessor = null;
 let language = null;
-
 let isPaused = false;
+let preNode = null;
+let allSegments = [];
+let lastIncompleteSegment = null;
 
-const mediaElements = document.querySelectorAll('video, audio');
-mediaElements.forEach((mediaElement) => {
-  mediaElement.addEventListener('play', handlePlaybackStateChange);
-  mediaElement.addEventListener('pause', handlePlaybackStateChange);
-});
-
-
-function handlePlaybackStateChange(event) {
-  isPaused = event.target.paused;
+function formatTime(seconds) {
+  const date = new Date(seconds * 1000);
+  const hh = String(date.getUTCHours()).padStart(2, '0');
+  const mm = String(date.getUTCMinutes()).padStart(2, '0');
+  const ss = String(date.getUTCSeconds()).padStart(2, '0');
+  const mmm = String(date.getUTCMilliseconds()).padStart(3, '0');
+  return `${hh}:${mm}:${ss},${mmm}`;
 }
+
+function generateSRT() {
+    return allSegments
+    .map((seg, i) => {
+    const start = formatTime(seg.start);
+    const end   = formatTime(seg.end);
+    const text  = seg.text.trim().replace(/[\r\n]+/g, ' ');
+    return `${i + 1}\n${start} --> ${end}\n${text}`;
+    })
+    .join('\n\n');
+}
+
+function downloadSRT() {
+    const srtBlob = new Blob([generateSRT()], { type: 'text/srt;charset=utf-8' });
+    const url = URL.createObjectURL(srtBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'captions.srt';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+}
+
 
 function generateUUID() {
   let dt = new Date().getTime();
-  const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r = (dt + Math.random() * 16) % 16 | 0;
     dt = Math.floor(dt / 16);
     return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
   });
-  return uuid;
 }
 
 
-/**
- * Resamples the audio data to a target sample rate of 16kHz.
- * @param {Array|ArrayBuffer|TypedArray} audioData - The input audio data.
- * @param {number} [origSampleRate=44100] - The original sample rate of the audio data.
- * @returns {Float32Array} The resampled audio data at 16kHz.
- */
-function resampleTo16kHZ(audioData, origSampleRate = 44100) {
-  // Convert the audio data to a Float32Array
-  const data = new Float32Array(audioData);
+document.querySelectorAll('video, audio').forEach(el => {
+  el.addEventListener('play', () => { isPaused = false; });
+  el.addEventListener('pause', () => { isPaused = true; });
+});
 
-  // Calculate the desired length of the resampled data
-  const targetLength = Math.round(data.length * (16000 / origSampleRate));
 
-  // Create a new Float32Array for the resampled data
-  const resampledData = new Float32Array(targetLength);
+function setupMessageHandler() {
+  if (preNode) {
+    preNode.port.onmessage = e => {
+      const audio16k = e.data; 
+      if (isCapturing && socket && socket.readyState === WebSocket.OPEN && !isPaused) {
+        socket.send(audio16k);
+      }
+    };
+  }
+}
 
-  // Calculate the spring factor and initialize the first and last values
-  const springFactor = (data.length - 1) / (targetLength - 1);
-  resampledData[0] = data[0];
-  resampledData[targetLength - 1] = data[data.length - 1];
 
-  // Resample the audio data
-  for (let i = 1; i < targetLength - 1; i++) {
-    const index = i * springFactor;
-    const leftIndex = Math.floor(index).toFixed();
-    const rightIndex = Math.ceil(index).toFixed();
-    const fraction = index - leftIndex;
-    resampledData[i] = data[leftIndex] + (data[rightIndex] - data[leftIndex]) * fraction;
+const WORKLET_URL = browser.runtime.getURL('audiopreprocessor.js');
+
+async function initAudioWorklet() {
+  if (audioContext && preNode) {
+    setupMessageHandler();
+    return;
+  }
+  audioContext = new AudioContext();
+  await audioContext.audioWorklet.addModule(WORKLET_URL);
+
+  preNode = new AudioWorkletNode(audioContext, 'audiopreprocessor');
+  document.querySelectorAll('audio, video').forEach(el => {
+    let src;
+    try {
+      src = audioContext.createMediaElementSource(el);
+    } catch(e) {
+      console.warn('Could not create MediaElementSource for', el, e);
+      return;
+    }
+    src.connect(preNode);
+    src.connect(audioContext.destination);
+  });
+
+  preNode.connect(audioContext.destination);
+
+  setupMessageHandler();
+}
+
+async function startRecording(data) {
+  if (!audioContext) {
+    await initAudioWorklet();
   }
 
-  // Return the resampled data
-  return resampledData;
+  const uid = generateUUID();
+  socket = new WebSocket(`ws://${data.host}:${data.port}/`);
+  language = data.language;
+
+  socket.onopen = () => {
+    socket.send(JSON.stringify({
+      uid,
+      language: data.language,
+      task: data.task,
+      model: data.modelSize,
+      use_vad: data.useVad
+    }));
+  };
+
+  let serverReady = false;
+  socket.onmessage = async event => {
+    const msg = JSON.parse(event.data);
+    if (msg.uid !== uid) return;
+
+    if (msg.status === 'WAIT') {
+      await browser.runtime.sendMessage({ action: 'showPopup', data: msg.message });
+      return;
+    }
+    if (!serverReady && msg.message === 'SERVER_READY') {
+      serverReady = true;
+      return;
+    }
+    if (!language && msg.language) {
+      language = msg.language;
+      await browser.runtime.sendMessage({ action: 'updateSelectedLanguage', data: language });
+      return;
+    }
+    if (msg.message === 'DISCONNECT') {
+      await browser.runtime.sendMessage({ action: 'toggleCaptureButtons' });
+      return;
+    }
+    if (msg.segments) {
+      await browser.runtime.sendMessage({ action: 'transcript', data: {data: event.data, saveCaption: data.saveCaption} });
+    }
+  };
+
+  isCapturing = true;
 }
 
-function startRecording(data) {
-    socket = new WebSocket(`ws://${data.host}:${data.port}/`);
-    language = data.language;
+function stopRecording() {
+  isCapturing = false;
+  if (socket) {
+    socket.close();
+    socket = null;
+  }
 
-    const uuid = generateUUID();
-    socket.onopen = function(e) { 
-      socket.send(
-        JSON.stringify({
-            uid: uuid,
-            language: data.language,
-            task: data.task,
-            model: data.modelSize,
-            use_vad: data.useVad
-        })
-      );
-    };
-
-    let isServerReady = false;
-    socket.onmessage = async (event) => {
-      const data = JSON.parse(event.data);
-      if (data["uid"] !== uuid)
-        return;
-      
-      if (data["status"] === "WAIT"){
-        await browser.runtime.sendMessage({ action: "showPopup", data: data["message"] })
-        return;
-      }
-      
-      if (!isServerReady && data["message"] === "SERVER_READY"){
-        isServerReady = true;
-        return;
-      }
-
-      if (language === null ){
-        language = data["language"];
-        await browser.runtime.sendMessage({ action: "updateSelectedLanguage", data: language })      
-        return
-      }
-
-      if (data["message"] === "DISCONNECT"){
-        await browser.runtime.sendMessage({ action: "toggleCaptureButtons", data: false })        
-        return
-      }
-
-      await browser.runtime.sendMessage({ action: "transcript", data: event.data })
-          .catch(function(error) {
-            console.error("Error sending message:", error);
-          });
-    };
-
-  // Access the audio stream from the current tab
-  navigator.mediaDevices.getUserMedia({ audio: true })
-    .then(function(stream) {
-      // Create a new MediaRecorder instance
-      const audioDataCache = [];
-      audioContext = new AudioContext();
-      mediaStream = audioContext.createMediaStreamSource(stream);
-      recorder = audioContext.createScriptProcessor(4096, 1, 1);
-
-      recorder.onaudioprocess = async (event) => {
-        if (!audioContext || !isCapturing || !isServerReady || isPaused) return;
-
-        const inputData = event.inputBuffer.getChannelData(0);
-        const audioData16kHz = resampleTo16kHZ(inputData, audioContext.sampleRate);
-
-        audioDataCache.push(inputData);
-        
-        socket.send(audioData16kHz);
-      };
-
-      // Prevent page mute
-      mediaStream.connect(recorder);
-      recorder.connect(audioContext.destination);
-    })
+  remove_element();
 }
+
 
 var elem_container = null;
 var elem_text = null;
@@ -308,6 +326,8 @@ function remove_element() {
 
 browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const { action, data } = request;
+  const saveCaption = data.saveCaption || false;
+
   if (action === "startCapture") {
       isCapturing = true;
       startRecording(data);
@@ -318,12 +338,20 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
         socket.close();
         socket = null;
     }
-    
-    if (audioContext) {
-        audioContext.close();
-        audioContext = null;
-        mediaStream = null;
-        recorder = null;
+
+
+    if (saveCaption === true) {
+      if (lastIncompleteSegment && lastIncompleteSegment.text && lastIncompleteSegment.text.trim() !== "") {
+          if (allSegments.length === 0 || parseFloat(lastIncompleteSegment.start) >= parseFloat(allSegments[allSegments.length - 1].end)) {
+              allSegments.push({
+                  start: lastIncompleteSegment.start,
+                  end: lastIncompleteSegment.end,
+                  text: lastIncompleteSegment.text
+              });
+          }
+      }
+  
+      downloadSRT();
     }
 
     remove_element();
@@ -337,8 +365,25 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (action === "show_transcript"){
     if (!isCapturing) return;
     init_element();    
-    message = JSON.parse(data);
+    message = JSON.parse(data.data);
     message = message["segments"];
+
+    if (saveCaption === true) {
+      message.forEach(seg => {
+          if (seg.completed === true && 
+              (allSegments.length === 0 || parseFloat(seg.start) >= parseFloat(allSegments[allSegments.length - 1].end))) {
+              allSegments.push({
+                  start: seg.start,
+                  end: seg.end,
+                  text: seg.text
+              });
+              
+              lastIncompleteSegment = null;
+          } else if (seg.completed !== true) {
+              lastIncompleteSegment = seg;
+          }
+      });
+    }
     
     var text = '';
     for (var i = 0; i < message.length; i++) {
