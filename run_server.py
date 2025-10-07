@@ -43,6 +43,10 @@ if __name__ == "__main__":
                         type=str,
                         default="~/.cache/whisper-live/",
                         help='Path to cache the converted ctranslate2 models.')
+    parser.add_argument('--openvino_cpu_threads',
+                        type=int,
+                        default=None,
+                        help='Number of CPU threads for OpenVINO backend inference.')
     args = parser.parse_args()
 
     if args.backend == "tensorrt":
@@ -65,5 +69,6 @@ if __name__ == "__main__":
         single_model=not args.no_single_model,
         max_clients=args.max_clients,
         max_connection_time=args.max_connection_time,
-        cache_path=args.cache_path
+        cache_path=args.cache_path,
+        openvino_cpu_threads=args.openvino_cpu_threads
     )
