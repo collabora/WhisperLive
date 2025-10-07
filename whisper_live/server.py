@@ -467,8 +467,10 @@ class TranscriptionServer:
             self.no_voice_activity_chunks += 1
             if self.no_voice_activity_chunks > 3:
                 client = self.client_manager.get_client(websocket)
-                if not client.eos:
-                    client.set_eos(True)
+                # Only TensorRT backend has EOS management
+                if self.backend.is_tensorrt():
+                    if not client.eos:
+                        client.set_eos(True)
                 time.sleep(0.1)    # Sleep 100m; wait some voice activity.
             return False
         return True
