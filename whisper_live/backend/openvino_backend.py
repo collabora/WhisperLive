@@ -63,6 +63,10 @@ class ServeClientOpenVINO(ServeClientBase):
 
         self.task = "transcribe" if task is None else task
 
+        # Store VAD parameters for potential future use
+        self.use_vad = use_vad
+        self.vad_parameters = vad_parameters
+
         self.clip_audio = True
 
         core = Core()
