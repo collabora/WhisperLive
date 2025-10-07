@@ -50,35 +50,40 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    # Validate audio files
-    valid_files = []
-    for file_path in args.files:
-        path = Path(file_path)
-        if path.exists() and path.is_file():
-            valid_files.append(str(path))
-        else:
-            print(f"Warning: File not found: {file_path}")
+    client = TranscriptionClient(
+        args.server,
+        args.port,
+        lang=args.lang,
+        translate=args.translate,
+        model=args.model,
+        use_vad=True,
+        save_output_recording=args.save_output_recording,
+        output_recording_filename=args.output_file,
+        mute_audio_playback=args.mute_audio_playback,
+        enable_translation=args.enable_translation,
+        target_language=args.target_language,
+    )
 
-    if not valid_files:
-        print("Error: No valid audio files found!")
-        sys.exit(1)
+    if args.files:
+        # Validate audio files
+        valid_files = []
+        for file_path in args.files:
+            path = Path(file_path)
+            if path.exists() and path.is_file():
+                valid_files.append(str(path))
+            else:
+                print(f"Warning: File not found: {file_path}")
 
-    print(f"Found {len(valid_files)} audio file(s) to stream:")
-    for file_path in valid_files:
-        print(f"  - {file_path}")
+        if not valid_files:
+            print("Error: No valid audio files found!")
+            sys.exit(1)
 
-    for f in valid_files:
-        client = TranscriptionClient(
-            args.server,
-            args.port,
-            lang=args.lang,
-            translate=args.translate,
-            model=args.model,                                  # also support hf_model => `Systran/faster-whisper-small`
-            use_vad=True,
-            save_output_recording=args.save_output_recording,  # Only used for microphone input, False by Default
-            output_recording_filename=args.output_file,        # Only used for microphone input
-            mute_audio_playback=args.mute_audio_playback,      # Only used for file input, False by Default
-            enable_translation=args.enable_translation,        # Enable translation of the transcription output
-            target_language=args.target_language,              # Target language for translation, e.g., "fr
-        )
-        client(f)
+        print(f"Found {len(valid_files)} audio file(s) to stream:")
+        for file_path in valid_files:
+            print(f"  - {file_path}")
+
+        for f in valid_files:
+            client(f)
+    else:
+        # Use microphone input
+        client()

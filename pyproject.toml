@@ -1,0 +1,39 @@
+[project]
+name = "whisperlive"
+version = "0.7.1"
+description = "A nearly-live implementation of OpenAI's Whisper."
+requires-python = ">=3.9"
+dependencies = [
+  "av>=15.1.0",
+  "scipy>=1.13.1",
+]
+
+[dependency-groups]
+client = [
+  "pyaudio>=0.2.14",
+  "websocket-client>=1.8.0",
+]
+server = [
+  "evaluate>=0.4.6",
+  "faster-whisper==1.1.0",
+  "jiwer>=4.0.0",
+  "kaldialign>=0.9.2",
+  "numba>=0.60.0",
+  "numpy<2",
+  "onnxruntime==1.17.0",
+  "openai-whisper==20240930",
+  "sentencepiece>=0.2.1",
+  "soundfile>=0.13.1",
+  "tokenizers==0.20.3",
+  "transformers[torch]>=4.46.3",
+  "websockets>=15.0.1",
+]
+openvino = [
+  {include-group = "client"},
+  "librosa",
+  "openvino",
+  "openvino-genai",
+  "openvino-tokenizers",
+  "optimum",
+  "optimum-intel",
+]
