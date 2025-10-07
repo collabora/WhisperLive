@@ -6,14 +6,24 @@ import huggingface_hub as hf_hub
 
 
 class WhisperOpenVINO(object):
-    def __init__(self, model_id="OpenVINO/whisper-tiny-fp16-ov", device="CPU", language="en", task="transcribe"):
+    def __init__(self, model_id="OpenVINO/whisper-tiny-fp16-ov", device="CPU", language="en", task="transcribe", cpu_threads=None):
         model_path = model_id.split('/')[-1]
         cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "openvino_whisper_models")
         os.makedirs(cache_dir, exist_ok=True)
         model_path = os.path.join(cache_dir, model_path)
         if not os.path.exists(model_path):
             hf_hub.snapshot_download(model_id, local_dir=model_path)
-        self.model = ov_genai.WhisperPipeline(str(model_path), device=device)
+
+        # Create pipeline with CPU thread configuration if specified
+        if cpu_threads is not None and device == "CPU":
+            self.model = ov_genai.WhisperPipeline(
+                str(model_path),
+                device=device,
+                INFERENCE_NUM_THREADS=cpu_threads
+            )
+        else:
+            self.model = ov_genai.WhisperPipeline(str(model_path), device=device)
+
         self.language = language
         self.task = task
 

@@ -17,7 +17,12 @@ def on_transcription(text, segments):
     entry = {
         "timestamp": time.time(),
         "datetime": datetime.now().isoformat(),
-        "segments": segments
+        "segments": [
+            {
+                "text": seg["text"],
+                "completed": seg["completed"],
+            } for seg in segments
+        ]
     }
     print(json.dumps(entry, indent=2, ensure_ascii=False) + ",")
 
@@ -39,10 +44,9 @@ if __name__ == "__main__":
     # For OpenVINO backend (format OpenVINO IR):
     # MODEL = "OpenVINO/whisper-tiny-int8-ov"
     # MODEL = "OpenVINO/whisper-base-int8-ov"
-    MODEL = "OpenVINO/whisper-small-int8-ov"
+    # MODEL = "OpenVINO/whisper-small-int8-ov"
     # MODEL = "OpenVINO/whisper-medium-int8-ov"
-    # MODEL = "OpenVINO/whisper-large-v3-int8-ov"
-    # MODEL = "OpenVINO/distil-whisper-large-v3-int8-ov"
+    MODEL = "OpenVINO/whisper-large-v3-int8-ov"
 
     print("=" * 60)
     print("WhisperLive Client - Transcription Microphone en Temps Réel")

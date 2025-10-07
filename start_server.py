@@ -75,4 +75,5 @@ if __name__ == "__main__":
     backend="openvino",
     # faster_whisper_custom_model_path=model_path,
     single_model=False,
+    openvino_cpu_threads=int(THREADS),
   )

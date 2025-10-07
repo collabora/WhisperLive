@@ -24,6 +24,7 @@ class ServeClientOpenVINO(ServeClientBase):
         vad_parameters=None,
         use_vad=True,
         single_model=False,
+        cpu_threads=None,
         send_last_n_segments=10,
         no_speech_thresh=0.45,
         clip_audio=False,
@@ -66,6 +67,7 @@ class ServeClientOpenVINO(ServeClientBase):
         # Store VAD parameters for potential future use
         self.use_vad = use_vad
         self.vad_parameters = vad_parameters
+        self.cpu_threads = cpu_threads
 
         self.clip_audio = True
 
@@ -108,7 +110,8 @@ class ServeClientOpenVINO(ServeClientBase):
             model_id,
             device=self.device,
             language=self.language,
-            task=self.task
+            task=self.task,
+            cpu_threads=self.cpu_threads
         )
 
     def transcribe_audio(self, input_sample):
