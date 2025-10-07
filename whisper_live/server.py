@@ -313,9 +313,8 @@ class TranscriptionServer:
                 return False  # Indicates that the connection should not continue
 
             if self.backend.is_tensorrt() or self.backend.is_openvino():
-                self.vad_detector = VoiceActivityDetector(frame_rate=self.RATE)
-            self.initialize_client(websocket, options, faster_whisper_custom_model_path,
-                                   whisper_tensorrt_path, trt_multilingual, trt_py_session=trt_py_session)
+                self.vad_detector = VoiceActivityDetector(frame_rate=self.RATE, cache_path=self.cache_path)
+            self.initialize_client(websocket, options, faster_whisper_custom_model_path, whisper_tensorrt_path, trt_multilingual, trt_py_session=trt_py_session)
             return True
         except json.JSONDecodeError:
             logging.error("Failed to decode JSON from client")

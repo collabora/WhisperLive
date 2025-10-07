@@ -8,8 +8,8 @@ import warnings
 
 class VoiceActivityDetection():
 
-    def __init__(self, force_onnx_cpu=True):
-        path = self.download()
+    def __init__(self, force_onnx_cpu=True, cache_path=None):
+        path = self.download(cache_path=cache_path)
 
         opts = onnxruntime.SessionOptions()
         opts.log_severity_level = 3
@@ -109,8 +109,10 @@ class VoiceActivityDetection():
         return stacked.cpu()
 
     @staticmethod
-    def download(model_url="https://github.com/snakers4/silero-vad/raw/v5.0/files/silero_vad.onnx"):
-        target_dir = os.path.expanduser("~/.cache/whisper-live/")
+    def download(model_url="https://github.com/snakers4/silero-vad/raw/v5.0/files/silero_vad.onnx", cache_path=None):
+        if cache_path is None:
+            cache_path = "~/.cache/whisper-live/"
+        target_dir = os.path.expanduser(cache_path)
 
         # Ensure the target directory exists
         os.makedirs(target_dir, exist_ok=True)
@@ -129,14 +131,16 @@ class VoiceActivityDetection():
 
 
 class VoiceActivityDetector:
-    def __init__(self, threshold=0.5, frame_rate=16000):
+    def __init__(self, threshold=0.5, frame_rate=16000, cache_path=None):
         """
         Initializes the VoiceActivityDetector with a voice activity detection model and a threshold.
 
         Args:
             threshold (float, optional): The probability threshold for detecting voice activity. Defaults to 0.5.
+            frame_rate (int, optional): The frame rate of the audio. Defaults to 16000.
+            cache_path (str, optional): The path to cache the VAD model. Defaults to "~/.cache/whisper-live/".
         """
-        self.model = VoiceActivityDetection()
+        self.model = VoiceActivityDetection(cache_path=cache_path)
         self.threshold = threshold
         self.frame_rate = frame_rate
 

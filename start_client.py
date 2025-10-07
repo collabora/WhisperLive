@@ -46,7 +46,12 @@ if __name__ == "__main__":
     # MODEL = "OpenVINO/whisper-base-int8-ov"
     # MODEL = "OpenVINO/whisper-small-int8-ov"
     # MODEL = "OpenVINO/whisper-medium-int8-ov"
-    MODEL = "OpenVINO/whisper-large-v3-int8-ov"
+    # MODEL = "OpenVINO/whisper-large-v3-int8-ov"
+
+    # MODEL = "kml93/whisper-large-v3-turbo-int4-sym-ov"
+    # MODEL = "kml93/whisper-large-v3-turbo-int4-asym-ov"
+    # MODEL = "kml93/whisper-large-v3-turbo-int8-sym-ov"
+    MODEL = "kml93/whisper-large-v3-turbo-int8-asym-ov"
 
     print("=" * 60)
     print("WhisperLive Client - Transcription Microphone en Temps Réel")
