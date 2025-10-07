@@ -224,6 +224,8 @@ class TranscriptionServer:
                     task=options["task"],
                     client_uid=options["uid"],
                     model=options["model"],
+                    vad_parameters=options.get("vad_parameters"),
+                    use_vad=self.use_vad,
                     single_model=self.single_model,
                     send_last_n_segments=options.get("send_last_n_segments", 10),
                     no_speech_thresh=options.get("no_speech_thresh", 0.45),
@@ -308,7 +310,7 @@ class TranscriptionServer:
                 websocket.close()
                 return False  # Indicates that the connection should not continue
 
-            if self.backend.is_tensorrt():
+            if self.backend.is_tensorrt() or self.backend.is_openvino():
                 self.vad_detector = VoiceActivityDetector(frame_rate=self.RATE)
             self.initialize_client(websocket, options, faster_whisper_custom_model_path,
                                    whisper_tensorrt_path, trt_multilingual, trt_py_session=trt_py_session)
@@ -331,11 +333,12 @@ class TranscriptionServer:
                 client.set_eos(True)
             return False
 
-        if self.backend.is_tensorrt():
+        if self.backend.is_tensorrt() or self.backend.is_openvino():
             voice_active = self.voice_activity(websocket, frame_np)
             if voice_active:
                 self.no_voice_activity_chunks = 0
-                client.set_eos(False)
+                if self.backend.is_tensorrt():
+                    client.set_eos(False)
             if self.use_vad and not voice_active:
                 return True
 
