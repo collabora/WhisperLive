@@ -8,7 +8,8 @@ import os
 if __name__ == "__main__":
   # Configuration - Modify these values as needed
   THREADS = "20"  # Number of CPU threads (e.g., "4", "8", "20")
-  SINGLE_MODEL=False
+  SINGLE_MODEL = False
+  BACKEND = "openvino"
 
   # Whisper model: "tiny", "base", "small", "medium", "large-v3-turbo"
   # MODEL = "tiny"
@@ -21,7 +22,7 @@ if __name__ == "__main__":
   # MODEL = "Systran/faster-whisper-small"
   # MODEL = "Systran/faster-whisper-medium"
   # MODEL = "Systran/faster-whisper-large-v3"
-  MODEL = "Systran/faster-whisper-large-v3-turbo"
+  # MODEL = "Systran/faster-whisper-large-v3-turbo"
   # MODEL = "deepdml/faster-whisper-large-v3-turbo-ct2"
   # MODEL = "Zoont/faster-whisper-large-v3-turbo-int8-ct2"
 
@@ -44,8 +45,8 @@ if __name__ == "__main__":
   print("WhisperLive Server - Starting...")
   print("=" * 60)
   print("Configuration:")
-  print("  - Backend: faster_whisper (CPU)")
-  print(f"  - Model: {MODEL} (forced for all clients)")
+  print(f"  - Backend: {BACKEND} (CPU)")
+  if 'MODEL' in locals(): print(f"  - Model: {MODEL} (forced for all clients)") # pyright: ignore[reportUndefinedVariable]
   print(f"  - Threads: {THREADS} (OMP_NUM_THREADS)")
   print("  - Port: 9090")
   print("  - Max clients: 4")
@@ -75,9 +76,9 @@ if __name__ == "__main__":
     host="0.0.0.0",
     # port=9090,
     # backend="faster_whisper",
-    backend="openvino",
+    backend=BACKEND,
     # faster_whisper_custom_model_path=model_path,
-    single_model=False,
+    single_model=SINGLE_MODEL,
     openvino_cpu_threads=int(THREADS),
     cache_path="~/.config/cache/whisper-live/"
   )
