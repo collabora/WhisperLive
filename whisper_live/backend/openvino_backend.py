@@ -1,7 +1,11 @@
 import json
 import logging
+import os
 import threading
 import time
+import numpy as np
+import soundfile as sf
+from pathlib import Path
 
 from openvino import Core
 from whisper_live.backend.base import ServeClientBase
@@ -109,7 +113,7 @@ class ServeClientOpenVINO(ServeClientBase):
 
     def create_model(self, model_id):
         """
-        Instantiates a new model, sets it as the transcriber.
+        Instantiates a new model, sets it as the transcriber and performs warmup.
         """
         self.transcriber = WhisperOpenVINO(
             model_id,
@@ -119,6 +123,50 @@ class ServeClientOpenVINO(ServeClientBase):
             cpu_threads=self.cpu_threads,
             cache_path=self.cache_path
         )
+        # Perform warmup to trigger model compilation before first real inference
+        self.warmup()
+
+    def warmup(self, warmup_steps=3):
+        """
+        Warmup OpenVINO WhisperPipeline to trigger model compilation.
+
+        The first inference with OpenVINO includes model compilation overhead,
+        which can take 2-5 seconds. This warmup eliminates that delay from the
+        first real transcription by triggering compilation during initialization.
+
+        Args:
+            warmup_steps (int): Number of warmup inferences to perform. Default: 3.
+        """
+        logging.info("[OpenVINO] Warming up pipeline...")
+
+        # Load real audio sample for warmup: 3-second JFK speech excerpt
+        audio_path = Path(__file__).resolve().parents[2] / "assets" / "jfk_3s.flac"
+
+        try:
+            warmup_audio, sample_rate = sf.read(audio_path)
+            # Convert to mono if stereo
+            if len(warmup_audio.shape) > 1:
+                warmup_audio = warmup_audio.mean(axis=1)
+            # Resample to 16kHz if needed
+            if sample_rate != 16000:
+                from scipy.signal import resample
+                warmup_audio = resample(warmup_audio, int(len(warmup_audio) * 16000 / sample_rate))
+            warmup_audio = warmup_audio.astype(np.float32)
+            logging.info(f"[OpenVINO] Using real audio sample for warmup: {audio_path}")
+        except Exception as e:
+            logging.warning(f"[OpenVINO] Failed to load warmup audio, using silence: {e}")
+            warmup_audio = np.zeros(16000, dtype=np.float32)
+
+        for i in range(warmup_steps):
+            try:
+                start_time = time.time()
+                _ = self.transcriber.transcribe(warmup_audio)
+                duration = time.time() - start_time
+                logging.info(f"[OpenVINO] Warmup step {i+1}/{warmup_steps} completed in {duration:.2f}s")
+            except Exception as e:
+                logging.warning(f"[OpenVINO] Warmup step {i+1} failed: {e}")
+
+        logging.info("[OpenVINO] Warmup complete. Model compiled and ready for inference.")
 
     def transcribe_audio(self, input_sample):
         """
