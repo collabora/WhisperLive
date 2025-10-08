@@ -38,16 +38,13 @@ if __name__ == "__main__":
   os.environ["OMP_NUM_THREADS"] = THREADS
   os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-  # Enable OpenVINO CPU compilation cache for faster model loading (80% speedup)
-  os.environ["OV_CPU_ENABLE_MODEL_CACHE"] = "1"
-
   print("=" * 60)
   print("WhisperLive Server - Starting...")
   print("=" * 60)
   print("Configuration:")
   print(f"  - Backend: {BACKEND} (CPU)")
   if 'MODEL' in locals(): print(f"  - Model: {MODEL} (forced for all clients)") # pyright: ignore[reportUndefinedVariable]
-  print(f"  - Threads: {THREADS} (OMP_NUM_THREADS)")
+  print(f"  - Threads: {THREADS}")
   print("  - Port: 9090")
   print("  - Max clients: 4")
   print(f"  - Single model mode: {SINGLE_MODEL}")

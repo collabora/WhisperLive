@@ -150,7 +150,7 @@ class TranscriptionServer:
         self.no_voice_activity_chunks = 0
         self.use_vad = True
         self.single_model = False
-        self.openvino_cpu_threads = None
+        self.openvino_cpu_threads = 0
 
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
@@ -408,7 +408,7 @@ class TranscriptionServer:
             max_clients=4,
             max_connection_time=600,
             cache_path="~/.cache/whisper-live/",
-            openvino_cpu_threads=None):
+            openvino_cpu_threads=0):
         """
         Run the transcription server.
 

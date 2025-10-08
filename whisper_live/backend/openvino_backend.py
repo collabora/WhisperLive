@@ -24,11 +24,12 @@ class ServeClientOpenVINO(ServeClientBase):
         vad_parameters=None,
         use_vad=True,
         single_model=False,
-        cpu_threads=None,
+        cpu_threads=0,
         send_last_n_segments=10,
         no_speech_thresh=0.45,
         clip_audio=False,
         same_output_threshold=10,
+        cache_path=None,
     ):
         """
         Initialize a ServeClient instance.
@@ -45,10 +46,12 @@ class ServeClientOpenVINO(ServeClientBase):
             model (str, optional): Huggingface model_id for a valid OpenVINO model.
             initial_prompt (str, optional): Prompt for whisper inference. Defaults to None.
             single_model (bool, optional): Whether to instantiate a new model for each client connection. Defaults to False.
+            cpu_threads (int, optional): Number of CPU threads for OpenVINO inference. 0 means auto. Defaults to 0.
             send_last_n_segments (int, optional): Number of most recent segments to send to the client. Defaults to 10.
             no_speech_thresh (float, optional): Segments with no speech probability above this threshold will be discarded. Defaults to 0.45.
             clip_audio (bool, optional): Whether to clip audio with no valid segments. Defaults to False.
             same_output_threshold (int, optional): Number of repeated outputs before considering it as a valid segment. Defaults to 10.
+            cache_path (str, optional): Path to OpenVINO model cache directory. Defaults to None.
         """
         super().__init__(
             client_uid,
@@ -68,6 +71,7 @@ class ServeClientOpenVINO(ServeClientBase):
         self.use_vad = use_vad
         self.vad_parameters = vad_parameters
         self.cpu_threads = cpu_threads
+        self.cache_path = cache_path
 
         self.clip_audio = True
 
@@ -112,7 +116,8 @@ class ServeClientOpenVINO(ServeClientBase):
             device=self.device,
             language=self.language,
             task=self.task,
-            cpu_threads=self.cpu_threads
+            cpu_threads=self.cpu_threads,
+            cache_path=self.cache_path
         )
 
     def transcribe_audio(self, input_sample):

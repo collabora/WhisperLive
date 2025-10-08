@@ -17,6 +17,17 @@ class WhisperOpenVINO(object):
             cpu_threads=0,
             cache_path=None
         ):
+        """
+        Initialize WhisperOpenVINO transcriber.
+
+        Args:
+            model_id (str): HuggingFace model ID for OpenVINO model. Defaults to "OpenVINO/whisper-tiny-int8-ov".
+            device (str): Target device (CPU, GPU, etc.). Defaults to "CPU".
+            language (str): Language code for transcription. Defaults to "en".
+            task (str): Task type ("transcribe" or "translate"). Defaults to "transcribe".
+            cpu_threads (int): Number of CPU threads for inference. 0 means auto-detect. Defaults to 0.
+            cache_path (str, optional): Path for OpenVINO compilation cache directory. Defaults to None.
+        """
         # Use HuggingFace cache exclusively - snapshot_download handles everything
         model_path = hf_hub.snapshot_download(model_id)
 
@@ -49,10 +60,15 @@ class WhisperOpenVINO(object):
 
         # Setup compilation cache if specified
         if cache_path is not None:
+            # Enable CPU model cache via environment variable (80% speedup on subsequent loads)
+            if device == "CPU":
+                os.environ["OV_CPU_ENABLE_MODEL_CACHE"] = "1"
+                logging.info("[OpenVINO] CPU model cache enabled via OV_CPU_ENABLE_MODEL_CACHE")
+
             cache_dir = Path(cache_path) / "openvino_compiled"
             cache_dir.mkdir(parents=True, exist_ok=True)
             config["CACHE_DIR"] = str(cache_dir)
-            logging.info(f"[OpenVINO] Model cache enabled: {cache_dir}")
+            logging.info(f"[OpenVINO] Model cache directory: {cache_dir}")
 
         if device != "CPU":
             return config

@@ -45,8 +45,8 @@ if __name__ == "__main__":
                         help='Path to cache the converted ctranslate2 models.')
     parser.add_argument('--openvino_cpu_threads',
                         type=int,
-                        default=None,
-                        help='Number of CPU threads for OpenVINO backend inference.')
+                        default=0,
+                        help='Number of CPU threads for OpenVINO backend inference. 0 means auto-detect.')
     args = parser.parse_args()
 
     if args.backend == "tensorrt":
