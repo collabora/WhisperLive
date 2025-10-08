@@ -76,6 +76,6 @@ if __name__ == "__main__":
     backend=BACKEND,
     # faster_whisper_custom_model_path=model_path,
     single_model=SINGLE_MODEL,
-    openvino_cpu_threads=int(THREADS),
-    cache_path="~/.config/cache/whisper-live/"
+    cpu_threads=int(THREADS),
+    cache_path="/home/kml93/.config/cache/whisper-live/"
   )

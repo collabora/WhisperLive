@@ -44,6 +44,36 @@ class WhisperOpenVINO(object):
         self.language = language
         self.task = task
 
+    def _setup_cache(self, device, cache_path):
+        """Setup compilation cache if specified."""
+        if cache_path is None:
+            return
+
+        if device != "CPU":
+            logging.warning(
+                f"[OpenVINO] Cache not supported for device '{device}' with WhisperPipeline")
+            return
+
+        cache_dir = Path(cache_path) / "openvino_compiled"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["OV_CPU_ENABLE_MODEL_CACHE"] = "1"
+        os.environ["OPENVINO_CACHE_DIR"] = str(cache_dir)
+        logging.info(
+            f"[OpenVINO] CPU cache enabled via environment variables: {cache_dir}")
+
+    def _get_cpu_config(self, cpu_threads):
+        """Get CPU-specific optimizations."""
+        return {
+            "INFERENCE_NUM_THREADS": cpu_threads,
+            "PERFORMANCE_HINT": "LATENCY",
+            "NUM_STREAMS": 1,
+            "SCHEDULING_CORE_TYPE": "ANY_CORE",
+            "ENABLE_HYPER_THREADING": True,
+            "ENABLE_CPU_PINNING": True,
+            "CPU_DENORMALS_OPTIMIZATION": True,
+            "INFERENCE_PRECISION_HINT": "f16",
+        }
+
     def _build_config(self, device, cpu_threads, cache_path):
         """
         Build OpenVINO configuration based on device and parameters.
@@ -56,50 +86,12 @@ class WhisperOpenVINO(object):
         Returns:
             dict: OpenVINO configuration dictionary
         """
-        config = {}
-
-        # Setup compilation cache if specified
-        if cache_path is not None:
-            # Enable CPU model cache via environment variable (80% speedup on subsequent loads)
-            if device == "CPU":
-                os.environ["OV_CPU_ENABLE_MODEL_CACHE"] = "1"
-                logging.info("[OpenVINO] CPU model cache enabled via OV_CPU_ENABLE_MODEL_CACHE")
-
-            cache_dir = Path(cache_path) / "openvino_compiled"
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            config["CACHE_DIR"] = str(cache_dir)
-            logging.info(f"[OpenVINO] Model cache directory: {cache_dir}")
+        self._setup_cache(device, cache_path)
 
         if device != "CPU":
-            return config
+            return {}
 
-        # Add CPU-specific optimizations
-        # Optimized configuration for real-time CPU inference
-        # Based on OpenVINO 2025 best practices for low-latency speech recognition
-        config.update({
-            # Threading configuration
-            "INFERENCE_NUM_THREADS": cpu_threads,  # Number of CPU threads (default: 0=auto)
-            # Performance optimization
-            "PERFORMANCE_HINT": "LATENCY",         # Performance mode
-                                                   # Options: LATENCY, THROUGHPUT, CUMULATIVE_THROUGHPUT
-            "NUM_STREAMS": 1,                      # Number of parallel inference streams
-                                                   # Options: 1 (real-time), >1 (batch), AUTO
-            # CPU scheduling (hybrid Intel CPUs: P-cores/E-cores)
-            "SCHEDULING_CORE_TYPE": "ANY_CORE",    # Core type selection
-                                                   # Options: ANY_CORE, PCORE_ONLY, ECORE_ONLY
-            "ENABLE_HYPER_THREADING": True,        # Use logical cores (SMT/HT)
-                                                   # Options: True, False
-            "ENABLE_CPU_PINNING": True,            # Pin threads to physical cores (Linux only)
-                                                   # Options: True, False
-            # Intel CPU-specific optimizations
-            "CPU_DENORMALS_OPTIMIZATION": True,    # Treat denormal floats as zero (faster, less accurate)
-                                                   # Options: True, False
-            # Precision hint (internal computation)
-            "INFERENCE_PRECISION_HINT": "f16",     # Internal precision for faster computation
-                                                   # Options: f32 (accurate), f16 (fast), bf16 (balanced)
-        })
-
-        return config
+        return self._get_cpu_config(cpu_threads)
 
     def transcribe(self, input_audio):
         outputs = self.model.generate(input_audio, return_timestamps=True, language=self.language, task=self.task)

@@ -150,7 +150,7 @@ class TranscriptionServer:
         self.no_voice_activity_chunks = 0
         self.use_vad = True
         self.single_model = False
-        self.openvino_cpu_threads = 0
+        self.cpu_threads = 0
 
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
@@ -228,7 +228,8 @@ class TranscriptionServer:
                     vad_parameters=options.get("vad_parameters"),
                     use_vad=self.use_vad,
                     single_model=self.single_model,
-                    cpu_threads=self.openvino_cpu_threads,
+                    cpu_threads=self.cpu_threads,
+                    cache_path=self.cache_path,
                     send_last_n_segments=options.get("send_last_n_segments", 10),
                     no_speech_thresh=options.get("no_speech_thresh", 0.45),
                     clip_audio=options.get("clip_audio", False),
@@ -268,7 +269,8 @@ class TranscriptionServer:
                     clip_audio=options.get("clip_audio", False),
                     same_output_threshold=options.get("same_output_threshold", 10),
                     cache_path=self.cache_path,
-                    translation_queue=translation_queue
+                    translation_queue=translation_queue,
+                    cpu_threads=self.cpu_threads,
                 )
 
                 logging.info("Running faster_whisper backend.")
@@ -408,7 +410,7 @@ class TranscriptionServer:
             max_clients=4,
             max_connection_time=600,
             cache_path="~/.cache/whisper-live/",
-            openvino_cpu_threads=0):
+            cpu_threads=0):
         """
         Run the transcription server.
 
@@ -417,7 +419,7 @@ class TranscriptionServer:
             port (int): The port number to bind the server.
         """
         self.cache_path = cache_path
-        self.openvino_cpu_threads = openvino_cpu_threads
+        self.cpu_threads = cpu_threads
         self.client_manager = ClientManager(max_clients, max_connection_time)
         if faster_whisper_custom_model_path is not None and not os.path.exists(faster_whisper_custom_model_path):
             raise ValueError(f"Custom faster_whisper model '{faster_whisper_custom_model_path}' is not a valid path.")

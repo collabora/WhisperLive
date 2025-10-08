@@ -101,7 +101,7 @@ This fork adds the following enhancements to the original WhisperLive:
 
 - **OpenVINO Backend Improvements**
   - Voice Activity Detection (VAD) support for OpenVINO backend
-  - Configurable CPU threads (`--openvino_cpu_threads`) for performance optimization
+  - Configurable CPU threads (`--cpu_threads`) for performance optimization (supports OpenVINO and faster_whisper backends)
   - Cache path propagation for VAD models
 - **Project Management**: [uv](https://docs.astral.sh/uv/) package manager support with dependency groups
 - **Custom Scripts**: `start_client.py` and `start_server.py` for streamlined usage
@@ -197,20 +197,20 @@ python3 run_server.py -p 9090 -b openvino
 
 # With CPU thread optimization and caching
 python3 run_server.py -p 9090 -b openvino \
-                      --openvino_cpu_threads 20 \
+                      --cpu_threads 20 \
                       --cache_path ~/.cache/whisper-live/
 ```
 
 **Note**: Model selection and VAD are configured on the client side. See [OpenVINO.md](https://github.com/kml93/WhisperLive/blob/main/OpenVINO.md) for client configuration examples.
 
-#### Controlling OpenMP Threads
+#### Controlling CPU Threads
 
-To control the number of threads used by OpenMP, you can set the `OMP_NUM_THREADS` environment variable. This is useful for managing CPU resources and ensuring consistent performance. If not specified, `OMP_NUM_THREADS` is set to `1` by default. You can change this by using the `--omp_num_threads` argument:
+To control the number of CPU threads used for inference, use the `--cpu_threads` argument. This parameter works for both OpenVINO and faster_whisper backends, and will also set the `OMP_NUM_THREADS` environment variable if needed. Setting it to `0` (default) enables auto-detection:
 
 ```bash
 python3 run_server.py --port 9090 \
                       --backend faster_whisper \
-                      --omp_num_threads 4
+                      --cpu_threads 4
 ```
 
 #### Single model mode
