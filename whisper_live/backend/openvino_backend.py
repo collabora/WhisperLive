@@ -99,6 +99,7 @@ class ServeClientOpenVINO(ServeClientBase):
             "message": self.SERVER_READY,
             "backend": "openvino"
         }))
+
         logging.info(f"Using OpenVINO device: {self.device}")
         logging.info(f"Running OpenVINO backend with language: {self.language} and task: {self.task}")
 

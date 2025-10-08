@@ -61,12 +61,9 @@ class ServeClientBase(object):
         """
         Process an audio stream in an infinite loop, continuously transcribing the speech.
 
-        This method continuously receives audio frames, performs real-time transcription, and sends
-        transcribed segments to the client via a WebSocket connection.
+        This method continuously receives audio frames, performs real-time transcription, and sends transcribed segments to the client via a WebSocket connection.
 
-        If the client's language is not detected, it waits for 30 seconds of audio input to make a language prediction.
-        It utilizes the Whisper ASR model to transcribe the audio, continuously processing and streaming results. Segments
-        are sent to the client in real-time, and a history of segments is maintained to provide context.
+        If the client's language is not detected, it waits for 30 seconds of audio input to make a language prediction. It utilizes the Whisper ASR model to transcribe the audio, continuously processing and streaming results. Segments are sent to the client in real-time, and a history of segments is maintained to provide context.
 
         Raises:
             Exception: If there is an issue with audio processing or WebSocket communication.
@@ -117,9 +114,7 @@ class ServeClientBase(object):
             text (str): The transcribed text corresponding to the segment.
 
         Returns:
-            dict: A dictionary representing the formatted transcription segment, including
-                'start' and 'end' times as strings with three decimal places and the 'text'
-                of the transcription.
+            dict: A dictionary representing the formatted transcription segment, including 'start' and 'end' times as strings with three decimal places and the 'text' of the transcription.
         """
         return {
             'start': "{:.3f}".format(start),
@@ -132,13 +127,9 @@ class ServeClientBase(object):
         """
         Add audio frames to the ongoing audio stream buffer.
 
-        This method is responsible for maintaining the audio stream buffer, allowing the continuous addition
-        of audio frames as they are received. It also ensures that the buffer does not exceed a specified size
-        to prevent excessive memory usage.
+        This method is responsible for maintaining the audio stream buffer, allowing the continuous addition of audio frames as they are received. It also ensures that the buffer does not exceed a specified size to prevent excessive memory usage.
 
-        If the buffer size exceeds a threshold (45 seconds of audio data), it discards the oldest 30 seconds
-        of audio data to maintain a reasonable buffer size. If the buffer is empty, it initializes it with the provided
-        audio frame. The audio stream buffer is used for real-time processing of audio data for transcription.
+        If the buffer size exceeds a threshold (45 seconds of audio data), it discards the oldest 30 seconds of audio data to maintain a reasonable buffer size. If the buffer is empty, it initializes it with the provided audio frame. The audio stream buffer is used for real-time processing of audio data for transcription.
 
         Args:
             frame_np (numpy.ndarray): The audio frame data as a NumPy array.
@@ -161,9 +152,7 @@ class ServeClientBase(object):
 
     def clip_audio_if_no_valid_segment(self):
         """
-        Update the timestamp offset based on audio buffer status.
-        Clip audio if the current chunk exceeds 30 seconds, this basically implies that
-        no valid segment for the last 30 seconds from whisper
+        Update the timestamp offset based on audio buffer status. Clip audio if the current chunk exceeds 30 seconds, this basically implies that no valid segment for the last 30 seconds from whisper
         """
         with self.lock:
             if self.frames_np[int((self.timestamp_offset - self.frames_offset)*self.RATE):].shape[0] > 25 * self.RATE:
@@ -174,10 +163,7 @@ class ServeClientBase(object):
         """
         Retrieves the next chunk of audio data for processing based on the current offsets.
 
-        Calculates which part of the audio data should be processed next, based on
-        the difference between the current timestamp offset and the frame's offset, scaled by
-        the audio sample rate (RATE). It then returns this chunk of audio data along with its
-        duration in seconds.
+        Calculates which part of the audio data should be processed next, based on the difference between the current timestamp offset and the frame's offset, scaled by the audio sample rate (RATE). It then returns this chunk of audio data along with its duration in seconds.
 
         Returns:
             tuple: A tuple containing:
@@ -194,14 +180,10 @@ class ServeClientBase(object):
         """
         Prepares the segments of transcribed text to be sent to the client.
 
-        This method compiles the recent segments of transcribed text, ensuring that only the
-        specified number of the most recent segments are included. It also appends the most
-        recent segment of text if provided (which is considered incomplete because of the possibility
-        of the last word being truncated in the audio chunk).
+        This method compiles the recent segments of transcribed text, ensuring that only the specified number of the most recent segments are included. It also appends the most recent segment of text if provided (which is considered incomplete because of the possibility of the last word being truncated in the audio chunk).
 
         Args:
-            last_segment (str, optional): The most recent segment of transcribed text to be added
-                                          to the list of segments. Defaults to None.
+            last_segment (str, optional): The most recent segment of transcribed text to be added to the list of segments. Defaults to None.
 
         Returns:
             list: A list of transcribed text segments to be sent to the client.
@@ -231,8 +213,7 @@ class ServeClientBase(object):
         """
         Sends the specified transcription segments to the client over the websocket connection.
 
-        This method formats the transcription segments into a JSON object and attempts to send
-        this object to the client. If an error occurs during the send operation, it logs the error.
+        This method formats the transcription segments into a JSON object and attempts to send this object to the client. If an error occurs during the send operation, it logs the error.
 
         Returns:
             segments (list): A list of transcription segments to be sent to the client.
@@ -251,8 +232,7 @@ class ServeClientBase(object):
         """
         Notify the client of disconnection and send a disconnect message.
 
-        This method sends a disconnect message to the client via the WebSocket connection to notify them
-        that the transcription service is disconnecting gracefully.
+        This method sends a disconnect message to the client via the WebSocket connection to notify them that the transcription service is disconnecting gracefully.
 
         """
         self.websocket.send(json.dumps({
@@ -264,9 +244,7 @@ class ServeClientBase(object):
         """
         Perform cleanup tasks before exiting the transcription service.
 
-        This method performs necessary cleanup tasks, including stopping the transcription thread, marking
-        the exit flag to indicate the transcription thread should exit gracefully, and destroying resources
-        associated with the transcription process.
+        This method performs necessary cleanup tasks, including stopping the transcription thread, marking the exit flag to indicate the transcription thread should exit gracefully, and destroying resources associated with the transcription process.
 
         """
         logging.info("Cleaning up.")
@@ -283,8 +261,7 @@ class ServeClientBase(object):
 
     def update_segments(self, segments, duration):
         """
-        Processes the segments from Whisper and updates the transcript.
-        Uses helper methods to account for differences between backends.
+        Processes the segments from Whisper and updates the transcript. Uses helper methods to account for differences between backends.
         
         Args:
             segments (list): List of segments returned by the transcriber.
