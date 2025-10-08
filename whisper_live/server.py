@@ -58,8 +58,7 @@ class ClientManager:
 
     def remove_client(self, websocket):
         """
-        Removes a client and their connection start time from the tracking dictionaries. Performs cleanup on the
-        client if necessary.
+        Removes a client and their connection start time from the tracking dictionaries. Performs cleanup on the client if necessary.
 
         Args:
             websocket: The websocket associated with the client to be removed.
@@ -315,7 +314,10 @@ class TranscriptionServer:
                 return False  # Indicates that the connection should not continue
 
             if self.backend.is_tensorrt() or self.backend.is_openvino():
-                self.vad_detector = VoiceActivityDetector(frame_rate=self.RATE, cache_path=self.cache_path)
+                self.vad_detector = VoiceActivityDetector(
+                    frame_rate=self.RATE,
+                    cache_path=self.cache_path,
+                )
             self.initialize_client(websocket, options, faster_whisper_custom_model_path, whisper_tensorrt_path, trt_multilingual, trt_py_session=trt_py_session)
             return True
         except json.JSONDecodeError:
@@ -358,16 +360,9 @@ class TranscriptionServer:
         """
         Receive audio chunks from a client in an infinite loop.
 
-        Continuously receives audio frames from a connected client
-        over a WebSocket connection. It processes the audio frames using a
-        voice activity detection (VAD) model to determine if they contain speech
-        or not. If the audio frame contains speech, it is added to the client's
-        audio data for ASR.
-        If the maximum number of clients is reached, the method sends a
-        "WAIT" status to the client, indicating that they should wait
-        until a slot is available.
-        If a client's connection exceeds the maximum allowed time, it will
-        be disconnected, and the client's resources will be cleaned up.
+        Continuously receives audio frames from a connected client over a WebSocket connection. It processes the audio frames using a voice activity detection (VAD) model to determine if they contain speech or not. If the audio frame contains speech, it is added to the client's audio data for ASR.
+        If the maximum number of clients is reached, the method sends a "WAIT" status to the client, indicating that they should wait until a slot is available.
+        If a client's connection exceeds the maximum allowed time, it will be disconnected, and the client's resources will be cleaned up.
 
         Args:
             websocket (WebSocket): The WebSocket connection for the client.
@@ -452,21 +447,14 @@ class TranscriptionServer:
         """
         Evaluates the voice activity in a given audio frame and manages the state of voice activity detection.
 
-        This method uses the configured voice activity detection (VAD) model to assess whether the given audio frame
-        contains speech. If the VAD model detects no voice activity for more than three consecutive frames,
-        it sets an end-of-speech (EOS) flag for the associated client. This method aims to efficiently manage
-        speech detection to improve subsequent processing steps.
+        This method uses the configured voice activity detection (VAD) model to assess whether the given audio frame contains speech. If the VAD model detects no voice activity for more than three consecutive frames, it sets an end-of-speech (EOS) flag for the associated client. This method aims to efficiently manage speech detection to improve subsequent processing steps.
 
         Args:
-            websocket: The websocket associated with the current client. Used to retrieve the client object
-                    from the client manager for state management.
-            frame_np (numpy.ndarray): The audio frame to be analyzed. This should be a NumPy array containing
-                                    the audio data for the current frame.
+            websocket: The websocket associated with the current client. Used to retrieve the client object from the client manager for state management.
+            frame_np (numpy.ndarray): The audio frame to be analyzed. This should be a NumPy array containing the audio data for the current frame.
 
         Returns:
-            bool: True if voice activity is detected in the current frame, False otherwise. When returning False
-                after detecting no voice activity for more than three consecutive frames, it also triggers the
-                end-of-speech (EOS) flag for the client.
+            bool: True if voice activity is detected in the current frame, False otherwise. When returning False after detecting no voice activity for more than three consecutive frames, it also triggers the end-of-speech (EOS) flag for the client.
         """
         if not self.vad_detector(frame_np):
             self.no_voice_activity_chunks += 1

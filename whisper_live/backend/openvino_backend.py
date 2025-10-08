@@ -168,6 +168,54 @@ class ServeClientOpenVINO(ServeClientBase):
 
         logging.info("[OpenVINO] Warmup complete. Model compiled and ready for inference.")
 
+    def speech_to_text(self):
+        """
+        Process an audio stream in an infinite loop, continuously transcribing the speech.
+
+        Optimized version for OpenVINO backend with reduced latency:
+        - Lower buffer threshold (0.5s instead of 1.0s)
+        - Faster polling intervals (0.02-0.05s instead of 0.1-0.25s)
+        - Similar to TensorRT backend optimizations
+
+        This method continuously receives audio frames, performs real-time transcription,
+        and sends transcribed segments to the client via a WebSocket connection.
+        """
+        while True:
+            if self.exit:
+                logging.info("[OpenVINO] Exiting speech to text thread")
+                break
+
+            if self.frames_np is None:
+                time.sleep(0.02)  # Faster polling: 20ms instead of no wait
+                continue
+
+            if self.clip_audio:
+                self.clip_audio_if_no_valid_segment()
+
+            input_bytes, duration = self.get_audio_chunk_for_processing()
+
+            # Optimized: 0.3s threshold (vs 1.0s in base, 0.4s in TensorRT)
+            if duration < 0.3:
+                time.sleep(0.03)  # Reduced from 0.1s to 0.01s
+                continue
+
+            try:
+                input_sample = input_bytes.copy()
+                logging.debug(f"[OpenVINO] Processing audio with duration: {duration:.2f}s")
+                result = self.transcribe_audio(input_sample)
+
+                # Handle cases where VAD filtered all audio
+                if result is None or self.language is None:
+                    self.timestamp_offset += duration
+                    time.sleep(0.03)  # Reduced from 0.25s to 0.03s
+                    continue
+
+                self.handle_transcription_output(result, duration)
+
+            except Exception as e:
+                logging.error(f"[OpenVINO ERROR]: Failed to transcribe audio chunk: {e}")
+                time.sleep(0.01)
+
     def transcribe_audio(self, input_sample):
         """
         Transcribes the provided audio sample using the configured transcriber instance.
