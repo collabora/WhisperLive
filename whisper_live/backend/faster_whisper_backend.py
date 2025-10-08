@@ -33,6 +33,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         same_output_threshold=7,
         cache_path="~/.cache/whisper-live/",
         translation_queue=None,
+        cpu_threads=0,
     ):
         """
         Initialize a ServeClient instance.
@@ -65,6 +66,7 @@ class ServeClientFasterWhisper(ServeClientBase):
             translation_queue
         )
         self.cache_path = cache_path
+        self.cpu_threads = cpu_threads
         self.model_sizes = [
             "tiny", "tiny.en", "base", "base.en", "small", "small.en",
             "medium", "medium.en", "large-v2", "large-v3", "distil-small.en",
@@ -162,12 +164,18 @@ class ServeClientFasterWhisper(ServeClientBase):
                         )
                     model_to_load = ct2_dir
 
+        # Set OMP_NUM_THREADS for CTranslate2 if cpu_threads is specified
+        if "OMP_NUM_THREADS" not in os.environ and self.cpu_threads > 0:
+            os.environ["OMP_NUM_THREADS"] = str(self.cpu_threads)
+            logging.info(f"Set OMP_NUM_THREADS={self.cpu_threads} for faster_whisper")
+
         logging.info(f"Loading model: {model_to_load}")
         self.transcriber = WhisperModel(
             model_to_load,
             device=device,
             compute_type=self.compute_type,
             local_files_only=False,
+            cpu_threads=self.cpu_threads,
         )
 
     def set_language(self, info):

@@ -68,7 +68,7 @@ With CPU thread optimization and caching:
 ```bash
 python3 run_server.py --port 9090 \
                       --backend openvino \
-                      --openvino_cpu_threads 20 \
+                      --cpu_threads 20 \
                       --cache_path ~/.cache/whisper-live/ \
                       --max_clients 4 \
                       --max_connection_time 600
@@ -76,7 +76,7 @@ python3 run_server.py --port 9090 \
 
 **Server Parameters:**
 
-- `--openvino_cpu_threads`: Number of CPU threads for inference (adjust based on your CPU)
+- `--cpu_threads`: Number of CPU threads for inference (adjust based on your CPU). Works for both OpenVINO and faster_whisper backends.
 - `--cache_path`: Directory to cache models and VAD components
 - `--max_clients`: Maximum simultaneous connections (default: 4)
 - `--max_connection_time`: Maximum connection duration in seconds (default: 300)
@@ -122,7 +122,7 @@ WhisperLive has been tested with models from [OpenVINO's HuggingFace collection]
 
 ## Performance Optimization
 
-- **CPU Threads**: Adjust `--openvino_cpu_threads` based on your CPU core count
+- **CPU Threads**: Adjust `--cpu_threads` based on your CPU core count
 - **VAD**: Reduces processing time by skipping silent audio frames (client-side)
 - **Cache Path**: Reuse compiled models with `--cache_path` for faster startup
 - **GPU Acceleration**: Ensure Intel GPU drivers are installed for iGPU/dGPU support
