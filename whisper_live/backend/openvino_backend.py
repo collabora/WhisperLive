@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import threading
 import time
 import numpy as np
@@ -32,7 +31,7 @@ class ServeClientOpenVINO(ServeClientBase):
         send_last_n_segments=10,
         no_speech_thresh=0.45,
         clip_audio=False,
-        same_output_threshold=10,
+        same_output_threshold=2,
         cache_path=None,
     ):
         """
@@ -54,7 +53,7 @@ class ServeClientOpenVINO(ServeClientBase):
             send_last_n_segments (int, optional): Number of most recent segments to send to the client. Defaults to 10.
             no_speech_thresh (float, optional): Segments with no speech probability above this threshold will be discarded. Defaults to 0.45.
             clip_audio (bool, optional): Whether to clip audio with no valid segments. Defaults to False.
-            same_output_threshold (int, optional): Number of repeated outputs before considering it as a valid segment. Defaults to 10.
+            same_output_threshold (int, optional): Number of repeated outputs before considering it as a valid segment. Defaults to 3 (optimized for OpenVINO's fast inference).
             cache_path (str, optional): Path to OpenVINO model cache directory. Defaults to None.
         """
         super().__init__(
@@ -124,7 +123,7 @@ class ServeClientOpenVINO(ServeClientBase):
             cache_path=self.cache_path
         )
         # Perform warmup to trigger model compilation before first real inference
-        self.warmup()
+        # self.warmup()
 
     def warmup(self, warmup_steps=3):
         """

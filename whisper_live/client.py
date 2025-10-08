@@ -265,10 +265,10 @@ class Client:
                     "task": self.task,
                     "model": self.model,
                     "use_vad": self.use_vad,
-                    "send_last_n_segments": self.send_last_n_segments,
+                    # "send_last_n_segments": self.send_last_n_segments,
                     "no_speech_thresh": self.no_speech_thresh,
                     "clip_audio": self.clip_audio,
-                    "same_output_threshold": self.same_output_threshold,
+                    # "same_output_threshold": self.same_output_threshold,
                     "enable_translation": self.enable_translation,
                     "target_language": self.target_language,
                 }

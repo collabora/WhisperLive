@@ -232,7 +232,7 @@ class TranscriptionServer:
                     send_last_n_segments=options.get("send_last_n_segments", 10),
                     no_speech_thresh=options.get("no_speech_thresh", 0.45),
                     clip_audio=options.get("clip_audio", False),
-                    same_output_threshold=options.get("same_output_threshold", 10),
+                    same_output_threshold=options.get("same_output_threshold", 2),
                 )
                 logging.info("Running OpenVINO backend.")
             except Exception as e:
@@ -266,7 +266,7 @@ class TranscriptionServer:
                     send_last_n_segments=options.get("send_last_n_segments", 10),
                     no_speech_thresh=options.get("no_speech_thresh", 0.45),
                     clip_audio=options.get("clip_audio", False),
-                    same_output_threshold=options.get("same_output_threshold", 10),
+                    same_output_threshold=options.get("same_output_threshold", 7),
                     cache_path=self.cache_path,
                     translation_queue=translation_queue,
                     cpu_threads=self.cpu_threads,
