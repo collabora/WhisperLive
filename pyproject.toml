@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "whisperlive"
 version = "0.7.1"
 description = "A nearly-live implementation of OpenAI's Whisper."
-readme = "README.md"
+readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.9"
 license = {file = "LICENSE"}
 authors = [
