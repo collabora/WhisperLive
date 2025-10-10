@@ -9,7 +9,7 @@ if __name__ == "__main__":
   # Configuration - Modify these values as needed
   THREADS = "20"  # Number of CPU threads (e.g., "4", "8", "20")
   SINGLE_MODEL = False
-  BACKEND = "openvino"
+  BACKEND = "faster_whisper"
 
   # Whisper model: "tiny", "base", "small", "medium", "large-v3-turbo"
   # MODEL = "tiny"
@@ -17,7 +17,7 @@ if __name__ == "__main__":
   # MODEL = "small"
   # MODEL = "medium"
   # MODEL = "large-v3-turbo"
-  # MODEL = "Systran/faster-whisper-tiny"
+  MODEL = "Systran/faster-whisper-tiny"
   # MODEL = "Systran/faster-whisper-base"
   # MODEL = "Systran/faster-whisper-small"
   # MODEL = "Systran/faster-whisper-medium"
@@ -34,17 +34,13 @@ if __name__ == "__main__":
   # MODEL = "OpenVINO/whisper-large-v3-int8-ov"
   # MODEL = "OpenVINO/distil-whisper-large-v3-int8-ov"
   
-  # Set OpenMP threads for CPU optimization
-  os.environ["OMP_NUM_THREADS"] = THREADS
-  os.environ["CUDA_VISIBLE_DEVICES"] = ""
-
   print("=" * 60)
   print("WhisperLive Server - Starting...")
   print("=" * 60)
   print("Configuration:")
   print(f"  - Backend: {BACKEND} (CPU)")
   if 'MODEL' in locals(): print(f"  - Model: {MODEL} (forced for all clients)") # pyright: ignore[reportUndefinedVariable]
-  print(f"  - Threads: {THREADS} (OMP_NUM_THREADS)")
+  print(f"  - Threads: {THREADS} ")
   print("  - Port: 9090")
   print("  - Max clients: 4")
   print(f"  - Single model mode: {SINGLE_MODEL}")

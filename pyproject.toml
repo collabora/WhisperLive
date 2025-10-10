@@ -1,39 +1,104 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "whisperlive"
 version = "0.7.1"
 description = "A nearly-live implementation of OpenAI's Whisper."
+readme = "README.md"
 requires-python = ">=3.9"
+license = {file = "LICENSE"}
+authors = [
+  {name = "Collabora Ltd", email = "vineet.suryan@collabora.com"}
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# Core dependencies - minimal requirements for basic functionality
 dependencies = [
   "av>=15.1.0",
   "scipy>=1.13.1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/kml93/WhisperLive"
+Repository = "https://github.com/kml93/WhisperLive"
+"Original Project" = "https://github.com/collabora/WhisperLive"
+
 [dependency-groups]
+# Client dependencies for audio capture and websocket communication
 client = [
   "pyaudio>=0.2.14",
   "websocket-client>=1.8.0",
 ]
+
+# Base server dependencies shared by ALL backends
 server = [
-  "evaluate>=0.4.6",
-  "faster-whisper==1.1.0",
-  "jiwer>=4.0.0",
-  "kaldialign>=0.9.2",
-  "numba>=0.60.0",
-  "numpy<2",
-  "onnxruntime==1.17.0",
-  "openai-whisper==20240930",
-  "sentencepiece>=0.2.1",
+  # "numpy<2",
+  # "scipy>=1.13.1",
   "soundfile>=0.13.1",
-  "tokenizers==0.20.3",
-  "transformers[torch]>=4.46.3",
   "websockets>=15.0.1",
+  "huggingface-hub",
 ]
+
+# faster-whisper backend dependencies
+faster-whisper = [
+  {include-group = "server"},
+  "faster-whisper==1.1.0",
+  "torch",
+  # "ctranslate2",
+  # "tqdm",
+  # "onnxruntime==1.17.0",
+  # "tokenizers==0.20.3",
+  # "transformers[torch]>=4.46.3",
+]
+
+# openvino backend dependencies
 openvino = [
-  {include-group = "client"},
+  {include-group = "server"},
   "librosa",
+  "onnxruntime==1.17.0",
   "openvino",
   "openvino-genai",
-  "openvino-tokenizers",
   "optimum",
-  "optimum-intel",
+  # "optimum-intel",
+  # "openvino-tokenizers",
+]
+
+# tensorrt backend dependencies
+tensorrt = [
+  {include-group = "server"},
+  "tensorrt-llm==0.18.2",
+  "torch",
+  "openai-whisper==20240930",
+  "kaldialign>=0.9.2",
+  "numba>=0.60.0",
+  "sentencepiece>=0.2.1",
+  "transformers[torch]>=4.46.3",
+  "jiwer>=4.0.0",
+  "evaluate>=0.4.6",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+exclude = [
+  "examples",
+  "Audio-Transcription-Chrome",
+  "Audio-Transcription-Firefox",
+  "requirements",
+  "whisper-finetuning",
 ]
