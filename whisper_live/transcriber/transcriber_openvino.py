@@ -96,7 +96,18 @@ class WhisperOpenVINO(object):
 
         return self._get_cpu_config(cpu_threads)
 
-    def transcribe(self, input_audio):
+    def transcribe(self, input_audio, use_initial_prompt=True):
+        """
+        Transcribe audio input using OpenVINO Whisper model.
+
+        Args:
+            input_audio: Audio data as numpy array
+            use_initial_prompt (bool): Whether to use initial_prompt for this transcription.
+                                      Can be disabled after warm-up chunks for better performance.
+
+        Returns:
+            List of transcription segments with timestamps
+        """
         # Build generate parameters
         generate_kwargs = {
             "return_timestamps": True,
@@ -107,8 +118,10 @@ class WhisperOpenVINO(object):
         if self.language is not None:
             generate_kwargs["language"] = self.language
 
-        # Only add initial_prompt if specified
-        if self.initial_prompt is not None:
+        # Only add initial_prompt if specified AND if use_initial_prompt is True
+        # Note: OpenVINO GenAI doesn't expose detected language in results,
+        # so we optimize by only using initial_prompt during warm-up period
+        if self.initial_prompt is not None and use_initial_prompt:
             generate_kwargs["initial_prompt"] = self.initial_prompt
 
         outputs = self.model.generate(input_audio, **generate_kwargs)

@@ -88,7 +88,7 @@ class ServeClientBase(object):
                 input_sample = input_bytes.copy()
                 result = self.transcribe_audio(input_sample)
 
-                if result is None or self.language is None:
+                if result is None:
                     self.timestamp_offset += duration
                     time.sleep(0.25)    # wait for voice activity, result is None when no voice activity
                     continue

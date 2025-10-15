@@ -40,14 +40,27 @@ class ServeClientOpenVINO(ServeClientBase):
         The transcription thread is started upon initialization. A "SERVER_READY" message is sent
         to the client to indicate that the server is ready.
 
+        Language Detection & Optimization:
+            Unlike faster_whisper backend, OpenVINO GenAI doesn't expose the detected language
+            in its API results. Therefore, we cannot switch from auto-detection to fixed language
+            after the first chunk. Instead, we optimize performance by:
+
+            1. Using initial_prompt only during warm-up period (first 5 chunks)
+            2. After warm-up, disabling initial_prompt to reduce context overhead
+            3. The model continues to auto-detect language on each chunk if language=None
+
+            This provides a good balance between accuracy (guided by prompt initially) and
+            performance (lighter inference after warm-up).
+
         Args:
             websocket (WebSocket): The WebSocket connection for the client.
             task (str, optional): The task type, e.g., "transcribe." Defaults to "transcribe".
             device (str, optional): The device type for Whisper, "cuda" or "cpu". Defaults to None.
-            language (str, optional): The language for transcription. Defaults to None.
+            language (str, optional): The language for transcription. Defaults to None for auto-detection.
             client_uid (str, optional): A unique identifier for the client. Defaults to None.
             model (str, optional): Huggingface model_id for a valid OpenVINO model.
-            initial_prompt (str, optional): Prompt for whisper inference. Defaults to None.
+            initial_prompt (str, optional): Prompt to guide whisper inference during warm-up period.
+                                           Used only for the first few chunks. Defaults to None.
             single_model (bool, optional): Whether to instantiate a new model for each client connection. Defaults to False.
             cpu_threads (int, optional): Number of CPU threads for OpenVINO inference. 0 means auto. Defaults to 0.
             send_last_n_segments (int, optional): Number of most recent segments to send to the client. Defaults to 10.
@@ -80,6 +93,12 @@ class ServeClientOpenVINO(ServeClientBase):
         self.cache_path = cache_path
 
         self.clip_audio = True
+
+        # Track number of processed chunks for initial_prompt optimization
+        # OpenVINO GenAI doesn't expose detected language, so we optimize by
+        # only using initial_prompt for the first few chunks (warm-up period)
+        self.chunk_count = 0
+        self.initial_prompt_warmup_chunks = 5  # Use prompt for first 5 chunks
 
         core = Core()
         available_devices = core.available_devices
@@ -208,7 +227,7 @@ class ServeClientOpenVINO(ServeClientBase):
                 result = self.transcribe_audio(input_sample)
 
                 # Handle cases where VAD filtered all audio
-                if result is None or self.language is None:
+                if result is None:
                     self.timestamp_offset += duration
                     time.sleep(0.03)  # Reduced from 0.25s to 0.03s
                     continue
@@ -223,8 +242,13 @@ class ServeClientOpenVINO(ServeClientBase):
         """
         Transcribes the provided audio sample using the configured transcriber instance.
 
-        If the language has not been set, it updates the session's language based on the transcription
-        information.
+        Optimizes initial_prompt usage by only applying it during the warm-up period
+        (first few chunks). After that, the model has learned the context and can
+        transcribe without the prompt overhead.
+
+        Note: Unlike faster_whisper, OpenVINO GenAI doesn't expose detected language
+        in the API, so we can't switch from auto-detection to fixed language. Instead,
+        we optimize by limiting initial_prompt usage after warm-up.
 
         Args:
             input_sample (np.array): The audio chunk to be transcribed. This should be a NumPy
@@ -235,9 +259,21 @@ class ServeClientOpenVINO(ServeClientBase):
             depends on the implementation of the `transcriber.transcribe` method but typically
             includes the transcribed text.
         """
+        # Increment chunk counter
+        self.chunk_count += 1
+
+        # Use initial_prompt only during warm-up period (first N chunks)
+        # After warm-up, the model has understood the context and can transcribe
+        # without the prompt overhead
+        use_prompt = self.chunk_count <= self.initial_prompt_warmup_chunks
+
+        if self.chunk_count == self.initial_prompt_warmup_chunks + 1 and self.initial_prompt:
+            logging.info(f"[OpenVINO] Warm-up complete ({self.initial_prompt_warmup_chunks} chunks). "
+                        "Disabling initial_prompt for better performance.")
+
         if ServeClientOpenVINO.SINGLE_MODEL:
             ServeClientOpenVINO.SINGLE_MODEL_LOCK.acquire()
-        result = self.transcriber.transcribe(input_sample)
+        result = self.transcriber.transcribe(input_sample, use_initial_prompt=use_prompt)
         if ServeClientOpenVINO.SINGLE_MODEL:
             ServeClientOpenVINO.SINGLE_MODEL_LOCK.release()
         return result
