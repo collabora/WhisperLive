@@ -64,11 +64,14 @@ class ServeClientOpenVINO(ServeClientBase):
             clip_audio,
             same_output_threshold,
         )
-        self.language = "en" if language is None else language
-        if not self.language.startswith("<|"):
-            self.language = f"<|{self.language}|>"
+        # Handle language: None for auto-detection, otherwise format for OpenVINO
+        if language is None:
+            self.language = None  # Auto-detect language
+        else:
+            self.language = language if language.startswith("<|") else f"<|{language}|>"
 
         self.task = "transcribe" if task is None else task
+        self.initial_prompt = initial_prompt
 
         # Store VAD parameters for potential future use
         self.use_vad = use_vad
@@ -119,6 +122,7 @@ class ServeClientOpenVINO(ServeClientBase):
             device=self.device,
             language=self.language,
             task=self.task,
+            initial_prompt=self.initial_prompt,
             cpu_threads=self.cpu_threads,
             cache_path=self.cache_path
         )

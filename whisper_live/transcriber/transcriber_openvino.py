@@ -14,6 +14,7 @@ class WhisperOpenVINO(object):
             device="CPU",
             language="en",
             task="transcribe",
+            initial_prompt=None,
             cpu_threads=0,
             cache_path=None
         ):
@@ -25,6 +26,7 @@ class WhisperOpenVINO(object):
             device (str): Target device (CPU, GPU, etc.). Defaults to "CPU".
             language (str): Language code for transcription. Defaults to "en".
             task (str): Task type ("transcribe" or "translate"). Defaults to "transcribe".
+            initial_prompt (str, optional): Initial prompt for transcription. Defaults to None.
             cpu_threads (int): Number of CPU threads for inference. 0 means auto-detect. Defaults to 0.
             cache_path (str, optional): Path for OpenVINO compilation cache directory. Defaults to None.
         """
@@ -43,6 +45,7 @@ class WhisperOpenVINO(object):
 
         self.language = language
         self.task = task
+        self.initial_prompt = initial_prompt
 
     def _setup_cache(self, device, cache_path):
         """Setup compilation cache if specified."""
@@ -94,6 +97,20 @@ class WhisperOpenVINO(object):
         return self._get_cpu_config(cpu_threads)
 
     def transcribe(self, input_audio):
-        outputs = self.model.generate(input_audio, return_timestamps=True, language=self.language, task=self.task)
+        # Build generate parameters
+        generate_kwargs = {
+            "return_timestamps": True,
+            "task": self.task
+        }
+
+        # Only add language if specified (None = auto-detect)
+        if self.language is not None:
+            generate_kwargs["language"] = self.language
+
+        # Only add initial_prompt if specified
+        if self.initial_prompt is not None:
+            generate_kwargs["initial_prompt"] = self.initial_prompt
+
+        outputs = self.model.generate(input_audio, **generate_kwargs)
         outputs = [seg for seg in outputs.chunks]
         return outputs

@@ -28,6 +28,7 @@ class Client:
         lang=None,
         translate=False,
         model="small",
+        initial_prompt=None,
         srt_file_path="output.srt",
         use_vad=True,
         use_wss=False,
@@ -55,6 +56,7 @@ class Client:
             lang (str, optional): The selected language for transcription. Default is None.
             translate (bool, optional): Specifies if the task is translation. Default is False.
             model (str, optional): The whisper model to use (e.g., "small", "medium", "large"). Default is "small".
+            initial_prompt (str, optional): Initial prompt for transcription to guide the model. Default is None.
             srt_file_path (str, optional): The file path to save the output SRT file. Default is "output.srt".
             use_vad (bool, optional): Whether to enable voice activity detection. Default is True.
             log_transcription (bool, optional): Whether to log transcription output to the console. Default is True.
@@ -76,6 +78,7 @@ class Client:
         self.disconnect_if_no_response_for = 15
         self.language = lang
         self.model = model
+        self.initial_prompt = initial_prompt
         self.server_error = False
         self.srt_file_path = srt_file_path
         self.use_vad = use_vad
@@ -264,6 +267,7 @@ class Client:
                     "language": self.language,
                     "task": self.task,
                     "model": self.model,
+                    "initial_prompt": self.initial_prompt,
                     "use_vad": self.use_vad,
                     # "send_last_n_segments": self.send_last_n_segments,
                     "no_speech_thresh": self.no_speech_thresh,
@@ -741,6 +745,7 @@ class TranscriptionClient(TranscriptionTeeClient):
         lang (str, optional): The primary language for transcription. Default is None, which defaults to English ('en').
         translate (bool, optional): If True, the task will be translation instead of transcription. Default is False.
         model (str, optional): The whisper model to use (e.g., "small", "base"). Default is "small".
+        initial_prompt (str, optional): Initial prompt for transcription to guide the model. Default is None.
         use_vad (bool, optional): Whether to enable voice activity detection. Default is True.
         save_output_recording (bool, optional): Whether to save the microphone recording. Default is False.
         output_recording_filename (str, optional): Path to save the output recording WAV file. Default is "./output_recording.wav".
@@ -774,6 +779,7 @@ class TranscriptionClient(TranscriptionTeeClient):
         lang=None,
         translate=False,
         model="small",
+        initial_prompt=None,
         use_vad=True,
         use_wss=False,
         save_output_recording=False,
@@ -797,6 +803,7 @@ class TranscriptionClient(TranscriptionTeeClient):
             lang,
             translate,
             model,
+            initial_prompt=initial_prompt,
             srt_file_path=output_transcription_path,
             use_vad=use_vad,
             use_wss=use_wss,

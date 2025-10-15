@@ -8,9 +8,6 @@ from datetime import datetime
 import time
 from whisper_live.client import TranscriptionClient
 
-# Global list to accumulate all received transcriptions
-transcription_history = []
-
 
 def on_transcription(text, segments):
     """Callback to handle transcription display."""
@@ -68,13 +65,22 @@ if __name__ == "__main__":
     print("=" * 60)
     print()
 
+    # Optional: Provide an initial prompt to guide the transcription
+    # This helps the model with domain-specific terminology, proper nouns, or style
+    # Example prompts:
+    # - "Transcription médicale avec termes techniques."
+    # - "Discussion technique sur l'intelligence artificielle et l'apprentissage profond."
+    # - None (default) for auto-detection without guidance
+    INITIAL_PROMPT = None  # Set to a string to guide transcription
+
     # Create client optimized for real-time French transcription
     client = TranscriptionClient(
         host="localhost",
         port=9090,
-        lang="fr",
+        lang=None,  # Set to None for automatic language detection
         translate=False,
         model=MODEL,
+        initial_prompt=INITIAL_PROMPT,
         use_vad=True,
         save_output_recording=False,
         log_transcription=False,

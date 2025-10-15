@@ -8,9 +8,6 @@ from datetime import datetime
 import time
 from whisper_live.client import TranscriptionClient
 
-# Global list to accumulate all received transcriptions
-transcription_history = []
-
 
 def on_transcription(text, segments):
     """Callback to handle transcription display."""
