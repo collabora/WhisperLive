@@ -21,3 +21,9 @@ models/
 # Secrets
 .env
 .env.*
+# Run artifacts
+*.srt
+*.txt
+*.log
+*.csv
+
