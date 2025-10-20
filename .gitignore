@@ -1,0 +1,23 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# OS/editor
+.DS_Store
+.vscode/
+
+# Audio dumps / logs
+*.wav
+*.mp3
+logs/
+
+# Models & cache
+models/
+*.pt
+*.bin
+.whisper_cache/
+
+# Secrets
+.env
+.env.*
