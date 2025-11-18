@@ -123,6 +123,7 @@ class BackendType(Enum):
     FASTER_WHISPER = "faster_whisper"
     TENSORRT = "tensorrt"
     OPENVINO = "openvino"
+    MLX_WHISPER = "mlx_whisper"
 
     @staticmethod
     def valid_types() -> List[str]:
@@ -137,9 +138,12 @@ class BackendType(Enum):
 
     def is_tensorrt(self) -> bool:
         return self == BackendType.TENSORRT
-    
+
     def is_openvino(self) -> bool:
         return self == BackendType.OPENVINO
+
+    def is_mlx_whisper(self) -> bool:
+        return self == BackendType.MLX_WHISPER
 
 
 class TranscriptionServer:
@@ -239,6 +243,38 @@ class TranscriptionServer:
                     "uid": self.client_uid,
                     "status": "WARNING",
                     "message": "OpenVINO not supported on Server yet. "
+                                "Reverting to available backend: 'faster_whisper'"
+                }))
+
+        if self.backend.is_mlx_whisper():
+            try:
+                from whisper_live.backend.mlx_whisper_backend import ServeClientMLXWhisper
+                client = ServeClientMLXWhisper(
+                    websocket,
+                    language=options["language"],
+                    task=options["task"],
+                    client_uid=options["uid"],
+                    model=options["model"],
+                    initial_prompt=options.get("initial_prompt"),
+                    vad_parameters=options.get("vad_parameters"),
+                    use_vad=self.use_vad,
+                    single_model=self.single_model,
+                    send_last_n_segments=options.get("send_last_n_segments", 10),
+                    no_speech_thresh=options.get("no_speech_thresh", 0.45),
+                    clip_audio=options.get("clip_audio", False),
+                    same_output_threshold=options.get("same_output_threshold", 10),
+                    translation_queue=translation_queue,
+                )
+                logging.info("Running MLX Whisper backend (Apple Silicon optimized).")
+            except Exception as e:
+                logging.error(f"MLX Whisper not supported: {e}")
+                self.backend = BackendType.FASTER_WHISPER
+                self.client_uid = options["uid"]
+                websocket.send(json.dumps({
+                    "uid": self.client_uid,
+                    "status": "WARNING",
+                    "message": "MLX Whisper not supported. "
+                                "Make sure you're on Apple Silicon (M1/M2/M3) and have mlx-whisper installed. "
                                 "Reverting to available backend: 'faster_whisper'"
                 }))
 

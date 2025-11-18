@@ -19,5 +19,8 @@ librosa
 openvino
 openvino-genai
 openvino-tokenizers
-optimum 
+optimum
 optimum-intel
+
+# mlx (for Apple Silicon M1/M2/M3)
+mlx-whisper
