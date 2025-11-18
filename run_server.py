@@ -14,6 +14,10 @@ if __name__ == "__main__":
     parser.add_argument('--faster_whisper_custom_model_path', '-fw',
                         type=str, default=None,
                         help="Custom Faster Whisper Model")
+    parser.add_argument('--mlx_model_path', '-mlx',
+                        type=str,
+                        default=None,
+                        help='MLX Whisper model (e.g., "small.en", "mlx-community/whisper-large-v3-turbo")')
     parser.add_argument('--trt_model_path', '-trt',
                         type=str,
                         default=None,
@@ -59,6 +63,7 @@ if __name__ == "__main__":
         port=args.port,
         backend=args.backend,
         faster_whisper_custom_model_path=args.faster_whisper_custom_model_path,
+        mlx_model_path=args.mlx_model_path,
         whisper_tensorrt_path=args.trt_model_path,
         trt_multilingual=args.trt_multilingual,
         trt_py_session=args.trt_py_session,

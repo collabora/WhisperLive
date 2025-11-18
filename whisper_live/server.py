@@ -157,7 +157,7 @@ class TranscriptionServer:
 
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
-        whisper_tensorrt_path, trt_multilingual, trt_py_session=False,
+        mlx_model_path, whisper_tensorrt_path, trt_multilingual, trt_py_session=False,
     ):
         client: Optional[ServeClientBase] = None
 
@@ -249,6 +249,10 @@ class TranscriptionServer:
         if self.backend.is_mlx_whisper():
             try:
                 from whisper_live.backend.mlx_whisper_backend import ServeClientMLXWhisper
+                # Use server-provided model path if available, otherwise use client's model
+                if mlx_model_path is not None:
+                    logging.info(f"Using server-specified MLX model: {mlx_model_path}")
+                    options["model"] = mlx_model_path
                 client = ServeClientMLXWhisper(
                     websocket,
                     language=options["language"],
@@ -333,7 +337,7 @@ class TranscriptionServer:
         return np.frombuffer(frame_data, dtype=np.float32)
 
     def handle_new_connection(self, websocket, faster_whisper_custom_model_path,
-                              whisper_tensorrt_path, trt_multilingual, trt_py_session=False):
+                              mlx_model_path, whisper_tensorrt_path, trt_multilingual, trt_py_session=False):
         try:
             logging.info("New client connected")
             options = websocket.recv()
@@ -347,7 +351,7 @@ class TranscriptionServer:
             if self.backend.is_tensorrt():
                 self.vad_detector = VoiceActivityDetector(frame_rate=self.RATE)
             self.initialize_client(websocket, options, faster_whisper_custom_model_path,
-                                   whisper_tensorrt_path, trt_multilingual, trt_py_session=trt_py_session)
+                                   mlx_model_path, whisper_tensorrt_path, trt_multilingual, trt_py_session=trt_py_session)
             return True
         except json.JSONDecodeError:
             logging.error("Failed to decode JSON from client")
@@ -379,9 +383,10 @@ class TranscriptionServer:
         return True
 
     def recv_audio(self,
-                   websocket,   
+                   websocket,
                    backend: BackendType = BackendType.FASTER_WHISPER,
                    faster_whisper_custom_model_path=None,
+                   mlx_model_path=None,
                    whisper_tensorrt_path=None,
                    trt_multilingual=False,
                    trt_py_session=False):
@@ -411,7 +416,7 @@ class TranscriptionServer:
         """
         self.backend = backend
         if not self.handle_new_connection(websocket, faster_whisper_custom_model_path,
-                                          whisper_tensorrt_path, trt_multilingual, trt_py_session=trt_py_session):
+                                          mlx_model_path, whisper_tensorrt_path, trt_multilingual, trt_py_session=trt_py_session):
             return
 
         try:
@@ -433,6 +438,7 @@ class TranscriptionServer:
             port=9090,
             backend="tensorrt",
             faster_whisper_custom_model_path=None,
+            mlx_model_path=None,
             whisper_tensorrt_path=None,
             trt_multilingual=False,
             trt_py_session=False,
@@ -454,7 +460,7 @@ class TranscriptionServer:
         if whisper_tensorrt_path is not None and not os.path.exists(whisper_tensorrt_path):
             raise ValueError(f"TensorRT model '{whisper_tensorrt_path}' is not a valid path.")
         if single_model:
-            if faster_whisper_custom_model_path or whisper_tensorrt_path:
+            if faster_whisper_custom_model_path or whisper_tensorrt_path or mlx_model_path:
                 logging.info("Custom model option was provided. Switching to single model mode.")
                 self.single_model = True
                 # TODO: load model initially
@@ -467,6 +473,7 @@ class TranscriptionServer:
                 self.recv_audio,
                 backend=BackendType(backend),
                 faster_whisper_custom_model_path=faster_whisper_custom_model_path,
+                mlx_model_path=mlx_model_path,
                 whisper_tensorrt_path=whisper_tensorrt_path,
                 trt_multilingual=trt_multilingual,
                 trt_py_session=trt_py_session,
