@@ -57,6 +57,26 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    client = TranscriptionClient(
+        args.server,
+        args.port,
+        lang=args.lang,
+        translate=args.translate,
+        model=args.model,                                  # also support hf_model => `Systran/faster-whisper-small`
+        use_vad=True,
+        save_output_recording=args.save_output_recording,  # Only used for microphone input, False by Default
+        output_recording_filename=args.output_file,        # Only used for microphone input
+        mute_audio_playback=args.mute_audio_playback,      # Only used for file input, False by Default
+        enable_translation=args.enable_translation,        # Enable translation of the transcription output
+        target_language=args.target_language,              # Target language for translation, e.g., "fr
+        enable_timestamps=args.enable_timestamps,
+        display_segments=args.n_display_segments,
+    )
+
+    if args.files is None:
+        client()
+        sys.exit(0)
+
     # Validate audio files
     valid_files = []
     for file_path in args.files:
@@ -75,19 +95,4 @@ if __name__ == '__main__':
         print(f"  - {file_path}")
 
     for f in valid_files:
-        client = TranscriptionClient(
-            args.server,
-            args.port,
-            lang=args.lang,
-            translate=args.translate,
-            model=args.model,                                  # also support hf_model => `Systran/faster-whisper-small`
-            use_vad=True,
-            save_output_recording=args.save_output_recording,  # Only used for microphone input, False by Default
-            output_recording_filename=args.output_file,        # Only used for microphone input
-            mute_audio_playback=args.mute_audio_playback,      # Only used for file input, False by Default
-            enable_translation=args.enable_translation,        # Enable translation of the transcription output
-            target_language=args.target_language,              # Target language for translation, e.g., "fr
-            enable_timestamps=args.enable_timestamps,
-            display_segments=args.n_display_segments,
-        )
         client(f)
