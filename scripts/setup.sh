@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/bin/bash
 
 # Detect the operating system
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -13,8 +13,20 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 
     # Install packages using Homebrew
     brew install portaudio wget
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    # Linux
+    if [[ -f /etc/os-release ]]; then
+        source /etc/os-release
+    fi
+
+    if [[ "${ID:-}" == "fedora" ]]; then
+        echo "Detected Fedora, using dnf for installation"
+        dnf install -y portaudio-devel wget
+    else
+        echo "Detected Linux (assuming Debian/Ubuntu), using apt-get for installation"
+        apt-get install -y portaudio19-dev wget
+    fi
 else
-    # Linux (Debian/Ubuntu)
-    echo "Detected Linux, using apt-get for installation"
-    apt-get install portaudio19-dev wget -y
+    echo "Unsupported operating system: $OSTYPE"
+    exit 1
 fi

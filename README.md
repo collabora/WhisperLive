@@ -25,7 +25,7 @@ input from microphone and pre-recorded audio files.
 - [Citations](#citations)
 
 ## Installation
-- Install PyAudio
+- Install PortAudio
 ```bash
  bash scripts/setup.sh
 ```
@@ -34,6 +34,16 @@ input from microphone and pre-recorded audio files.
 ```bash
  pip install whisper-live
 ```
+
+
+- Install 3.12 venv on Fedora
+
+```bash
+sudo dnf install -y python3.12 python3.12-pip
+python3.12 -m venv whisper_env
+source whisper_env/bin/activate
+```
+
 
 ### Setting up NVIDIA/TensorRT-LLM for TensorRT backend
 - Please follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) for setup of [NVIDIA/TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) and for building Whisper-TensorRT engine.
