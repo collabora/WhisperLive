@@ -45,6 +45,22 @@ source whisper_env/bin/activate
 ```
 
 
+### OpenAI REST interface
+
+#### Server
+
+```bash
+python3 run_server.py --port 9090 --backend faster_whisper --max_clients 4 --max_connection_time 600 --enable_rest --cors-origins="http://localhost:8080,http://127.0.0.1:8080"
+```
+
+#### Client
+
+```bash
+python3 client_openai.py $AUDIO_FILE
+```
+
+
+
 ### Setting up NVIDIA/TensorRT-LLM for TensorRT backend
 - Please follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) for setup of [NVIDIA/TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) and for building Whisper-TensorRT engine.
 

@@ -1,5 +1,14 @@
 import argparse
 import os
+import threading
+import logging
+from fastapi import FastAPI
+from fastapi import UploadFile, Form
+import uvicorn
+import tempfile
+import shutil
+import json
+from starlette.responses import PlainTextResponse, JSONResponse
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -43,6 +52,20 @@ if __name__ == "__main__":
                         type=str,
                         default="~/.cache/whisper-live/",
                         help='Path to cache the converted ctranslate2 models.')
+    parser.add_argument(
+        "--rest_port", type=int, default=8000, help="Port for the REST API server."
+    )
+    parser.add_argument(
+        "--enable_rest",
+        action="store_true",
+        help="Enable the OpenAI-compatible REST API endpoint.",
+    )
+    parser.add_argument(
+        '--cors-origins',
+        type=str,
+        default=None,
+        help="Comma-separated list of allowed CORS origins (e.g., 'http://localhost:3000,http://example.com'). Defaults to localhost/127.0.0.1 on the WebSocket port."
+    )
     args = parser.parse_args()
 
     if args.backend == "tensorrt":
@@ -65,5 +88,8 @@ if __name__ == "__main__":
         single_model=not args.no_single_model,
         max_clients=args.max_clients,
         max_connection_time=args.max_connection_time,
-        cache_path=args.cache_path
+        cache_path=args.cache_path,
+        rest_port=args.rest_port,
+        enable_rest=args.enable_rest,
+        cors_origins=args.cors_origins,
     )
