@@ -1,6 +1,7 @@
 import subprocess
 import time
 import json
+import threading
 import unittest
 from unittest import mock
 
@@ -10,8 +11,57 @@ import jiwer
 from websockets.exceptions import ConnectionClosed
 from whisper_live.server import TranscriptionServer, BackendType, ClientManager
 from whisper_live.client import Client, TranscriptionClient, TranscriptionTeeClient
+from whisper_live.backend.base import ServeClientBase
 from whisper.normalizers import EnglishTextNormalizer
 
+class TestResetTranscriptServer(unittest.TestCase):
+    """Unit tests for ServeClientBase.reset_transcript()."""
+
+    def _make_client(self):
+        """Return a minimal ServeClientBase with a mocked websocket."""
+        mock_ws = mock.MagicMock()
+        client = ServeClientBase.__new__(ServeClientBase)
+        client.client_uid = "test-uid"
+        client.websocket = mock_ws
+        client.lock = threading.Lock()
+        client.transcript = [
+            {"start": "0.000", "end": "1.000", "text": "Hello", "completed": True}
+        ]
+        client.text = ["Hello"]
+        client.current_out = "Hello"
+        client.prev_out = "Hello"
+        client.same_output_count = 3
+        client.end_time_for_same_output = 1.0
+        client.frames_np = np.zeros(16000, dtype=np.float32)
+        client.frames_offset = 5.0
+        client.timestamp_offset = 6.0
+        client.translation_queue = None
+        return client, mock_ws
+
+    def test_reset_clears_transcript_and_state(self):
+        """reset_transcript() must zero-out all accumulated state."""
+        client, _ = self._make_client()
+        client.reset_transcript()
+
+        self.assertEqual(client.transcript, [])
+        self.assertEqual(client.text, [])
+        self.assertEqual(client.current_out, '')
+        self.assertEqual(client.prev_out, '')
+        self.assertEqual(client.same_output_count, 0)
+        self.assertIsNone(client.end_time_for_same_output)
+        self.assertIsNone(client.frames_np)
+        self.assertEqual(client.frames_offset, 0.0)
+        self.assertEqual(client.timestamp_offset, 0.0)
+
+    def test_reset_sends_ack_to_client(self):
+        """reset_transcript() must send the TRANSCRIPT_RESET ACK over WebSocket."""
+        client, mock_ws = self._make_client()
+        client.reset_transcript()
+
+        mock_ws.send.assert_called_once()
+        payload = json.loads(mock_ws.send.call_args[0][0])
+        self.assertEqual(payload["uid"], "test-uid")
+        self.assertEqual(payload["message"], "TRANSCRIPT_RESET")
 
 class TestTranscriptionServerInitialization(unittest.TestCase):
     def test_initialization(self):

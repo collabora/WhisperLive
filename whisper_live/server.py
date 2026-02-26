@@ -294,15 +294,32 @@ class TranscriptionServer:
         """
         Receives audio buffer from websocket and creates a numpy array out of it.
 
+        Also handles JSON control frames sent by the client. Currently supports:
+          - b"END_OF_AUDIO"   : signals end of the audio stream.
+          - {"action": "RESET_TRANSCRIPT"} : resets the accumulated transcript.
+
         Args:
             websocket: The websocket to receive audio from.
 
         Returns:
-            A numpy array containing the audio.
+            A numpy array containing the audio, False on END_OF_AUDIO,
+            or the string "RESET" for a transcript-reset control frame.
         """
         frame_data = websocket.recv()
         if frame_data == b"END_OF_AUDIO":
             return False
+        # Handle JSON control frames (sent as text or bytes that decode to JSON)
+        if isinstance(frame_data, (str, bytes)):
+            try:
+                decoded = frame_data if isinstance(frame_data, str) else frame_data.decode("utf-8")
+                control = json.loads(decoded)
+                if control.get("action") == "RESET_TRANSCRIPT":
+                    client = self.client_manager.get_client(websocket)
+                    if client:
+                        client.reset_transcript()
+                    return "RESET"
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+                pass  # Not a JSON control frame; treat as audio bytes
         return np.frombuffer(frame_data, dtype=np.float32)
 
     def handle_new_connection(self, websocket, faster_whisper_custom_model_path,
@@ -339,6 +356,10 @@ class TranscriptionServer:
             if self.backend.is_tensorrt():
                 client.set_eos(True)
             return False
+
+        # Control frame: transcript was reset server-side; continue the loop.
+        if isinstance(frame_np, str) and frame_np == "RESET":
+            return True
 
         if self.backend.is_tensorrt():
             voice_active = self.voice_activity(websocket, frame_np)
