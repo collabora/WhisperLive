@@ -14,6 +14,7 @@ from whisper_live.backend.base import ServeClientBase
 class ServeClientFasterWhisper(ServeClientBase):
     SINGLE_MODEL = None
     SINGLE_MODEL_LOCK = threading.Lock()
+    BATCH_WORKER = None
 
     def __init__(
         self,
@@ -202,6 +203,26 @@ class ServeClientFasterWhisper(ServeClientBase):
             depends on the implementation of the `transcriber.transcribe` method but typically
             includes the transcribed text.
         """
+        # Batch inference path: submit to central queue and wait
+        if ServeClientFasterWhisper.BATCH_WORKER is not None:
+            from whisper_live.batch_inference import BatchRequest
+            request = BatchRequest(
+                audio=input_sample,
+                language=self.language,
+                task=self.task,
+                initial_prompt=self.initial_prompt,
+                use_vad=self.use_vad,
+                vad_parameters=self.vad_parameters if self.use_vad else None,
+            )
+            ServeClientFasterWhisper.BATCH_WORKER.submit(request)
+            request.future.wait(timeout=30)
+            if request.error:
+                raise request.error
+            if self.language is None and request.info is not None:
+                self.set_language(request.info)
+            return request.result
+
+        # Original lock-based path (backward compatible)
         if ServeClientFasterWhisper.SINGLE_MODEL:
             ServeClientFasterWhisper.SINGLE_MODEL_LOCK.acquire()
         result, info = self.transcriber.transcribe(
