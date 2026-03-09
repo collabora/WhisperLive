@@ -159,6 +159,7 @@ class TranscriptionServer:
         self.no_voice_activity_chunks = 0
         self.use_vad = True
         self.single_model = False
+        self.batch_config = None
 
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
