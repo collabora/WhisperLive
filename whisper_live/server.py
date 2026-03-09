@@ -159,6 +159,7 @@ class TranscriptionServer:
         self.no_voice_activity_chunks = 0
         self.use_vad = True
         self.single_model = False
+        self.batch_config = None
 
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
@@ -277,6 +278,18 @@ class TranscriptionServer:
                 )
 
                 logging.info("Running faster_whisper backend.")
+
+                # Start batch inference worker on first client (after model is loaded)
+                if (self.batch_config is not None
+                        and ServeClientFasterWhisper.BATCH_WORKER is None
+                        and ServeClientFasterWhisper.SINGLE_MODEL is not None):
+                    from whisper_live.batch_inference import BatchInferenceWorker
+                    worker = BatchInferenceWorker(
+                        transcriber=ServeClientFasterWhisper.SINGLE_MODEL,
+                        **self.batch_config,
+                    )
+                    worker.start()
+                    ServeClientFasterWhisper.BATCH_WORKER = worker
         except Exception as e:
             logging.error(e)
             return
@@ -415,13 +428,25 @@ class TranscriptionServer:
             cache_path="~/.cache/whisper-live/",
             rest_port=8000,
             enable_rest=False,
-            cors_origins: Optional[str] = None):
+            cors_origins: Optional[str] = None,
+            batch_enabled=False,
+            batch_max_size=8,
+            batch_window_ms=50):
         """
         Run the transcription server.
 
         Args:
             host (str): The host address to bind the server.
             port (int): The port number to bind the server.
+            batch_enabled (bool): Enable cross-client GPU batch inference for
+                the faster_whisper backend. When enabled, ``single_model`` is
+                forced to True and a ``BatchInferenceWorker`` is started after
+                the first client connects. Defaults to False.
+            batch_max_size (int): Maximum number of requests per GPU batch.
+                Defaults to 8.
+            batch_window_ms (int): Maximum time in milliseconds to wait for
+                the batch to fill after the first request arrives. Defaults
+                to 50.
         """
         self.cache_path = cache_path
         self.client_manager = ClientManager(max_clients, max_connection_time)
@@ -430,6 +455,18 @@ class TranscriptionServer:
                 raise ValueError(f"Custom faster_whisper model '{faster_whisper_custom_model_path}' is not a valid path or HuggingFace model.")
         if whisper_tensorrt_path is not None and not os.path.exists(whisper_tensorrt_path):
             raise ValueError(f"TensorRT model '{whisper_tensorrt_path}' is not a valid path.")
+
+        # Batch inference config
+        if batch_enabled:
+            single_model = True  # Batch mode requires shared model
+            self.batch_config = {
+                'max_batch_size': batch_max_size,
+                'batch_window_ms': batch_window_ms,
+            }
+            logging.info(f"Batch inference enabled (max_batch={batch_max_size}, window={batch_window_ms}ms)")
+        else:
+            self.batch_config = None
+
         if single_model:
             if faster_whisper_custom_model_path or whisper_tensorrt_path:
                 logging.info("Custom model option was provided. Switching to single model mode.")

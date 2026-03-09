@@ -66,6 +66,24 @@ if __name__ == "__main__":
         default=None,
         help="Comma-separated list of allowed CORS origins (e.g., 'http://localhost:3000,http://example.com'). Defaults to localhost/127.0.0.1 on the WebSocket port."
     )
+    parser.add_argument(
+        '--batch_inference',
+        action='store_true',
+        help='Enable batched GPU inference for concurrent sessions. '
+             'Batches multiple sessions into a single GPU call for higher throughput.'
+    )
+    parser.add_argument(
+        '--batch_max_size',
+        type=int,
+        default=8,
+        help='Maximum batch size for batched inference (default: 8).'
+    )
+    parser.add_argument(
+        '--batch_window_ms',
+        type=int,
+        default=50,
+        help='Maximum time in ms to wait for batch to fill (default: 50).'
+    )
     args = parser.parse_args()
 
     if args.backend == "tensorrt":
@@ -92,4 +110,7 @@ if __name__ == "__main__":
         rest_port=args.rest_port,
         enable_rest=args.enable_rest,
         cors_origins=args.cors_origins,
+        batch_enabled=args.batch_inference,
+        batch_max_size=args.batch_max_size,
+        batch_window_ms=args.batch_window_ms,
     )
