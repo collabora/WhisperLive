@@ -82,8 +82,10 @@ class TestServerInferenceAccuracy(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        cls.server_process.terminate()
-        cls.server_process.wait()
+        if hasattr(cls, 'server_process'):
+            cls.server_process.terminate()
+            cls.server_process.wait()
+        cls.mock_pyaudio_patch.stop()
 
     def setUp(self):
         self.normalizer = EnglishTextNormalizer()

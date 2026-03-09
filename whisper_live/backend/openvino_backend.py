@@ -85,7 +85,7 @@ class ServeClientOpenVINO(ServeClientBase):
             self.create_model(model)
 
         # threading
-        self.trans_thread = threading.Thread(target=self.speech_to_text)
+        self.trans_thread = threading.Thread(target=self.speech_to_text, daemon=True)
         self.trans_thread.start()
 
         self.websocket.send(json.dumps({

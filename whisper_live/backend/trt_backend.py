@@ -72,7 +72,7 @@ class ServeClientTensorRT(ServeClientBase):
             self.create_model(model, multilingual, use_py_session=use_py_session)
 
         # threading
-        self.trans_thread = threading.Thread(target=self.speech_to_text)
+        self.trans_thread = threading.Thread(target=self.speech_to_text, daemon=True)
         self.trans_thread.start()
 
         self.websocket.send(json.dumps({
