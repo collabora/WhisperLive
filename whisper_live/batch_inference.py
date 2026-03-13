@@ -213,7 +213,7 @@ class BatchInferenceWorker:
                 vad_parameters=req.vad_parameters if req.use_vad else None,
             )
             # Materialize the generator into a list
-            req.result = list(result)
+            req.result = list(result) if result is not None else []
             req.info = info
         except Exception as e:
             req.error = e
