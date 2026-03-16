@@ -50,6 +50,10 @@ if __name__ == '__main__':
     parser.add_argument('--enable_timestamps',
                           action='store_true',
                           help='Show transcription with timestamps')
+    parser.add_argument('--n_display_segments',
+                          type=int,
+                          default=4,
+                          help='Number of transcript segments to display in terminal (default: 4).')
 
     args = parser.parse_args()
 
@@ -84,5 +88,6 @@ if __name__ == '__main__':
             enable_translation=args.enable_translation,        # Enable translation of the transcription output
             target_language=args.target_language,              # Target language for translation, e.g., "fr
             enable_timestamps=args.enable_timestamps,
+            display_segments=args.n_display_segments,
         )
         client(f)
