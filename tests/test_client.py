@@ -99,6 +99,61 @@ class TestClientCallbacks(BaseTestCase):
         self.assertTrue(self.client.server_error)
         self.assertEqual(self.client.error_message, error_message)
 
+    def test_on_message_transcript_reset_ack(self):
+        """Server ACK for reset should be handled gracefully without errors."""
+        # First make the client think it's connected to a backend
+        ready_msg = json.dumps({
+            "uid": self.client.uid,
+            "message": "SERVER_READY",
+            "backend": "faster_whisper"
+        })
+        self.client.on_message(self.mock_ws_app, ready_msg)
+
+        reset_ack_msg = json.dumps({
+            "uid": self.client.uid,
+            "message": "TRANSCRIPT_RESET"
+        })
+        # Should not raise; just log/print the confirmation
+        self.client.on_message(self.mock_ws_app, reset_ack_msg)
+
+
+class TestResetTranscript(BaseTestCase):
+    def test_reset_clears_local_state(self):
+        """reset_transcript() must clear transcript and related fields."""
+        # Simulate accumulated state
+        self.client.server_backend = "faster_whisper"
+        self.client.recording = True
+        self.client.transcript = [
+            {"start": "0.000", "end": "1.000", "text": "Hello", "completed": True}
+        ]
+        self.client.translated_transcript = [
+            {"start": "0.000", "end": "1.000", "text": "Bonjour", "completed": True}
+        ]
+        self.client.last_segment = {"text": "Hello"}
+        self.client.last_received_segment = "Hello"
+
+        self.client.reset_transcript()
+
+        self.assertEqual(self.client.transcript, [])
+        self.assertEqual(self.client.translated_transcript, [])
+        self.assertIsNone(self.client.last_segment)
+        self.assertIsNone(self.client.last_received_segment)
+
+    def test_reset_sends_control_frame_to_server(self):
+        """reset_transcript() must send the correct JSON action to the server."""
+        self.client.reset_transcript()
+
+        sent_calls = self.client.client_socket.send.call_args_list
+        # Find the call that contains RESET_TRANSCRIPT
+        reset_calls = [
+            call for call in sent_calls
+            if "RESET_TRANSCRIPT" in str(call)
+        ]
+        self.assertTrue(reset_calls, "Expected a RESET_TRANSCRIPT frame to be sent")
+        payload = json.loads(reset_calls[-1][0][0])
+        self.assertEqual(payload["action"], "RESET_TRANSCRIPT")
+        self.assertEqual(payload["uid"], self.client.uid)
+
 
 class TestAudioResampling(unittest.TestCase):
     def test_resample_audio(self):

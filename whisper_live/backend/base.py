@@ -10,6 +10,7 @@ class ServeClientBase(object):
     RATE = 16000
     SERVER_READY = "SERVER_READY"
     DISCONNECT = "DISCONNECT"
+    TRANSCRIPT_RESET = "TRANSCRIPT_RESET"
 
     client_uid: str
     """A unique identifier for the client."""
@@ -259,6 +260,34 @@ class ServeClientBase(object):
             "uid": self.client_uid,
             "message": self.DISCONNECT
         }))
+
+    def reset_transcript(self):
+        """
+        Reset the accumulated transcript and audio state for this client.
+
+        Clears all stored segments, resets audio buffer pointers, and resets
+        repeated-output detection counters so that the next transcription
+        starts from a clean state. Sends a TRANSCRIPT_RESET acknowledgment
+        to the client over WebSocket.
+        """
+        with self.lock:
+            self.transcript = []
+            self.text = []
+            self.current_out = ''
+            self.prev_out = ''
+            self.same_output_count = 0
+            self.end_time_for_same_output = None
+            self.frames_np = None
+            self.frames_offset = 0.0
+            self.timestamp_offset = 0.0
+        logging.info(f"[{self.client_uid}] Transcript reset.")
+        try:
+            self.websocket.send(json.dumps({
+                "uid": self.client_uid,
+                "message": self.TRANSCRIPT_RESET
+            }))
+        except Exception as e:
+            logging.error(f"[ERROR]: Failed to send TRANSCRIPT_RESET ack: {e}")
 
     def cleanup(self):
         """
