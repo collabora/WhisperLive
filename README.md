@@ -42,6 +42,8 @@ input from microphone and pre-recorded audio files.
 sudo dnf install -y python3.12 python3.12-pip
 python3.12 -m venv whisper_env
 source whisper_env/bin/activate
+pip install --upgrade pip
+pip install whisper-live
 ```
 
 
