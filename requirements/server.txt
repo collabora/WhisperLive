@@ -1,0 +1,27 @@
+faster-whisper==1.2.0
+websockets
+onnxruntime==1.17.0
+numba
+kaldialign
+soundfile
+scipy
+av
+jiwer
+evaluate
+numpy<2
+openai-whisper==20250625
+tokenizers==0.20.3
+transformers[torch]
+sentencepiece
+
+# openvino
+librosa
+openvino
+openvino-genai
+openvino-tokenizers
+optimum 
+optimum-intel
+
+fastapi
+uvicorn
+python-multipart

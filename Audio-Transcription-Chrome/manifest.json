@@ -1,0 +1,31 @@
+{
+    "manifest_version": 3,
+
+    "name": "Audio Transcription",
+    "version": "1.0.0",
+    "description": "This extension captures the audio on the current tab, sends it to a server for transcription and shows the transcription in Real-time.",
+
+    "options_page": "options.html",
+    "background": {
+        "service_worker": "background.js"
+    },
+    "web_accessible_resources": [
+        {
+        "resources": ["audiopreprocessor.js"],
+        "matches": ["<all_urls>"]
+        }
+    ],
+    "permissions": [
+        "storage",
+        "activeTab",
+        "tabCapture",
+        "scripting"
+    ],
+    "icons": {
+        "128":"icon128.png"
+        },
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": "icon128.png"
+    }
+}
