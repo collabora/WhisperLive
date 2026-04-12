@@ -130,6 +130,11 @@ If you don't want this, set `--no_single_model`.
 
 ### Running the Client
 
+Install the client dependency first on Debian/Ubuntu systems:
+```bash
+sudo apt install portaudio19-dev
+```
+
 Use the below command to run the client:
 ```bash
 python3 run_client.py --files <audio-file-name>
@@ -213,13 +218,20 @@ Refer to [`ios-client`](https://github.com/collabora/WhisperLive/tree/main/Audio
   bash build_whisper_tensorrt.sh /app/TensorRT-LLM-examples small.en int8   # int8 weight only quantization
   bash build_whisper_tensorrt.sh /app/TensorRT-LLM-examples small.en int4   # int4 weight only quantization
 
-  # Run server with small.en
+  # Run server with a built engine
   python3 run_server.py --port 9090 \
                         --backend tensorrt \
                         --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_en_float16"
-                        --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_en_int8"
-                        --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_en_int4"
+
+  # If the default C++ TensorRT session is unstable on your setup,
+  # retry with the Python session implementation.
+  python3 run_server.py --port 9090 \
+                        --backend tensorrt \
+                        --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_en_float16" \
+                        --trt_py_session
   ```
+
+  See [TensorRT_whisper.md](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) for more TensorRT-specific setup notes and troubleshooting.
 
   - OpenVINO
   ```
