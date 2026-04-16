@@ -42,6 +42,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements/server.txt --extra-index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements/client.txt
+
+      - name: Verify package install in a clean venv
+        run: |
+          python -m venv .venv-smoke
+          . .venv-smoke/bin/activate
+          python -m pip install --upgrade pip
+          pip install . --extra-index-url https://download.pytorch.org/whl/cpu
+          python -c "import whisper_live; print(whisper_live.__version__)"
       
       - name: Run tests
         run: |
