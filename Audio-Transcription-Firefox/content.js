@@ -286,7 +286,7 @@ function get_lines(elem, line_height) {
     var divHeight = elem.offsetHeight;
     var lines = divHeight / line_height;
 
-    var original_text = elem.innerHTML;
+    var original_text = elem.textContent;
 
     var words = original_text.split(' ');
     var segments = [];
@@ -296,7 +296,7 @@ function get_lines(elem, line_height) {
     for (var i = 0; i < words.length; i++)
     {
         segment += words[i] + ' ';
-        elem.innerHTML = segment;
+        elem.textContent = segment;
         divHeight = elem.offsetHeight;
 
         if ((divHeight / line_height) > current_lines) {
@@ -310,7 +310,7 @@ function get_lines(elem, line_height) {
     var line_segment = segment.substring(segment_len, segment.length - 1)
     segments.push(line_segment);
 
-    elem.innerHTML = original_text;
+    elem.textContent = original_text;
 
     return segments;
 
@@ -392,7 +392,7 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
     text = text.replace(/(\r\n|\n|\r)/gm, "");
     
     var elem = document.getElementById('t3');
-    elem.innerHTML = text;
+    elem.textContent = text;
   
     var line_height_style = getStyle('t3', 'line-height');
     var line_height = parseInt(line_height_style.substring(0, line_height_style.length - 2));
@@ -402,25 +402,25 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
     text_segments = [];
     text_segments = get_lines(elem, line_height);
     
-    elem.innerHTML = '';
+    elem.textContent = '';
   
     if (text_segments.length > 2) {
         for (var i = 0; i < 3; i++) {
-            document.getElementById('t' + i).innerHTML = text_segments[text_segments.length - 3 + i];
+            document.getElementById('t' + i).textContent = text_segments[text_segments.length - 3 + i];
         }
     } else {
         for (var i = 0; i < 3; i++) {
-            document.getElementById('t' + i).innerHTML = '';
+            document.getElementById('t' + i).textContent = '';
         }
     }
   
     if (text_segments.length <= 2) {
         for (var i = 0; i < text_segments.length; i++) {
-            document.getElementById('t' + i).innerHTML = text_segments[i];
+            document.getElementById('t' + i).textContent = text_segments[i];
         }
     } else {
         for (var i = 0; i < 3; i++) {
-            document.getElementById('t' + i).innerHTML = text_segments[text_segments.length - 3 + i];
+            document.getElementById('t' + i).textContent = text_segments[text_segments.length - 3 + i];
         }
     }
   
