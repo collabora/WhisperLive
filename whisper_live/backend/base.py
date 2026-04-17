@@ -11,6 +11,15 @@ class ServeClientBase(object):
     SERVER_READY = "SERVER_READY"
     DISCONNECT = "DISCONNECT"
 
+    MAX_BUFFER_DURATION_S = 45
+    """Maximum audio buffer duration in seconds before trimming."""
+    BUFFER_TRIM_DURATION_S = 30
+    """Duration in seconds to trim from the buffer when it exceeds MAX_BUFFER_DURATION_S."""
+    CLIP_THRESHOLD_DURATION_S = 25
+    """Duration threshold in seconds for clipping audio with no valid segments."""
+    CLIP_TAIL_DURATION_S = 5
+    """Duration in seconds of audio to keep after clipping."""
+
     client_uid: str
     """A unique identifier for the client."""
     websocket: object
@@ -148,9 +157,9 @@ class ServeClientBase(object):
 
         """
         self.lock.acquire()
-        if self.frames_np is not None and self.frames_np.shape[0] > 45*self.RATE:
-            self.frames_offset += 30.0
-            self.frames_np = self.frames_np[int(30*self.RATE):]
+        if self.frames_np is not None and self.frames_np.shape[0] > self.MAX_BUFFER_DURATION_S*self.RATE:
+            self.frames_offset += float(self.BUFFER_TRIM_DURATION_S)
+            self.frames_np = self.frames_np[int(self.BUFFER_TRIM_DURATION_S*self.RATE):]
             # check timestamp offset(should be >= self.frame_offset)
             # this basically means that there is no speech as timestamp offset hasnt updated
             # and is less than frame_offset
@@ -169,9 +178,9 @@ class ServeClientBase(object):
         no valid segment for the last 30 seconds from whisper
         """
         with self.lock:
-            if self.frames_np[int((self.timestamp_offset - self.frames_offset)*self.RATE):].shape[0] > 25 * self.RATE:
+            if self.frames_np[int((self.timestamp_offset - self.frames_offset)*self.RATE):].shape[0] > self.CLIP_THRESHOLD_DURATION_S * self.RATE:
                 duration = self.frames_np.shape[0] / self.RATE
-                self.timestamp_offset = self.frames_offset + duration - 5
+                self.timestamp_offset = self.frames_offset + duration - self.CLIP_TAIL_DURATION_S
 
     def get_audio_chunk_for_processing(self):
         """
