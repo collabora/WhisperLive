@@ -17,6 +17,15 @@ input from microphone and pre-recorded audio files.
 - [Getting Started](#getting-started)
 - [Running the Server](#running-the-server)
 - [Running the Client](#running-the-client)
+- [Advanced Features](#advanced-features)
+  - [Word-Level Timestamps](#word-level-timestamps)
+  - [Custom Vocabulary / Hotwords](#custom-vocabulary--hotwords)
+  - [Speaker Diarization](#speaker-diarization)
+  - [Authentication](#authentication)
+  - [Rate Limiting](#rate-limiting)
+  - [Auto-Reconnect](#auto-reconnect)
+  - [Batch Inference](#batch-inference)
+  - [Raw PCM Input](#raw-pcm-input)
 - [Browser Extensions](#browser-extensions)
 - [Whisper Live Server in Docker](#whisper-live-server-in-docker)
 - [Future Work](#future-work)
@@ -185,6 +194,101 @@ client(rtsp_url="rtsp://admin:admin@192.168.0.1/rtsp")
 ```python
 client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/bbc_1xtra.isml/bbc_1xtra-audio%3d96000.norewind.m3u8")
 ```
+
+## Browser Extensions
+
+### Advanced Features
+
+#### Word-Level Timestamps
+Enable per-word timing and confidence scores in transcription segments:
+```python
+client = TranscriptionClient(
+  "localhost", 9090,
+  word_timestamps=True,
+)
+```
+When enabled, each segment in the WebSocket response includes a `words` array:
+```json
+{
+  "segments": [{
+    "start": "0.000", "end": "2.500", "text": "Hello world",
+    "words": [
+      {"word": "Hello", "start": "0.000", "end": "0.800", "probability": 0.95},
+      {"word": " world", "start": "0.900", "end": "2.500", "probability": 0.88}
+    ]
+  }]
+}
+```
+
+#### Custom Vocabulary / Hotwords
+Boost recognition of specific terms (product names, acronyms, domain jargon):
+```python
+client = TranscriptionClient(
+  "localhost", 9090,
+  hotwords="WhisperLive,TensorRT,OpenVINO",
+)
+```
+The `hotwords` parameter is a comma-separated string passed directly to faster-whisper's keyword boosting. Also available in the REST API via the `hotwords` form field.
+
+#### Speaker Diarization
+Real-time speaker identification using pyannote.audio embeddings (optional dependency):
+```bash
+pip install pyannote.audio
+```
+```python
+client = TranscriptionClient(
+  "localhost", 9090,
+  enable_diarization=True,
+  max_speakers=4,
+)
+```
+When enabled, completed segments include a `speaker` field:
+```json
+{"start": "0.000", "end": "2.500", "text": "Hello", "speaker": "SPEAKER_00", "completed": true}
+```
+Diarization uses online cosine-similarity clustering of speaker embeddings. If `pyannote.audio` is not installed, the server logs a warning and continues without diarization.
+
+#### Authentication
+Protect both REST API and WebSocket connections with a shared API key:
+```bash
+python3 run_server.py --port 9090 --backend faster_whisper --api_key "my-secret-key"
+```
+- **REST API**: Requires `Authorization: Bearer my-secret-key` header
+- **WebSocket**: Requires either `Authorization: Bearer my-secret-key` header or `?token=my-secret-key` query parameter
+
+Unauthenticated connections receive HTTP 401 before any GPU resources are allocated.
+
+#### Rate Limiting
+Limit REST API requests per client IP (sliding 60-second window):
+```bash
+python3 run_server.py --port 9090 --backend faster_whisper --enable_rest --rate_limit_rpm 60
+```
+Clients exceeding the limit receive HTTP 429.
+
+#### Auto-Reconnect
+Automatically reconnect when the WebSocket connection drops unexpectedly:
+```python
+client = TranscriptionClient(
+  "localhost", 9090,
+  max_retries=5,    # Retry up to 5 times
+  retry_delay=3,    # Wait 3 seconds between retries
+)
+```
+Reconnection does not trigger if the server explicitly rejected the connection (server error).
+
+#### Batch Inference
+Batch multiple client sessions into single GPU calls for higher throughput:
+```bash
+python3 run_server.py --port 9090 --backend faster_whisper \
+  --batch_inference --batch_max_size 8 --batch_window_ms 50
+```
+
+#### Raw PCM Input
+Accept raw PCM int16 audio from clients (useful for embedded devices):
+```bash
+python3 run_server.py --port 9090 --backend faster_whisper --raw_pcm_input
+```
+Audio is automatically normalized to float32 range [-1.0, 1.0].
 
 ## Browser Extensions
 - Run the server with your desired backend as shown [here](https://github.com/collabora/WhisperLive?tab=readme-ov-file#running-the-server).
