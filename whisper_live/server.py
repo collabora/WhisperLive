@@ -653,6 +653,7 @@ class TranscriptionServer:
                 known_speaker_references: Optional[List[str]] = Form(default=None),
                 stream: bool = Form(default=False),
                 hotwords: Optional[str] = Form(default=None),
+                callback_url: Optional[str] = Form(default=None),
             ):
                 if stream:
                     return self._stream_transcription(
@@ -660,6 +661,62 @@ class TranscriptionServer:
                         timestamp_granularities, hotwords,
                         faster_whisper_custom_model_path,
                     )
+
+                if callback_url:
+                    import uuid as _uuid
+                    import urllib.request
+                    job_id = str(_uuid.uuid4())
+                    suffix = os.path.splitext(file.filename)[1] or ".wav"
+                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                    shutil.copyfileobj(file.file, tmp)
+                    tmp_path = tmp.name
+                    tmp.close()
+
+                    def _run_async_job():
+                        try:
+                            device = "cuda" if torch.cuda.is_available() else "cpu"
+                            compute_type = "float16" if device == "cuda" else "int8"
+                            model_name = faster_whisper_custom_model_path or "small"
+                            transcriber = WhisperModel(model_name, device=device, compute_type=compute_type)
+                            segments, info = transcriber.transcribe(
+                                tmp_path,
+                                language=language,
+                                initial_prompt=prompt,
+                                temperature=temperature,
+                                vad_filter=False,
+                                word_timestamps=(timestamp_granularities and "word" in timestamp_granularities),
+                                hotwords=hotwords,
+                            )
+                            text = " ".join([s.text.strip() for s in segments])
+                            payload = json.dumps({"job_id": job_id, "text": text}).encode()
+                            req = urllib.request.Request(
+                                callback_url,
+                                data=payload,
+                                headers={"Content-Type": "application/json"},
+                                method="POST",
+                            )
+                            urllib.request.urlopen(req, timeout=30)
+                            wl_metrics.track_rest_request(endpoint="transcriptions_async", status=200)
+                        except Exception as e:
+                            logging.error(f"Async job {job_id} failed: {e}")
+                            wl_metrics.track_error("async_job")
+                            try:
+                                err_payload = json.dumps({"job_id": job_id, "error": str(e)}).encode()
+                                req = urllib.request.Request(
+                                    callback_url,
+                                    data=err_payload,
+                                    headers={"Content-Type": "application/json"},
+                                    method="POST",
+                                )
+                                urllib.request.urlopen(req, timeout=30)
+                            except Exception:
+                                logging.error(f"Failed to send error callback for job {job_id}")
+                        finally:
+                            if os.path.exists(tmp_path):
+                                os.unlink(tmp_path)
+
+                    threading.Thread(target=_run_async_job, daemon=True).start()
+                    return JSONResponse({"job_id": job_id, "status": "processing"}, status_code=202)
 
                 ignored_params = []
                 if chunking_strategy:
