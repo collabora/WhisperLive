@@ -43,6 +43,14 @@ class Client:
         translation_srt_file_path="output_translated.srt",
         enable_timestamps=False,
         display_segments=4,
+        max_retries=0,
+        retry_delay=5,
+        word_timestamps=False,
+        hotwords=None,
+        enable_diarization=False,
+        max_speakers=10,
+        smart_formatting=False,
+        pii_redaction=None,
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -102,20 +110,24 @@ class Client:
         self.enable_timestamps = enable_timestamps
         self.display_segments = display_segments
 
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        self._retry_count = 0
+        self.word_timestamps = word_timestamps
+        self.hotwords = hotwords
+        self.enable_diarization = enable_diarization
+        self.max_speakers = max_speakers
+        self.smart_formatting = smart_formatting
+        self.pii_redaction = pii_redaction
+
         self.audio_bytes = None
 
         if host is not None and port is not None:
+            self.host = host
+            self.port = port
             socket_protocol = 'wss' if self.use_wss else "ws"
-            socket_url = f"{socket_protocol}://{host}:{port}"
-            self.client_socket = websocket.WebSocketApp(
-                socket_url,
-                on_open=lambda ws: self.on_open(ws),
-                on_message=lambda ws, message: self.on_message(ws, message),
-                on_error=lambda ws, error: self.on_error(ws, error),
-                on_close=lambda ws, close_status_code, close_msg: self.on_close(
-                    ws, close_status_code, close_msg
-                ),
-            )
+            self.socket_url = f"{socket_protocol}://{host}:{port}"
+            self._create_websocket()
         else:
             print("[ERROR]: No host or port specified.")
             return
@@ -130,6 +142,18 @@ class Client:
         self.transcript = []
         self.translated_transcript = []
         print("[INFO]: * recording")
+
+    def _create_websocket(self):
+        """Creates a new WebSocketApp instance."""
+        self.client_socket = websocket.WebSocketApp(
+            self.socket_url,
+            on_open=lambda ws: self.on_open(ws),
+            on_message=lambda ws, message: self.on_message(ws, message),
+            on_error=lambda ws, error: self.on_error(ws, error),
+            on_close=lambda ws, close_status_code, close_msg: self.on_close(
+                ws, close_status_code, close_msg
+            ),
+        )
 
     def handle_status_messages(self, message_data):
         """Handles server status messages."""
@@ -273,6 +297,15 @@ class Client:
         self.recording = False
         self.waiting = False
 
+        if self.max_retries > 0 and self._retry_count < self.max_retries and not self.server_error:
+            self._retry_count += 1
+            print(f"[INFO]: Reconnecting ({self._retry_count}/{self.max_retries}) in {self.retry_delay}s...")
+            time.sleep(self.retry_delay)
+            self._create_websocket()
+            self.ws_thread = threading.Thread(target=self.client_socket.run_forever)
+            self.ws_thread.daemon = True
+            self.ws_thread.start()
+
     def on_open(self, ws):
         """
         Callback function called when the WebSocket connection is successfully opened.
@@ -299,6 +332,12 @@ class Client:
                     "same_output_threshold": self.same_output_threshold,
                     "enable_translation": self.enable_translation,
                     "target_language": self.target_language,
+                    "word_timestamps": self.word_timestamps,
+                    "hotwords": self.hotwords,
+                    "enable_diarization": self.enable_diarization,
+                    "max_speakers": self.max_speakers,
+                    "smart_formatting": self.smart_formatting,
+                    "pii_redaction": self.pii_redaction,
                 }
             )
         )
@@ -820,6 +859,12 @@ class TranscriptionClient(TranscriptionTeeClient):
         translation_srt_file_path="./output_translated.srt",
         enable_timestamps=False,
         display_segments=4,
+        word_timestamps=False,
+        hotwords=None,
+        enable_diarization=False,
+        max_speakers=10,
+        smart_formatting=False,
+        pii_redaction=None,
     ):
         self.client = Client(
             host,
@@ -842,6 +887,12 @@ class TranscriptionClient(TranscriptionTeeClient):
             translation_srt_file_path=translation_srt_file_path,
             enable_timestamps=enable_timestamps,
             display_segments=display_segments,
+            word_timestamps=word_timestamps,
+            hotwords=hotwords,
+            enable_diarization=enable_diarization,
+            max_speakers=max_speakers,
+            smart_formatting=smart_formatting,
+            pii_redaction=pii_redaction,
         )
 
         if save_output_recording and not output_recording_filename.endswith(".wav"):
