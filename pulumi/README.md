@@ -1,10 +1,10 @@
 # Pulumi Whisper Live GPU Setup
 
 This project uses Pulumi to provision AWS resources necessary to deploy an ECS
-service that runs the WhisperLive service with GPU. It sets up a VPC, subnets,
-security groups, NAT gateways, an Auto Scaling Group, an ECS cluster, and
-related components required to deploy a containerized application with GPU
-support.
+service that runs the WhisperLive service with GPU. It requires an existing
+VPC and existing public subnet IDs, and creates additional subnets, security
+groups, NAT gateways, an Auto Scaling Group, an ECS cluster, and related
+components required to deploy a containerized application with GPU support.
 
 Note: This is provided for reference only! Please be sure you understand the
 costs of running GPU instances in AWS before deploying this stack. This stack
