@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhisperLive Transcription</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            text-align: center; 
+            background-color: #f3e5f5;           /* Light Purple Background */
+            margin: 0;
+            padding: 40px 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px 30px;
+            border-radius: 16px;
+            box-shadow: 0 15px 35px rgba(147, 112, 219, 0.15);
+        }
+
+        h1 {
+            color: #6a1b9a;
+            margin-bottom: 30px;
+        }
+
+        #dropZone { 
+            border: 2px dashed #b39ddb; 
+            width: 320px; 
+            height: 220px; 
+            margin: 30px auto; 
+            padding: 30px; 
+            cursor: pointer;
+            border-radius: 12px;
+            background-color: #faf0ff;
+            transition: all 0.3s;
+        }
+        
+        #dropZone.highlight { 
+            border-color: #7e57c2; 
+            background-color: #ede7f6;
+        }
+
+        #result { 
+            margin: 25px auto; 
+            white-space: pre-wrap; 
+            border: 1px solid #e1bee7; 
+            padding: 20px; 
+            max-width: 600px;
+            background: #faf0ff;
+            border-radius: 8px;
+            text-align: left;
+        }
+
+        button {
+            background-color: #8e24aa;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+        }
+
+        button:hover {
+            background-color: #6a1b9a;
+        }
+        
+        .logo {
+            width: 280px;  /* Reduced size (adjust as needed) */
+            height: auto;
+            margin-bottom: 10px;  /* Slightly reduced margin for better spacing */
+            text-align: left;     /* Align to left-hand side */
+            display: block;       /* Ensures it behaves as a block for alignment */
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <img src="/static/Collabora_Logo.svg" alt="Collabora Logo" class="logo">
+        <h1>WhisperLive Transcription</h1>
+        
+        <label for="language">Select Language (optional):</label>
+        <select id="language">
+            <option value="">Auto-detect</option>
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+        </select>
+
+        <div id="dropZone" aria-label="Drop audio file here or click to select">
+            Drop audio file here or click to select
+        </div>
+        
+        <input type="file" id="fileInput" accept="audio/*" style="display: none;">
+        
+        <div id="progress"></div>
+        <progress id="uploadProgress" value="0" max="100" style="width: 320px; display: none;"></progress>
+        
+        <div id="result"></div>
+        <button id="downloadBtn" style="display: none;">Download Transcription</button>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const progress = document.getElementById('progress');
+        const result = document.getElementById('result');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const serverUrl = '/v1/audio/transcriptions';
+
+        // Allowed audio extensions (lowercase for consistency)
+        const allowedExtensions = ['.mp3', '.wav', '.ogg', '.aac', '.flac', '.m4a', '.wma'];
+
+        // Prevent default drag behaviors
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        // Handle dragover specifically to set drop effect
+        dropZone.addEventListener('dragover', handleDragOver, false);
+
+        function handleDragOver(e) {
+            preventDefaults(e);
+            e.dataTransfer.dropEffect = 'copy'; // Enables file drop
+        }
+
+        // Highlight drop zone on drag over
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('highlight'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('highlight'), false);
+        });
+
+        // Handle drop
+        dropZone.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                const file = files[0];
+                if (isAudioFile(file)) {
+                    uploadFile(file);
+                } else {
+                    alert('Invalid file type or size exceeds 100MB. Please drop an audio file (e.g., MP3, WAV).');
+                }
+            }
+        }
+
+        // Handle click to select file (file input already has accept="audio/*")
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                if (isAudioFile(file)) {
+                    uploadFile(file);
+                    fileInput.value = ''; // Reset to allow re-selecting the same file
+                } else {
+                    alert('Invalid file type or size exceeds 100MB. Please select an audio file (e.g., MP3, WAV).');
+                    fileInput.value = ''; // Optional reset on invalid
+                }
+            }
+        });
+
+        // Helper function to validate audio file
+        function isAudioFile(file) {
+            const extension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+            const isValidType = file.type.startsWith('audio/') && allowedExtensions.includes(extension);
+            const isValidSize = file.size <= 100 * 1024 * 1024; // 100MB limit
+            return isValidType && isValidSize;
+        }
+
+        function uploadFile(file) {
+            progress.textContent = 'Uploading and transcribing...';
+            const progressBar = document.getElementById('uploadProgress');
+            progressBar.style.display = 'block';
+            progressBar.value = 0;
+            result.textContent = '';
+            downloadBtn.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('model', 'whisper-1');
+            formData.append('response_format', 'text');
+            const language = document.getElementById('language').value;
+            if (language) {
+                formData.append('language', language);
+            }
+
+            const xhr = new XMLHttpRequest(); // Use XMLHttpRequest for progress tracking (Fetch doesn't support upload progress natively)
+            xhr.open('POST', serverUrl);
+            xhr.upload.onprogress = (event) => {
+                if (event.lengthComputable) {
+                    progressBar.value = (event.loaded / event.total) * 100;
+                }
+            };
+            xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    const transcription = xhr.responseText;
+                    progress.textContent = 'Transcription complete!';
+                    result.textContent = transcription;
+                    downloadBtn.style.display = 'block';
+                    downloadBtn.onclick = () => {
+                        const blob = new Blob([transcription], { type: 'text/plain' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `${file.name.replace(/\.[^/.]+$/, "")}_transcription.txt`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                    };
+                } else {
+                    progress.textContent = `Server error: ${xhr.status}`;
+                }
+                progressBar.style.display = 'none';
+            };
+            xhr.onerror = () => {
+                progress.textContent = 'Network error occurred.';
+                progressBar.style.display = 'none';
+            };
+            xhr.send(formData);
+        }
+    </script>
+
+</body>
+</html>
