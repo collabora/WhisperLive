@@ -60,15 +60,17 @@ may not be set up to ensure security best practices, so use it at your own risk!
 6. **Define Required Configuration Variables**
 
    The Pulumi program requires certain configuration variables. Set them using
-   the `pulumi config set` command.
+   the `pulumi config set` command. The following additional values are
+   optional and only need to be set if you want to override the defaults or
+   specify a custom AMI.
 
     ```sh
     pulumi config set vpc_id <your-vpc-id>
     pulumi config set public_subnet_id_a <your-public-subnet-a-id>
     pulumi config set public_subnet_id_b <your-public-subnet-b-id>
-    pulumi config set --optional ecr_repository_url <your-ecr-repo-url>  # Default: ghcr.io/collabora/whisperlive-gpu
-    pulumi config set --optional image_tag <your-image-tag>  # Default: latest
-    pulumi config set --optional ami_id <your-ami-id> # Find the AMI ID for the desired ECS compatible GPU instance type available in your region
+    pulumi config set ecr_repository_url <your-ecr-repo-url>  # Optional; default: ghcr.io/collabora/whisperlive-gpu
+    pulumi config set image_tag <your-image-tag>  # Optional; default: latest
+    pulumi config set ami_id <your-ami-id> # Optional; find the AMI ID for the desired ECS compatible GPU instance type available in your region
     ```
 
 7. **Deploy with Pulumi**
