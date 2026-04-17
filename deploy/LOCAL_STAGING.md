@@ -88,6 +88,32 @@ docker compose -f docker-compose.local.yml up -d --scale whisperlive=4
 
 Traefik will automatically load-balance across instances with sticky sessions for WebSocket connections.
 
+## Sharing on Your Intranet
+
+Once the stack is running, anyone on the same network can use it:
+
+1. **Find your machine's IP**:
+   ```bash
+   hostname -I | awk '{print $1}'
+   ```
+
+2. **Share the URL** with your team:
+   - **Web UI**: `http://<your-ip>/` — drag-and-drop audio transcription
+   - **REST API**: `http://<your-ip>/v1/audio/transcriptions`
+   - **API Docs**: `http://<your-ip>/docs` — interactive Swagger UI
+
+3. **Test from another machine**:
+   ```bash
+   curl -X POST http://<server-ip>/v1/audio/transcriptions \
+     -H "Authorization: Bearer test-api-key" \
+     -F file=@test.wav -F model=whisper-1
+   ```
+
+The web UI uses relative URLs, so it works from any machine without reconfiguration. All requests are load-balanced across your GPU workers by Traefik.
+
+> **Firewall**: Ensure port 80 (HTTP) is open on the host machine. On most Linux systems:
+> `sudo ufw allow 80/tcp` or `sudo firewall-cmd --add-port=80/tcp --permanent`
+
 ## Cleanup
 
 ```bash
