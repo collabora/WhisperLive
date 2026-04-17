@@ -100,8 +100,8 @@ if __name__ == "__main__":
         '--api_key',
         type=str,
         default=None,
-        help='Optional API key for authenticating REST API requests. '
-             'Clients must send "Authorization: Bearer <key>" header.'
+        help='Optional API key for authenticating REST API and WebSocket connections. '
+             'Clients must send "Authorization: Bearer <key>" header or "?token=<key>" query parameter.'
     )
     parser.add_argument(
         '--rate_limit_rpm',
