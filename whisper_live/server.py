@@ -534,6 +534,15 @@ class TranscriptionServer:
                     hotwords=hotwords,
                 )
 
+                # Emit metadata event with detected language info
+                meta = {
+                    "type": "metadata",
+                    "language": info.language,
+                    "language_probability": info.language_probability,
+                    "duration": info.duration,
+                }
+                yield f"data: {json.dumps(meta)}\n\n"
+
                 for seg in segments:
                     seg_dict = {
                         "id": seg.id,
@@ -905,11 +914,16 @@ class TranscriptionServer:
                         return PlainTextResponse(text)
                     elif response_format == "json":
                         wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
-                        return {"text": text}
+                        return {
+                            "text": text,
+                            "language": info.language,
+                            "language_probability": info.language_probability,
+                        }
                     elif response_format == "verbose_json":
                         verbose = {
                             "task": "transcribe",
                             "language": info.language,
+                            "language_probability": info.language_probability,
                             "duration": info.duration,
                             "text": text,
                             "segments": []
@@ -994,6 +1008,7 @@ class TranscriptionServer:
                     )
                     analysis["text"] = text
                     analysis["language"] = info.language
+                    analysis["language_probability"] = info.language_probability
                     analysis["duration"] = info.duration
                     wl_metrics.track_rest_request(endpoint="intelligence", status=200)
                     return analysis
