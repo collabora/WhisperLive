@@ -19,8 +19,9 @@ ami_id = config.get("ami_id", "ami-0a7b82bd04a728ae5")
 
 if ami_id == "ami-0a7b82bd04a728ae5":
     logger.warning(
-        f"AMI ID {ami_id} is only valid in us-west-1 region. "
-        "If you are this region, please select another ECS compatible GPU AMI for `whisper-live:vpc_id` in the Pulumi config."
+        f"AMI ID {ami_id} is only valid in the us-west-1 region. "
+        "If you are not in this region, please select another ECS-compatible GPU AMI "
+        "for `whisper-live:ami_id` in the Pulumi config."
     )
 
 container_name = "whisper-live-gpu-container"
