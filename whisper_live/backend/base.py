@@ -11,6 +11,15 @@ class ServeClientBase(object):
     SERVER_READY = "SERVER_READY"
     DISCONNECT = "DISCONNECT"
 
+    MAX_BUFFER_DURATION_S = 45
+    """Maximum audio buffer duration in seconds before trimming."""
+    BUFFER_TRIM_DURATION_S = 30
+    """Duration in seconds to trim from the buffer when it exceeds MAX_BUFFER_DURATION_S."""
+    CLIP_THRESHOLD_DURATION_S = 25
+    """Duration threshold in seconds for clipping audio with no valid segments."""
+    CLIP_TAIL_DURATION_S = 5
+    """Duration in seconds of audio to keep after clipping."""
+
     client_uid: str
     """A unique identifier for the client."""
     websocket: object
@@ -24,6 +33,9 @@ class ServeClientBase(object):
     same_output_threshold: int
     """Number of repeated outputs before considering it as a valid segment."""
 
+    MAX_TRANSCRIPT_LENGTH = 500
+    MAX_TRANSLATION_QUEUE_SIZE = 100
+
     def __init__(
         self,
         client_uid,
@@ -33,6 +45,7 @@ class ServeClientBase(object):
         clip_audio=False,
         same_output_threshold=10,
         translation_queue=None,
+        word_timestamps=False,
     ):
         self.client_uid = client_uid
         self.websocket = websocket
@@ -40,6 +53,7 @@ class ServeClientBase(object):
         self.no_speech_thresh = no_speech_thresh
         self.clip_audio = clip_audio
         self.same_output_threshold = same_output_threshold
+        self.word_timestamps = word_timestamps
 
         self.frames = b""
         self.timestamp_offset = 0.0
@@ -107,7 +121,7 @@ class ServeClientBase(object):
     def handle_transcription_output(self, result, duration):
         raise NotImplementedError
     
-    def format_segment(self, start, end, text, completed=False):
+    def format_segment(self, start, end, text, completed=False, words=None):
         """
         Formats a transcription segment with precise start and end times alongside the transcribed text.
 
@@ -115,18 +129,22 @@ class ServeClientBase(object):
             start (float): The start time of the transcription segment in seconds.
             end (float): The end time of the transcription segment in seconds.
             text (str): The transcribed text corresponding to the segment.
+            words (list, optional): Word-level timestamps and probabilities.
 
         Returns:
             dict: A dictionary representing the formatted transcription segment, including
                 'start' and 'end' times as strings with three decimal places and the 'text'
                 of the transcription.
         """
-        return {
+        seg = {
             'start': "{:.3f}".format(start),
             'end': "{:.3f}".format(end),
             'text': text,
             'completed': completed
         }
+        if words is not None:
+            seg['words'] = words
+        return seg
 
     def add_frames(self, frame_np):
         """
@@ -145,9 +163,9 @@ class ServeClientBase(object):
 
         """
         self.lock.acquire()
-        if self.frames_np is not None and self.frames_np.shape[0] > 45*self.RATE:
-            self.frames_offset += 30.0
-            self.frames_np = self.frames_np[int(30*self.RATE):]
+        if self.frames_np is not None and self.frames_np.shape[0] > self.MAX_BUFFER_DURATION_S*self.RATE:
+            self.frames_offset += float(self.BUFFER_TRIM_DURATION_S)
+            self.frames_np = self.frames_np[int(self.BUFFER_TRIM_DURATION_S*self.RATE):]
             # check timestamp offset(should be >= self.frame_offset)
             # this basically means that there is no speech as timestamp offset hasnt updated
             # and is less than frame_offset
@@ -166,9 +184,9 @@ class ServeClientBase(object):
         no valid segment for the last 30 seconds from whisper
         """
         with self.lock:
-            if self.frames_np[int((self.timestamp_offset - self.frames_offset)*self.RATE):].shape[0] > 25 * self.RATE:
+            if self.frames_np[int((self.timestamp_offset - self.frames_offset)*self.RATE):].shape[0] > self.CLIP_THRESHOLD_DURATION_S * self.RATE:
                 duration = self.frames_np.shape[0] / self.RATE
-                self.timestamp_offset = self.frames_offset + duration - 5
+                self.timestamp_offset = self.frames_offset + duration - self.CLIP_TAIL_DURATION_S
 
     def get_audio_chunk_for_processing(self):
         """
@@ -281,6 +299,23 @@ class ServeClientBase(object):
     def get_segment_end(self, segment):
         return getattr(segment, "end", getattr(segment, "end_ts", 0))
 
+    def _extract_words(self, segment, time_offset):
+        """Extracts word-level timestamps from a segment if word_timestamps is enabled."""
+        if not self.word_timestamps:
+            return None
+        words = getattr(segment, "words", None)
+        if not words:
+            return None
+        return [
+            {
+                "word": w.word,
+                "start": "{:.3f}".format(time_offset + w.start),
+                "end": "{:.3f}".format(time_offset + w.end),
+                "probability": round(w.probability, 4),
+            }
+            for w in words
+        ]
+
     def update_segments(self, segments, duration):
         """
         Processes the segments from Whisper and updates the transcript.
@@ -310,7 +345,8 @@ class ServeClientBase(object):
                     continue
                 if self.get_segment_no_speech_prob(s) > self.no_speech_thresh:
                     continue
-                completed_segment = self.format_segment(start, end, text_, completed=True)
+                words = self._extract_words(s, self.timestamp_offset)
+                completed_segment = self.format_segment(start, end, text_, completed=True, words=words)
                 self.transcript.append(completed_segment)
 
                 if self.translation_queue:
@@ -323,12 +359,14 @@ class ServeClientBase(object):
         # Process the last segment if its no_speech_prob is acceptable.
         if self.get_segment_no_speech_prob(segments[-1]) <= self.no_speech_thresh:
             self.current_out += segments[-1].text
+            words = self._extract_words(segments[-1], self.timestamp_offset)
             with self.lock:
                 last_segment = self.format_segment(
                     self.timestamp_offset + self.get_segment_start(segments[-1]),
                     self.timestamp_offset + min(duration, self.get_segment_end(segments[-1])),
                     self.current_out,
-                    completed=False
+                    completed=False,
+                    words=words
                 )
 
         # Handle repeated output logic.
@@ -376,4 +414,12 @@ class ServeClientBase(object):
             with self.lock:
                 self.timestamp_offset += offset
 
+        self._trim_transcript()
         return last_segment
+
+    def _trim_transcript(self):
+        """Trims transcript and text lists to prevent unbounded memory growth."""
+        if len(self.transcript) > self.MAX_TRANSCRIPT_LENGTH:
+            self.transcript = self.transcript[-self.MAX_TRANSCRIPT_LENGTH:]
+        if len(self.text) > self.MAX_TRANSCRIPT_LENGTH:
+            self.text = self.text[-self.MAX_TRANSCRIPT_LENGTH:]
