@@ -206,7 +206,7 @@ launch_template = aws.ec2.LaunchTemplate(
     block_device_mappings=[aws.ec2.LaunchTemplateBlockDeviceMappingArgs(
         device_name="/dev/xvda",  # or the device name for your AMI
         ebs=aws.ec2.LaunchTemplateBlockDeviceMappingEbsArgs(
-            delete_on_termination="true",
+            delete_on_termination=True,
             volume_size=60,  # Specify your desired volume size in GiB
             volume_type="gp3"
         ),
