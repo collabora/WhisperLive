@@ -46,6 +46,7 @@ class Client:
         max_retries=0,
         retry_delay=5,
         word_timestamps=False,
+        hotwords=None,
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -109,6 +110,7 @@ class Client:
         self.retry_delay = retry_delay
         self._retry_count = 0
         self.word_timestamps = word_timestamps
+        self.hotwords = hotwords
 
         self.audio_bytes = None
 
@@ -323,6 +325,7 @@ class Client:
                     "enable_translation": self.enable_translation,
                     "target_language": self.target_language,
                     "word_timestamps": self.word_timestamps,
+                    "hotwords": self.hotwords,
                 }
             )
         )
@@ -845,6 +848,7 @@ class TranscriptionClient(TranscriptionTeeClient):
         enable_timestamps=False,
         display_segments=4,
         word_timestamps=False,
+        hotwords=None,
     ):
         self.client = Client(
             host,
@@ -868,6 +872,7 @@ class TranscriptionClient(TranscriptionTeeClient):
             enable_timestamps=enable_timestamps,
             display_segments=display_segments,
             word_timestamps=word_timestamps,
+            hotwords=hotwords,
         )
 
         if save_output_recording and not output_recording_filename.endswith(".wav"):
