@@ -142,3 +142,27 @@ export AWS_ENDPOINT_URL="https://localhost:9000"
 # Use --no-verify-ssl for self-signed certs
 aws s3 ls s3://whisperlive/ --no-verify-ssl
 ```
+
+## Troubleshooting
+
+### "docker: Error response from daemon: could not select device driver"
+NVIDIA Container Toolkit isn't installed. Follow the [install guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+
+### MinIO "connection refused" or TLS errors
+The MinIO container needs ~30s to build from source on first run. Check status:
+```bash
+docker compose -f docker-compose.local.yml logs minio
+docker compose -f docker-compose.local.yml logs minio-init
+```
+
+### WhisperLive can't connect to MinIO
+The `minio-init` service must complete before WhisperLive starts (enforced by `depends_on`). If it fails:
+```bash
+docker compose -f docker-compose.local.yml restart minio-init
+```
+
+### Out of GPU memory
+Reduce `--max_clients` in `docker-compose.local.yml` or use a smaller model (default is `small`).
+
+### Port conflicts
+If ports 80, 8080, 9000, 9001, 9091, or 3000 are in use, edit `docker-compose.local.yml` to change the host-side port mappings.
