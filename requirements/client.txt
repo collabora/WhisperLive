@@ -2,3 +2,4 @@ PyAudio
 av
 scipy
 websocket-client
+librosa
