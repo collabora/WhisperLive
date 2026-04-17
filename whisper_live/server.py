@@ -514,6 +514,88 @@ class TranscriptionServer:
 
         return StreamingResponse(_sse_generator(), media_type="text/event-stream")
 
+    def _multichannel_transcribe(self, file, language, prompt, temperature,
+                                  timestamp_granularities, hotwords,
+                                  faster_whisper_custom_model_path,
+                                  channel_labels_str):
+        """Transcribe each audio channel independently and return merged results."""
+        from whisper_live.multichannel import detect_channels_from_wav, split_channels, merge_channel_segments
+        import soundfile as sf
+
+        tmp_path = None
+        try:
+            suffix = os.path.splitext(file.filename)[1] or ".wav"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                shutil.copyfileobj(file.file, tmp)
+                tmp_path = tmp.name
+
+            # Read audio with soundfile for proper channel handling
+            audio_data, sample_rate = sf.read(tmp_path, dtype="float32")
+            if audio_data.ndim == 1:
+                num_channels = 1
+                channel_arrays = [audio_data]
+            else:
+                num_channels = audio_data.shape[1]
+                channel_arrays = [audio_data[:, ch] for ch in range(num_channels)]
+
+            labels = None
+            if channel_labels_str:
+                labels = [l.strip() for l in channel_labels_str.split(",")]
+
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            compute_type = "float16" if device == "cuda" else "int8"
+            model_name = faster_whisper_custom_model_path or "small"
+            transcriber = WhisperModel(model_name, device=device, compute_type=compute_type)
+
+            all_channel_segments = []
+            for ch_idx, ch_audio in enumerate(channel_arrays):
+                # Write each channel to a temp mono file
+                ch_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+                sf.write(ch_tmp.name, ch_audio, sample_rate)
+                ch_tmp.close()
+
+                segments, info = transcriber.transcribe(
+                    ch_tmp.name,
+                    language=language,
+                    initial_prompt=prompt,
+                    temperature=temperature,
+                    vad_filter=False,
+                    word_timestamps=(timestamp_granularities and "word" in timestamp_granularities),
+                    hotwords=hotwords,
+                )
+
+                ch_segs = []
+                for seg in segments:
+                    seg_dict = {
+                        "start": seg.start,
+                        "end": seg.end,
+                        "text": seg.text.strip(),
+                    }
+                    if timestamp_granularities and "word" in timestamp_granularities:
+                        seg_dict["words"] = [
+                            {"word": w.word, "start": w.start, "end": w.end, "probability": w.probability}
+                            for w in seg.words
+                        ]
+                    ch_segs.append(seg_dict)
+
+                all_channel_segments.append(ch_segs)
+                os.unlink(ch_tmp.name)
+
+            merged = merge_channel_segments(all_channel_segments, labels)
+            wl_metrics.track_rest_request(endpoint="transcriptions_multichannel", status=200)
+            return {
+                "channels": num_channels,
+                "segments": merged,
+                "text": " ".join(seg["text"] for seg in merged),
+            }
+        except Exception as e:
+            wl_metrics.track_rest_request(endpoint="transcriptions_multichannel", status=500)
+            wl_metrics.track_error("multichannel")
+            return JSONResponse({"error": str(e)}, status_code=500)
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
     def run(self,
             host,
             port=9090,
@@ -654,6 +736,8 @@ class TranscriptionServer:
                 stream: bool = Form(default=False),
                 hotwords: Optional[str] = Form(default=None),
                 callback_url: Optional[str] = Form(default=None),
+                multichannel: bool = Form(default=False),
+                channel_labels: Optional[str] = Form(default=None),
             ):
                 if stream:
                     return self._stream_transcription(
@@ -717,6 +801,14 @@ class TranscriptionServer:
 
                     threading.Thread(target=_run_async_job, daemon=True).start()
                     return JSONResponse({"job_id": job_id, "status": "processing"}, status_code=202)
+
+                if multichannel:
+                    return self._multichannel_transcribe(
+                        file, language, prompt, temperature,
+                        timestamp_granularities, hotwords,
+                        faster_whisper_custom_model_path,
+                        channel_labels,
+                    )
 
                 ignored_params = []
                 if chunking_strategy:
