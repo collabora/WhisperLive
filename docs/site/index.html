@@ -969,7 +969,7 @@
                 <p>Inference Backends</p>
             </div>
             <div class="stat-cell">
-                <h3>20+</h3>
+                <h3>30+</h3>
                 <p>Production Features</p>
             </div>
             <div class="stat-cell">
@@ -1136,6 +1136,66 @@
                 <p>Auto-detect spoken language with confidence scores. Every response includes language code and probability.</p>
                 <span class="feature-tag tag-core">Core</span>
             </div>
+            <div class="feature-card">
+                <span class="f-icon">&#10024;</span>
+                <h3>Auto-Highlights</h3>
+                <p>Extract key phrases and important terms from transcripts using TF-scored n-gram analysis.</p>
+                <span class="feature-tag tag-ai">AI</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#128218;</span>
+                <h3>Auto-Chapters</h3>
+                <p>Segment long transcripts into titled chapters with auto-generated summaries based on topic shifts.</p>
+                <span class="feature-tag tag-ai">AI</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#128172;</span>
+                <h3>Utterance Detection</h3>
+                <p>Detect natural speech boundaries &mdash; complete thoughts vs. pauses. Speaker-aware with punctuation analysis.</p>
+                <span class="feature-tag tag-core">Core</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#182;</span>
+                <h3>Auto-Paragraphs</h3>
+                <p>Group utterances into coherent paragraphs based on pauses, speaker changes, and sentence count.</p>
+                <span class="feature-tag tag-core">Core</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#128263;</span>
+                <h3>Filler Word Removal</h3>
+                <p>Strip um, uh, hmm, &ldquo;you know&rdquo;, &ldquo;I mean&rdquo; from transcripts. Conservative or aggressive mode.</p>
+                <span class="feature-tag tag-core">Core</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#128270;</span>
+                <h3>Find &amp; Replace</h3>
+                <p>Custom term substitutions with plain text or regex patterns. Fix domain-specific terminology automatically.</p>
+                <span class="feature-tag tag-core">Core</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#128221;</span>
+                <h3>Spelling Hints</h3>
+                <p>Correct ASR mis-spellings of proper nouns and technical terms. &ldquo;cube ernestes&rdquo; &rarr; Kubernetes.</p>
+                <span class="feature-tag tag-core">Core</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#128269;</span>
+                <h3>Transcript Search</h3>
+                <p>Full-text search across stored transcriptions. Filter by user, language, model, tags, and time range.</p>
+                <span class="feature-tag tag-enterprise">Enterprise</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#127991;</span>
+                <h3>Tagging</h3>
+                <p>Add key-value metadata tags to any transcript for organization, filtering, and project tracking.</p>
+                <span class="feature-tag tag-enterprise">Enterprise</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#128200;</span>
+                <h3>Usage &amp; Billing API</h3>
+                <p>Track API usage per user &mdash; requests, audio minutes, characters. Breakdowns by model and language.</p>
+                <span class="feature-tag tag-enterprise">Enterprise</span>
+            </div>
         </div>
     </div>
 </section>
@@ -1179,6 +1239,26 @@
             <div class="ent-card">
                 <h3>&#128051; Docker Everything</h3>
                 <p>Dockerfiles for GPU, CPU, TensorRT, OpenVINO, Edge, and Jetson. One command from zero to production.</p>
+            </div>
+            <div class="ent-card">
+                <h3>&#128101; Multi-User ACL</h3>
+                <p>Role-based access control (admin/user/readonly), per-user API keys with SHA-256 hashing, rate limits, and monthly quotas.</p>
+            </div>
+            <div class="ent-card">
+                <h3>&#128274; JWT / SSO</h3>
+                <p>Authenticate via Keycloak, Cognito, Auth0, or Okta. RS256 JWKS and HS256 support. Combined with local API keys.</p>
+            </div>
+            <div class="ent-card">
+                <h3>&#128276; Reliable Webhooks</h3>
+                <p>Async transcription callbacks with exponential backoff retry. Smart retry &mdash; no retry on 4xx, retry on 5xx and 429.</p>
+            </div>
+            <div class="ent-card">
+                <h3>&#128451; S3 / MinIO Storage</h3>
+                <p>Pluggable storage backends for audio and results. S3, MinIO, or local filesystem. GDPR deletion endpoints included.</p>
+            </div>
+            <div class="ent-card">
+                <h3>&#9889; Terraform Deploy</h3>
+                <p>One-command AWS deployment &mdash; VPC, ALB, ECS with GPU, S3, CloudWatch. Full infrastructure as code.</p>
             </div>
         </div>
     </div>
