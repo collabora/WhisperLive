@@ -11,7 +11,8 @@ import tempfile
 from typing import Optional, List
 from fastapi import FastAPI, UploadFile, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.responses import PlainTextResponse, JSONResponse, StreamingResponse
 import uvicorn
 from faster_whisper import WhisperModel
@@ -1099,6 +1100,18 @@ class TranscriptionServer:
                     wl_metrics.track_rest_request(endpoint="intelligence", status=500)
                     wl_metrics.track_error("intelligence")
                     return JSONResponse({"error": str(e)}, status_code=500)
+
+            # Serve the web transcription UI from the web/ directory
+            web_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
+            if os.path.isdir(web_dir):
+                @app.get("/", response_class=HTMLResponse)
+                async def serve_index():
+                    index_path = os.path.join(web_dir, "index.html")
+                    with open(index_path) as f:
+                        return f.read()
+
+                app.mount("/static", StaticFiles(directory=web_dir), name="static-web")
+                logging.info(f"📄 Web transcription UI available at http://0.0.0.0:{rest_port}/")
 
             threading.Thread(
                 target=uvicorn.run,
