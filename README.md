@@ -34,6 +34,21 @@ input from microphone and pre-recorded audio files.
   - [Plugin Architecture](#plugin-architecture)
   - [Multi-Model Ensemble](#multi-model-ensemble)
   - [Live Translation Relay](#live-translation-relay)
+- [REST API Features](#rest-api-features)
+  - [Smart Formatting](#smart-formatting)
+  - [Find & Replace](#find--replace)
+  - [Filler Word Removal](#filler-word-removal)
+  - [Custom Spelling Hints](#custom-spelling-hints)
+  - [Utterance Detection](#utterance-detection)
+  - [Auto-Paragraphs](#auto-paragraphs)
+  - [Auto-Highlights / Key Phrases](#auto-highlights--key-phrases)
+  - [Auto-Chapters](#auto-chapters)
+  - [Audio Intelligence](#audio-intelligence)
+  - [Transcript Search](#transcript-search)
+  - [Tagging](#tagging)
+  - [Usage Tracking](#usage-tracking)
+  - [Webhook Callbacks](#webhook-callbacks)
+- [User Management & ACL](#user-management--acl)
 - [Client SDKs](#client-sdks)
 - [Browser Extensions](#browser-extensions)
 - [Edge & Embedded Deployment](#edge--embedded-deployment)
@@ -416,6 +431,195 @@ client = TranscriptionClient(
 )
 ```
 Enrolled speaker embeddings are matched against live audio using cosine similarity. Segments are labeled with known speaker names instead of generic `SPEAKER_00` labels.
+
+### REST API Features
+
+All REST API features are available on the `/v1/audio/transcriptions` endpoint when the server is started with `--enable_rest`. Parameters are passed as form fields.
+
+#### Smart Formatting
+Automatically converts spoken forms to written forms:
+- **Currency:** `50 dollars` → `$50`, `200 euros` → `€200`
+- **Percentages:** `25 percent` → `25%`
+- **Ordinals:** `first` → `1st`, `twentieth` → `20th`
+- **Dates:** Month names properly capitalized
+- **Numbers:** `twenty one` → `21` (always enabled)
+
+```bash
+curl -X POST http://localhost:9090/v1/audio/transcriptions \
+  -H "Authorization: Bearer $API_KEY" \
+  -F file=@audio.wav -F model=small -F smart_format=true
+```
+
+#### Find & Replace
+Apply custom term substitutions to transcription output:
+```bash
+curl -X POST http://localhost:9090/v1/audio/transcriptions \
+  -H "Authorization: Bearer $API_KEY" \
+  -F file=@audio.wav -F model=small \
+  -F 'find_replace=[{"find":"Acme Corp","replace":"ACME Corporation"},{"find":"gonna","replace":"going to"}]'
+```
+Supports regex patterns when `use_regex=true` in the JSON objects.
+
+#### Filler Word Removal
+Strip filler words (um, uh, hmm, er) from transcription output:
+```bash
+curl -X POST http://localhost:9090/v1/audio/transcriptions \
+  -H "Authorization: Bearer $API_KEY" \
+  -F file=@audio.wav -F model=small -F remove_fillers=true
+```
+Conservative mode removes `um`, `uh`, `hmm`, `er`, `ah`, `you know`, `I mean`, `sort of`, `kind of`.
+
+#### Custom Spelling Hints
+Correct common ASR mis-spellings of proper nouns and technical terms:
+```bash
+curl -X POST http://localhost:9090/v1/audio/transcriptions \
+  -H "Authorization: Bearer $API_KEY" \
+  -F file=@audio.wav -F model=small \
+  -F 'spelling_hints={"cube ernestes":"Kubernetes","pie torch":"PyTorch"}'
+```
+
+#### Utterance Detection
+Detect natural speech boundaries (complete thoughts/sentences) beyond simple silence detection. Uses pause duration, sentence-ending punctuation, speaker changes, and maximum utterance length:
+```bash
+curl -X POST http://localhost:9090/v1/audio/transcriptions \
+  -H "Authorization: Bearer $API_KEY" \
+  -F file=@audio.wav -F model=small \
+  -F response_format=verbose_json -F detect_utterances=true
+```
+Response includes an `utterances` array with `text`, `start`, `end`, and `is_final` fields.
+
+#### Auto-Paragraphs
+Group utterances into coherent paragraphs based on long pauses, speaker changes, and sentence count:
+```bash
+curl -X POST http://localhost:9090/v1/audio/transcriptions \
+  -H "Authorization: Bearer $API_KEY" \
+  -F file=@audio.wav -F model=small \
+  -F response_format=verbose_json -F detect_paragraphs=true
+```
+Response includes a `paragraphs` array, each with `text`, `start`, `end`, and `sentences`.
+
+#### Auto-Highlights / Key Phrases
+Extract the most important phrases from a transcript using TF-scored n-grams:
+```bash
+curl -X POST http://localhost:9090/v1/audio/intelligence \
+  -H "Authorization: Bearer $API_KEY" \
+  -F file=@audio.wav -F model=small -F highlights=true
+```
+Response:
+```json
+{
+  "highlights": [
+    {"text": "machine learning", "count": 5, "rank": 1},
+    {"text": "data analysis", "count": 3, "rank": 2}
+  ]
+}
+```
+
+#### Auto-Chapters
+Automatically segment long transcripts into titled chapters with summaries:
+```bash
+curl -X POST http://localhost:9090/v1/audio/intelligence \
+  -H "Authorization: Bearer $API_KEY" \
+  -F file=@audio.wav -F model=small -F auto_chapters=true
+```
+Response:
+```json
+{
+  "chapters": [
+    {
+      "start": 0.0,
+      "end": 120.5,
+      "title": "Project Overview Discussion",
+      "summary": "The team discussed the current state of the project.",
+      "text": "..."
+    }
+  ]
+}
+```
+
+#### Audio Intelligence
+Full NLP analysis pipeline combining sentiment, topics, entities, and summarization:
+```bash
+curl -X POST http://localhost:9090/v1/audio/intelligence \
+  -H "Authorization: Bearer $API_KEY" \
+  -F file=@audio.wav -F model=small \
+  -F sentiment=true -F topics=true -F entities=true \
+  -F summary=true -F highlights=true -F auto_chapters=true
+```
+
+#### Transcript Search
+Search across stored transcriptions by text content and metadata:
+```bash
+# Full-text search
+curl "http://localhost:9090/v1/search?query=quarterly+revenue" \
+  -H "Authorization: Bearer $API_KEY"
+
+# Filter by language and tags
+curl "http://localhost:9090/v1/search?language=en&tag_key=type&tag_value=meeting" \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+#### Tagging
+Add metadata tags to stored transcripts for organization and filtering:
+```bash
+# Add tags
+curl -X POST http://localhost:9090/v1/transcripts/JOB_ID/tags \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"tags": {"project": "alpha", "type": "meeting", "priority": "high"}}'
+
+# Remove tags
+curl -X DELETE http://localhost:9090/v1/transcripts/JOB_ID/tags \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"keys": ["priority"]}'
+```
+
+#### Usage Tracking
+Query API usage statistics for billing and analytics:
+```bash
+# Your own usage (current month)
+curl "http://localhost:9090/v1/usage" \
+  -H "Authorization: Bearer $API_KEY"
+
+# Admin: all users' usage
+curl "http://localhost:9090/v1/usage" \
+  -H "Authorization: Bearer $ADMIN_KEY"
+```
+Returns total requests, audio minutes, characters, and breakdowns by model and language.
+
+#### Webhook Callbacks
+For async transcription, provide a `callback_url` to receive results via POST webhook:
+```bash
+curl -X POST http://localhost:9090/v1/audio/transcriptions \
+  -H "Authorization: Bearer $API_KEY" \
+  -F file=@long_recording.wav -F model=small \
+  -F callback_url=https://your-server.com/webhook
+```
+Webhooks include automatic retry with exponential backoff (up to 3 retries). 4xx errors are not retried (except 429 rate limit).
+
+### User Management & ACL
+
+WhisperLive includes multi-user access control with roles, per-user API keys, rate limits, quotas, and JWT support for enterprise identity providers.
+
+```bash
+# Enable user management
+python run_server.py --user_store users.json --enable_rest --port 9090
+
+# With Keycloak SSO
+python run_server.py \
+  --jwt_jwks_url "https://keycloak.example.com/realms/main/protocol/openid-connect/certs" \
+  --jwt_issuer "https://keycloak.example.com/realms/main" \
+  --jwt_audience "whisperlive"
+```
+
+| Role | Transcribe | Read | Admin API |
+|------|-----------|------|-----------|
+| `admin` | ✅ | ✅ | ✅ |
+| `user` | ✅ | ✅ | ❌ |
+| `readonly` | ❌ | ✅ | ❌ |
+
+See [User Management docs](docs/USER_MANAGEMENT.md) and [Keycloak SSO guide](docs/KEYCLOAK_SSO.md) for full setup.
 
 ## Client SDKs
 Official client libraries for multiple languages:
