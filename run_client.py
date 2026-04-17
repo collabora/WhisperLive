@@ -33,7 +33,8 @@ if __name__ == '__main__':
                           help='Language code for transcription, e.g., "en" for English.')
     parser.add_argument('--translate', '-t',
                           action='store_true',
-                          help='Enable translation of the transcription output.')
+                          help='Use Whisper built-in translation to English (sets task=translate). '
+                              'For any-to-any translation, use --enable_translation instead.')
     parser.add_argument('--mute_audio_playback', '-a',
                           action='store_true',
                           help='Mute audio playback during transcription.') 
@@ -42,7 +43,7 @@ if __name__ == '__main__':
                           help='Save the output recording, only used for microphone input.')
     parser.add_argument('--enable_translation',
                           action='store_true',
-                          help='Enable translation of the transcription output.')
+                          help='Enable any-to-any translation via M2M100 model (separate from Whisper --translate).')
     parser.add_argument('--target_language', '-tl',
                           type=str,
                           default='fr',
@@ -56,6 +57,12 @@ if __name__ == '__main__':
                           help='Number of transcript segments to display in terminal (default: 4).')
 
     args = parser.parse_args()
+
+    if args.translate and args.enable_translation:
+        print("[WARN]: Both --translate and --enable_translation are set. "
+              "--translate uses Whisper's built-in to-English translation, "
+              "while --enable_translation uses M2M100 for any-to-any. "
+              "Both will be active.")
 
     client = TranscriptionClient(
         args.server,
