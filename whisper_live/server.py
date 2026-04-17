@@ -343,11 +343,16 @@ class TranscriptionServer:
             return None
         try:
             from whisper_live.diarization import SpeakerDiarizer
-            return SpeakerDiarizer(
+            diarizer = SpeakerDiarizer(
                 similarity_threshold=options.get("diarization_threshold", 0.55),
                 max_speakers=options.get("max_speakers", 10),
                 hf_token=options.get("hf_token"),
             )
+            # Enroll known speakers if provided
+            known_refs = options.get("known_speaker_refs")
+            if known_refs and isinstance(known_refs, dict):
+                diarizer.enroll_speakers_from_files(known_refs)
+            return diarizer
         except ImportError:
             logging.warning("pyannote.audio not installed; diarization disabled")
             return None

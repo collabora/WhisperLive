@@ -140,3 +140,66 @@ class SpeakerDiarizer:
         """Reset all speaker state."""
         self.speakers.clear()
         self._speaker_count = 0
+
+    def enroll_speaker(self, name, audio_np, sample_rate=16000):
+        """Enroll a known speaker from a reference audio clip.
+
+        After enrollment, segments matching this speaker will be labeled
+        with the provided name instead of a generic "SPEAKER_XX" label.
+
+        Args:
+            name (str): Human-readable name for the speaker (e.g. "Alice").
+            audio_np (np.ndarray): 1-D float32 reference audio clip
+                (recommended 2-10 seconds).
+            sample_rate (int): Sample rate of the reference audio.
+
+        Returns:
+            bool: True if enrollment succeeded, False if audio was too short.
+
+        Raises:
+            ImportError: If pyannote.audio is not installed.
+        """
+        embedding = self._compute_embedding(audio_np, sample_rate)
+        if embedding is None:
+            return False
+
+        self.speakers[name] = embedding
+        logging.info(f"Enrolled known speaker: {name}")
+        return True
+
+    def enroll_speakers_from_files(self, speaker_refs, sample_rate=16000):
+        """Enroll multiple speakers from audio file paths or numpy arrays.
+
+        Args:
+            speaker_refs (dict): Mapping of speaker name -> audio data.
+                Values can be:
+                - np.ndarray: Raw audio array
+                - str: File path to audio file
+            sample_rate (int): Default sample rate for raw arrays.
+
+        Returns:
+            dict: Mapping of speaker name -> success (bool).
+        """
+        results = {}
+        for name, audio in speaker_refs.items():
+            if isinstance(audio, str):
+                # Load from file path
+                try:
+                    import soundfile as sf
+                    data, sr = sf.read(audio, dtype="float32")
+                    if data.ndim > 1:
+                        data = data[:, 0]  # Take first channel
+                    results[name] = self.enroll_speaker(name, data, sr)
+                except Exception as e:
+                    logging.error(f"Failed to enroll speaker '{name}' from file: {e}")
+                    results[name] = False
+            elif isinstance(audio, np.ndarray):
+                results[name] = self.enroll_speaker(name, audio, sample_rate)
+            else:
+                logging.error(f"Unsupported audio type for speaker '{name}': {type(audio)}")
+                results[name] = False
+        return results
+
+    def get_enrolled_speakers(self):
+        """Return list of currently enrolled speaker names."""
+        return list(self.speakers.keys())
