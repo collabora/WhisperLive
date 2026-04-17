@@ -1038,6 +1038,8 @@ class TranscriptionServer:
                 detect_paragraphs: bool = Form(default=False),
                 smart_format: bool = Form(default=False),
                 find_replace: Optional[str] = Form(default=None),
+                remove_fillers: bool = Form(default=False),
+                spelling_hints: Optional[str] = Form(default=None),
             ):
                 if stream:
                     return self._stream_transcription(
@@ -1048,7 +1050,7 @@ class TranscriptionServer:
 
                 if callback_url:
                     import uuid as _uuid
-                    import urllib.request
+                    from whisper_live.webhook import send_webhook
                     job_id = str(_uuid.uuid4())
                     suffix = os.path.splitext(file.filename)[1] or ".wav"
                     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
@@ -1072,29 +1074,13 @@ class TranscriptionServer:
                                 hotwords=hotwords,
                             )
                             text = " ".join([s.text.strip() for s in segments])
-                            payload = json.dumps({"job_id": job_id, "text": text}).encode()
-                            req = urllib.request.Request(
-                                callback_url,
-                                data=payload,
-                                headers={"Content-Type": "application/json"},
-                                method="POST",
-                            )
-                            urllib.request.urlopen(req, timeout=30)
+                            payload = {"job_id": job_id, "text": text}
+                            send_webhook(callback_url, payload)
                             wl_metrics.track_rest_request(endpoint="transcriptions_async", status=200)
                         except Exception as e:
                             logging.error(f"Async job {job_id} failed: {e}")
                             wl_metrics.track_error("async_job")
-                            try:
-                                err_payload = json.dumps({"job_id": job_id, "error": str(e)}).encode()
-                                req = urllib.request.Request(
-                                    callback_url,
-                                    data=err_payload,
-                                    headers={"Content-Type": "application/json"},
-                                    method="POST",
-                                )
-                                urllib.request.urlopen(req, timeout=30)
-                            except Exception:
-                                logging.error(f"Failed to send error callback for job {job_id}")
+                            send_webhook(callback_url, {"job_id": job_id, "error": str(e)})
                         finally:
                             if os.path.exists(tmp_path):
                                 os.unlink(tmp_path)
@@ -1160,11 +1146,25 @@ class TranscriptionServer:
                     os.unlink(tmp_path)
 
                     # Apply smart formatting and find & replace
-                    if smart_format or find_replace:
+                    if smart_format or find_replace or remove_fillers or spelling_hints:
                         from whisper_live.formatting import (
                             format_transcript as _fmt,
                             find_and_replace as _fnr,
                         )
+                        from whisper_live.audio_intelligence import (
+                            remove_filler_words,
+                            apply_spelling_hints,
+                        )
+                        if remove_fillers:
+                            text = remove_filler_words(text)
+                        if spelling_hints:
+                            import json as _json
+                            try:
+                                hints = _json.loads(spelling_hints)
+                                if isinstance(hints, dict):
+                                    text = apply_spelling_hints(text, hints)
+                            except (ValueError, TypeError):
+                                pass
                         if smart_format:
                             text = _fmt(text, smart=True)
                         if find_replace:
@@ -1261,10 +1261,16 @@ class TranscriptionServer:
                 topics: bool = Form(default=True),
                 entities: bool = Form(default=True),
                 summary: bool = Form(default=True),
+                highlights: bool = Form(default=False),
+                auto_chapters: bool = Form(default=False),
                 summary_sentences: int = Form(default=3),
                 topic_count: int = Form(default=5),
+                max_highlights: int = Form(default=10),
             ):
-                from whisper_live.audio_intelligence import analyze_transcript
+                from whisper_live.audio_intelligence import (
+                    analyze_transcript,
+                    generate_chapters,
+                )
                 try:
                     suffix = os.path.splitext(file.filename)[1] or ".wav"
                     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -1283,6 +1289,10 @@ class TranscriptionServer:
                         vad_filter=False,
                     )
                     text = " ".join([s.text.strip() for s in segments])
+                    seg_dicts = [
+                        {"text": s.text.strip(), "start": s.start, "end": s.end}
+                        for s in segments
+                    ]
                     os.unlink(tmp_path)
 
                     analysis = analyze_transcript(
@@ -1291,9 +1301,13 @@ class TranscriptionServer:
                         topics=topics,
                         entities=entities,
                         summary=summary,
+                        highlights=highlights,
                         summary_sentences=summary_sentences,
                         topic_count=topic_count,
+                        max_highlights=max_highlights,
                     )
+                    if auto_chapters:
+                        analysis["chapters"] = generate_chapters(seg_dicts)
                     analysis["text"] = text
                     analysis["language"] = info.language
                     analysis["language_probability"] = info.language_probability
