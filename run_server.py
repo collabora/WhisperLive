@@ -84,6 +84,98 @@ if __name__ == "__main__":
         default=50,
         help='Maximum time in ms to wait for batch to fill (default: 50).'
     )
+    parser.add_argument(
+        '--raw_pcm_input',
+        action='store_true',
+        help='Expect raw PCM int16 audio from clients instead of float32. '
+             'Audio will be normalized to float32 range [-1.0, 1.0].'
+    )
+    parser.add_argument(
+        '--api_key',
+        type=str,
+        default=None,
+        help='Optional API key for authenticating REST API requests. '
+             'Clients must send "Authorization: Bearer <key>" header.'
+    )
+    parser.add_argument(
+        '--rate_limit_rpm',
+        type=int,
+        default=0,
+        help='Maximum REST API requests per minute per client IP. 0 = unlimited (default).'
+    )
+    parser.add_argument(
+        '--metrics_port',
+        type=int,
+        default=0,
+        help='Port for Prometheus /metrics endpoint. 0 = disabled (default). Requires prometheus_client.'
+    )
+    parser.add_argument(
+        '--noise_reduction',
+        type=str,
+        default=None,
+        choices=['near_field', 'far_field'],
+        help='Enable audio noise reduction. "near_field" for close-mic, "far_field" for distant audio. Requires noisereduce.'
+    )
+    parser.add_argument(
+        '--json_logs',
+        action='store_true',
+        help='Emit structured JSON logs (for CloudWatch, ELK, or similar). Default: human-readable.'
+    )
+    parser.add_argument(
+        '--storage_backend',
+        type=str,
+        default='local',
+        choices=['local', 's3'],
+        help='Storage backend for audio files and results. "local" (default) or "s3".'
+    )
+    parser.add_argument(
+        '--storage_bucket',
+        type=str,
+        default=None,
+        help='S3 bucket name (required when --storage_backend=s3).'
+    )
+    parser.add_argument(
+        '--storage_prefix',
+        type=str,
+        default='whisperlive/',
+        help='S3 key prefix for stored files. Default: "whisperlive/".'
+    )
+    parser.add_argument(
+        '--data_retention_days',
+        type=int,
+        default=0,
+        help='Auto-delete stored data older than N days. 0 = disabled (default).'
+    )
+    parser.add_argument(
+        '--user_store',
+        type=str,
+        default=None,
+        help='Path to JSON file for user management. Enables multi-user API keys with roles/quotas.'
+    )
+    parser.add_argument(
+        '--jwt_jwks_url',
+        type=str,
+        default=None,
+        help='JWKS URL for JWT validation (Cognito, Auth0, Keycloak). Requires PyJWT[crypto].'
+    )
+    parser.add_argument(
+        '--jwt_secret',
+        type=str,
+        default=None,
+        help='Shared secret for HS256 JWT validation.'
+    )
+    parser.add_argument(
+        '--jwt_audience',
+        type=str,
+        default=None,
+        help='Expected JWT audience claim.'
+    )
+    parser.add_argument(
+        '--jwt_issuer',
+        type=str,
+        default=None,
+        help='Expected JWT issuer claim.'
+    )
     args = parser.parse_args()
 
     if args.backend == "tensorrt":
@@ -113,4 +205,19 @@ if __name__ == "__main__":
         batch_enabled=args.batch_inference,
         batch_max_size=args.batch_max_size,
         batch_window_ms=args.batch_window_ms,
+        raw_pcm_input=args.raw_pcm_input,
+        api_key=args.api_key,
+        rate_limit_rpm=args.rate_limit_rpm,
+        metrics_port=args.metrics_port,
+        noise_reduction=args.noise_reduction,
+        json_logs=args.json_logs,
+        storage_backend=args.storage_backend,
+        storage_bucket=args.storage_bucket,
+        storage_prefix=args.storage_prefix,
+        data_retention_days=args.data_retention_days,
+        user_store_path=args.user_store,
+        jwt_jwks_url=args.jwt_jwks_url,
+        jwt_secret=args.jwt_secret,
+        jwt_audience=args.jwt_audience,
+        jwt_issuer=args.jwt_issuer,
     )
