@@ -537,8 +537,18 @@ class TranscriptionServer:
             ):
                 if stream:
                     return JSONResponse({"error": "Streaming not supported in this backend."}, status_code=400)
-                if chunking_strategy or known_speaker_names or known_speaker_references:
-                    logging.warning("Diarization/chunking params ignored; not supported.")
+
+                ignored_params = []
+                if chunking_strategy:
+                    ignored_params.append(f"chunking_strategy='{chunking_strategy}'")
+                if known_speaker_names:
+                    ignored_params.append("known_speaker_names")
+                if known_speaker_references:
+                    ignored_params.append("known_speaker_references")
+                if include:
+                    ignored_params.append(f"include={include}")
+                if ignored_params:
+                    logging.warning(f"Unsupported OpenAI params ignored: {', '.join(ignored_params)}")
 
                 supported_formats = ["json", "text", "srt", "verbose_json", "vtt"]
                 if response_format not in supported_formats:
