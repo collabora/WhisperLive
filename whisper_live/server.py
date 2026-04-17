@@ -18,6 +18,8 @@ from faster_whisper import WhisperModel
 import torch
 
 from enum import Enum
+
+from whisper_live import metrics as wl_metrics
 from typing import List, Optional
 import numpy as np
 from websockets.sync.server import serve
@@ -368,6 +370,7 @@ class TranscriptionServer:
 
             self.use_vad = options.get('use_vad')
             if self.client_manager.is_server_full(websocket, options):
+                wl_metrics.track_connection_rejected(reason="full")
                 websocket.close()
                 return False  # Indicates that the connection should not continue
 
@@ -375,6 +378,7 @@ class TranscriptionServer:
                 self.vad_detector = VoiceActivityDetector(frame_rate=self.RATE)
             self.initialize_client(websocket, options, faster_whisper_custom_model_path,
                                    whisper_tensorrt_path, trt_multilingual, trt_py_session=trt_py_session)
+            wl_metrics.track_connection_opened()
             return True
         except json.JSONDecodeError:
             logging.error("Failed to decode JSON from client")
@@ -453,6 +457,7 @@ class TranscriptionServer:
             if self.client_manager.get_client(websocket):
                 self.cleanup(websocket)
                 websocket.close()
+            wl_metrics.track_connection_closed()
             del websocket
 
     def run(self,
@@ -475,7 +480,8 @@ class TranscriptionServer:
             batch_window_ms=50,
             raw_pcm_input=False,
             api_key: Optional[str] = None,
-            rate_limit_rpm: int = 0):
+            rate_limit_rpm: int = 0,
+            metrics_port: int = 0):
         """
         Run the transcription server.
 
@@ -531,6 +537,10 @@ class TranscriptionServer:
                 logging.info("Single model mode currently only works with custom models.")
         if not BackendType.is_valid(backend):
             raise ValueError(f"{backend} is not a valid backend type. Choose backend from {BackendType.valid_types()}")
+
+        # Start Prometheus metrics endpoint if port is specified
+        if metrics_port > 0:
+            wl_metrics.start_metrics_server(metrics_port)
 
         # New OpenAI-compatible REST API (toggleable via enable_rest boolean)
         if enable_rest:
@@ -591,6 +601,7 @@ class TranscriptionServer:
                 hotwords: Optional[str] = Form(default=None),
             ):
                 if stream:
+                    wl_metrics.track_rest_request(endpoint="transcriptions", status=400)
                     return JSONResponse({"error": "Streaming not supported in this backend."}, status_code=400)
 
                 ignored_params = []
@@ -607,6 +618,7 @@ class TranscriptionServer:
 
                 supported_formats = ["json", "text", "srt", "verbose_json", "vtt"]
                 if response_format not in supported_formats:
+                    wl_metrics.track_rest_request(endpoint="transcriptions", status=400)
                     return JSONResponse({"error": f"Unsupported response_format. Supported: {supported_formats}"}, status_code=400)
 
                 if model != "whisper-1":
@@ -637,8 +649,10 @@ class TranscriptionServer:
                     os.unlink(tmp_path)
 
                     if response_format == "text":
+                        wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
                         return PlainTextResponse(text)
                     elif response_format == "json":
+                        wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
                         return {"text": text}
                     elif response_format == "verbose_json":
                         verbose = {
@@ -664,6 +678,7 @@ class TranscriptionServer:
                             if timestamp_granularities and "word" in timestamp_granularities:
                                 seg_dict["words"] = [{"word": w.word, "start": w.start, "end": w.end, "probability": w.probability} for w in seg.words]
                             verbose["segments"].append(seg_dict)
+                        wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
                         return verbose
                     elif response_format in ["srt", "vtt"]:
                         output = []
@@ -674,8 +689,11 @@ class TranscriptionServer:
                                 output.append(f"{i}\n{start.replace('.', ',')} --> {end.replace('.', ',')}\n{seg.text.strip()}\n")
                             else:  # vtt
                                 output.append(f"{start} --> {end}\n{seg.text.strip()}\n")
+                        wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
                         return PlainTextResponse("\n".join(output))
                 except Exception as e:
+                    wl_metrics.track_rest_request(endpoint="transcriptions", status=500)
+                    wl_metrics.track_error("rest_transcription")
                     return JSONResponse({"error": str(e)}, status_code=500)
 
             threading.Thread(
@@ -699,6 +717,7 @@ class TranscriptionServer:
                     token_param = parse_qs(parsed.query).get("token", [None])[0]
                 if auth == f"Bearer {api_key}" or token_param == api_key:
                     return None  # Allow connection
+                wl_metrics.track_connection_rejected(reason="auth")
                 return (401, [("Content-Type", "text/plain")], b"Unauthorized\n")
             extra_ws_kwargs["process_request"] = _ws_auth
 

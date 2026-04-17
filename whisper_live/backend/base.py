@@ -5,6 +5,8 @@ import time
 import queue
 import numpy as np
 
+from whisper_live import metrics as wl_metrics
+
 
 class ServeClientBase(object):
     RATE = 16000
@@ -105,16 +107,20 @@ class ServeClientBase(object):
                 continue
             try:
                 input_sample = input_bytes.copy()
+                t0 = time.time()
                 result = self.transcribe_audio(input_sample)
 
                 if result is None or self.language is None:
                     self.timestamp_offset += duration
                     time.sleep(0.25)    # wait for voice activity, result is None when no voice activity
                     continue
+                wl_metrics.track_transcription_latency(time.time() - t0)
+                wl_metrics.track_audio_processed(duration)
                 self.handle_transcription_output(result, duration)
 
             except Exception as e:
                 logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
+                wl_metrics.track_error("transcription")
                 time.sleep(0.01)
 
     def transcribe_audio(self):
@@ -267,6 +273,8 @@ class ServeClientBase(object):
                     "segments": segments,
                 })
             )
+            for seg in segments:
+                wl_metrics.track_segment_emitted(completed=seg.get("completed", False))
         except Exception as e:
             logging.error(f"[ERROR]: Sending data to client: {e}")
 

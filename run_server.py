@@ -103,6 +103,12 @@ if __name__ == "__main__":
         default=0,
         help='Maximum REST API requests per minute per client IP. 0 = unlimited (default).'
     )
+    parser.add_argument(
+        '--metrics_port',
+        type=int,
+        default=0,
+        help='Port for Prometheus /metrics endpoint. 0 = disabled (default). Requires prometheus_client.'
+    )
     args = parser.parse_args()
 
     if args.backend == "tensorrt":
@@ -135,4 +141,5 @@ if __name__ == "__main__":
         raw_pcm_input=args.raw_pcm_input,
         api_key=args.api_key,
         rate_limit_rpm=args.rate_limit_rpm,
+        metrics_port=args.metrics_port,
     )
