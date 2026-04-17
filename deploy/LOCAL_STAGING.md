@@ -3,8 +3,7 @@
 Run the full WhisperLive production stack on your local hardware — no cloud costs.
 
 Uses a custom MinIO image built from source on Alpine with self-signed TLS certs
-and virtual-host-style bucket access (adapted from
-[GrokImageCompression/grok](https://github.com/GrokImageCompression/grok) network testing).
+and virtual-host-style bucket access.
 
 ## Stack
 

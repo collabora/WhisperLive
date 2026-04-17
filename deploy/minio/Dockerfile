@@ -1,6 +1,5 @@
 # MinIO Dockerfile
 # Built from source on Alpine for a minimal, production-grade S3-compatible store.
-# Adapted from github.com/GrokImageCompression/grok network testing setup.
 
 # Builder stage to compile MinIO and mc from source
 FROM alpine:latest AS builder
