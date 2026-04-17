@@ -694,6 +694,11 @@ class TranscriptionTeeClient:
         """
         
         self._open_microphone()
+        if self.stream is None:
+            logging.error("Failed to open microphone stream; aborting recording.")
+            self.close_all_clients()
+            self.write_all_clients_srt()
+            return
         
         n_audio_file = 0
         if self.save_output_recording:
