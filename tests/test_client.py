@@ -56,6 +56,8 @@ class TestClientCallbacks(BaseTestCase):
             "enable_translation": False,
             "target_language": "fr",
             "hotwords": None,
+            "enable_diarization": False,
+            "max_speakers": 10,
         })
         self.client.on_open(self.mock_ws_app)
         self.mock_ws_app.send.assert_called_with(expected_message)
