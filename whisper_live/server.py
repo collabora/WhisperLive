@@ -179,6 +179,7 @@ class TranscriptionServer:
         self.batch_config = None
         self.raw_pcm_input = False
         self.plugin_registry = None
+        self._model_cache = None
 
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
@@ -739,6 +740,13 @@ class TranscriptionServer:
         if metrics_port > 0:
             wl_metrics.start_metrics_server(metrics_port)
 
+        # Initialize model cache for REST API hot-swap
+        from whisper_live.model_cache import ModelCache
+        self._model_cache = ModelCache(
+            max_models=3,
+            default_model=faster_whisper_custom_model_path or "small",
+        )
+
         # New OpenAI-compatible REST API (toggleable via enable_rest boolean)
         if enable_rest:
             app = FastAPI(
@@ -811,6 +819,14 @@ class TranscriptionServer:
                 if self.plugin_registry:
                     return {"plugins": self.plugin_registry.list_plugins()}
                 return {"plugins": []}
+
+            @app.get("/v1/models", tags=["System"],
+                     summary="List loaded models",
+                     description="Returns currently cached models available for hot-swap.")
+            async def list_models():
+                if self._model_cache:
+                    return {"models": self._model_cache.list_loaded()}
+                return {"models": []}
 
             @app.post("/v1/audio/transcriptions", tags=["Transcription"],
                       summary="Transcribe audio file",
@@ -925,8 +941,13 @@ class TranscriptionServer:
                     return JSONResponse({"error": f"Unsupported response_format. Supported: {supported_formats}"}, status_code=400)
 
                 if model != "whisper-1":
-                    logging.warning(f"Model '{model}' requested; using 'small' as fallback.")
-                model_name = faster_whisper_custom_model_path or "small"
+                    logging.info(f"Model '{model}' requested via REST API.")
+                # Use model cache for hot-swap: accept model names like
+                # "whisper-1", "small", "medium", "large-v3", etc.
+                _model_map = {"whisper-1": "small"}
+                resolved_model = _model_map.get(model, model)
+                if faster_whisper_custom_model_path:
+                    resolved_model = faster_whisper_custom_model_path
 
                 try:
                     suffix = os.path.splitext(file.filename)[1] or ".wav"
@@ -937,7 +958,7 @@ class TranscriptionServer:
                     device = "cuda" if torch.cuda.is_available() else "cpu"
                     compute_type = "float16" if device == "cuda" else "int8"
 
-                    transcriber = WhisperModel(model_name, device=device, compute_type=compute_type)
+                    transcriber = self._model_cache.get(resolved_model, device=device, compute_type=compute_type)
                     segments, info = transcriber.transcribe(
                         tmp_path,
                         language=language,
