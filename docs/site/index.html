@@ -1,0 +1,1547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhisperLive — Real-Time Speech-to-Text, Open Source</title>
+    <meta name="description" content="Open-source real-time speech-to-text powered by OpenAI Whisper. Multi-backend, multi-language, production-ready. By Collabora.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0D0D0D;
+            --bg-secondary: #141414;
+            --bg-tertiary: #1A1A1A;
+            --bg-card: #1E1E1E;
+            --bg-card-hover: #252525;
+            --border: #2A2A2A;
+            --border-hover: #3A3A3A;
+            --green: #A855F7;
+            --green-dim: rgba(168, 85, 247, 0.15);
+            --green-glow: rgba(168, 85, 247, 0.3);
+            --blue: #38BDF8;
+            --purple: #A78BFA;
+            --amber: #FBBF24;
+            --rose: #FB7185;
+            --text-primary: #FFFFFF;
+            --text-secondary: #A1A1AA;
+            --text-tertiary: #71717A;
+            --text-muted: #52525B;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* ── NAVBAR ── */
+        nav {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 1000;
+            background: rgba(13, 13, 13, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+        }
+        .nav-inner {
+            max-width: 1280px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            height: 64px;
+        }
+        .nav-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            color: var(--text-primary);
+            font-weight: 700;
+            font-size: 1.15rem;
+        }
+        .nav-logo svg {
+            width: 28px;
+            height: 28px;
+        }
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            list-style: none;
+        }
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.875rem;
+            font-weight: 500;
+            padding: 8px 14px;
+            border-radius: 8px;
+            transition: all 0.15s;
+        }
+        .nav-links a:hover {
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+        }
+        .nav-btn-ghost {
+            color: var(--text-primary) !important;
+            border: 1px solid var(--border);
+            background: transparent;
+        }
+        .nav-btn-ghost:hover {
+            border-color: var(--border-hover) !important;
+            background: var(--bg-tertiary) !important;
+        }
+        .nav-btn-green {
+            background: linear-gradient(135deg, #9333EA, #A855F7) !important;
+            color: #FFFFFF !important;
+            font-weight: 600 !important;
+        }
+        .nav-btn-green:hover {
+            opacity: 0.9;
+        }
+        .nav-hamburger {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 4px;
+        }
+
+        /* ── HERO ── */
+        .hero {
+            padding: 160px 32px 80px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 50%; transform: translateX(-50%);
+            width: 800px; height: 600px;
+            background: radial-gradient(ellipse, rgba(168, 85, 247, 0.08) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .hero-content {
+            position: relative;
+            z-index: 1;
+            max-width: 820px;
+            margin: 0 auto;
+        }
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px 6px 10px;
+            border-radius: 100px;
+            border: 1px solid var(--border);
+            background: var(--bg-secondary);
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 32px;
+        }
+        .hero-badge .badge-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green-glow);
+            animation: dotPulse 2s ease-in-out infinite;
+        }
+        @keyframes dotPulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--green-glow); }
+            50% { opacity: 0.5; box-shadow: 0 0 4px var(--green-glow); }
+        }
+        .hero-badge span { color: var(--green); }
+        .hero h1 {
+            font-size: clamp(2.5rem, 5.5vw, 4rem);
+            font-weight: 800;
+            color: var(--text-primary);
+            line-height: 1.1;
+            letter-spacing: -0.03em;
+            margin-bottom: 24px;
+        }
+        .hero h1 em {
+            font-style: normal;
+            color: var(--green);
+        }
+        .hero-sub {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            max-width: 580px;
+            margin: 0 auto 40px;
+            line-height: 1.7;
+        }
+        .hero-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 48px;
+        }
+
+        /* ── BUTTONS ── */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            transition: all 0.15s;
+            font-family: inherit;
+        }
+        .btn-green {
+            background: linear-gradient(135deg, #9333EA, #A855F7);
+            color: #FFFFFF;
+            box-shadow: 0 4px 20px rgba(168, 85, 247, 0.3);
+        }
+        .btn-green:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 6px 24px rgba(168, 85, 247, 0.4); }
+        .btn-outline {
+            background: transparent;
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+        .btn-outline:hover {
+            border-color: var(--border-hover);
+            background: var(--bg-tertiary);
+        }
+
+        /* ── HERO DEMO ── */
+        .hero-demo {
+            max-width: 740px;
+            margin: 0 auto;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        .demo-header {
+            display: flex;
+            align-items: center;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+            gap: 8px;
+        }
+        .demo-dots {
+            display: flex;
+            gap: 6px;
+        }
+        .demo-dots span {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+        }
+        .demo-dots span:nth-child(1) { background: #FF5F57; }
+        .demo-dots span:nth-child(2) { background: #FEBC2E; }
+        .demo-dots span:nth-child(3) { background: #28C840; }
+        .demo-title {
+            flex: 1;
+            text-align: center;
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+        }
+        .demo-body {
+            padding: 24px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.82rem;
+            line-height: 1.9;
+            text-align: left;
+        }
+        .demo-body .p { color: var(--green); }
+        .demo-body .c { color: var(--text-muted); }
+        .demo-body .w { color: var(--text-primary); }
+        .demo-body .f { color: var(--purple); }
+        .demo-body .v { color: var(--amber); }
+        .demo-body .o { color: var(--text-tertiary); }
+        .demo-body .s { color: #13EF93; }
+
+        /* ── TRUST BAR ── */
+        .trust-bar {
+            padding: 48px 32px;
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            text-align: center;
+        }
+        .trust-bar p {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-bottom: 28px;
+        }
+        .trust-logos {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 48px;
+            flex-wrap: wrap;
+            opacity: 0.5;
+        }
+        .trust-logos span {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--text-secondary);
+            letter-spacing: 0.02em;
+        }
+
+        /* ── SECTION COMMON ── */
+        section { padding: 120px 32px; }
+        .section-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .section-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--green);
+            margin-bottom: 16px;
+        }
+        .section-label::before {
+            content: '';
+            width: 20px; height: 1px;
+            background: var(--green);
+        }
+        .section-title {
+            font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+            font-weight: 800;
+            color: var(--text-primary);
+            letter-spacing: -0.02em;
+            margin-bottom: 16px;
+            line-height: 1.2;
+        }
+        .section-desc {
+            font-size: 1.05rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            line-height: 1.7;
+            margin-bottom: 56px;
+        }
+
+        /* ── BACKENDS ── */
+        #backends { border-bottom: 1px solid var(--border); }
+        .backends-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1px;
+            background: var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        .backend-card {
+            background: var(--bg-secondary);
+            padding: 40px 32px;
+            transition: background 0.2s;
+        }
+        .backend-card:hover { background: var(--bg-card-hover); }
+        .backend-icon {
+            width: 48px; height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            background: var(--green-dim);
+        }
+        .backend-card h3 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        .backend-card p {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* ── FEATURES ── */
+        #features { border-bottom: 1px solid var(--border); }
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1px;
+            background: var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        .feature-card {
+            background: var(--bg-secondary);
+            padding: 32px 28px;
+            transition: background 0.2s;
+            position: relative;
+        }
+        .feature-card:hover { background: var(--bg-card-hover); }
+        .feature-card .f-icon {
+            font-size: 1.5rem;
+            margin-bottom: 16px;
+            display: block;
+        }
+        .feature-card h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        .feature-card p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+        .feature-tag {
+            display: inline-block;
+            margin-top: 12px;
+            padding: 3px 10px;
+            border-radius: 100px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        .tag-core { background: var(--green-dim); color: #C084FC; }
+        .tag-ai { background: rgba(167, 139, 250, 0.15); color: var(--purple); }
+        .tag-security { background: rgba(251, 113, 133, 0.15); color: var(--rose); }
+        .tag-enterprise { background: rgba(56, 189, 248, 0.15); color: var(--blue); }
+
+        /* ── ENTERPRISE ── */
+        #enterprise { border-bottom: 1px solid var(--border); }
+        .enterprise-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+        .ent-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px;
+            transition: all 0.2s;
+        }
+        .ent-card:hover {
+            border-color: var(--border-hover);
+            background: var(--bg-card-hover);
+        }
+        .ent-card h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .ent-card p {
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+        .ent-card code {
+            background: var(--bg-tertiary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--green);
+        }
+
+        /* ── CAPABILITIES / BENTO ── */
+        #capabilities { border-bottom: 1px solid var(--border); }
+        .cap-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+        .cap-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px 24px;
+            transition: all 0.2s;
+        }
+        .cap-card:hover {
+            border-color: var(--green);
+            background: var(--bg-card-hover);
+        }
+        .cap-card .cap-icon {
+            width: 40px; height: 40px;
+            border-radius: 10px;
+            background: var(--green-dim);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            margin-bottom: 16px;
+        }
+        .cap-card h3 {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+        .cap-card p {
+            font-size: 0.82rem;
+            color: var(--text-tertiary);
+            line-height: 1.5;
+        }
+        .cap-card .cap-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 12px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--green);
+            text-decoration: none;
+        }
+        .cap-card .cap-link:hover { text-decoration: underline; }
+
+        /* ── SDKs ── */
+        #sdks { border-bottom: 1px solid var(--border); }
+        .sdk-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            max-width: 900px;
+        }
+        .sdk-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px 24px;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .sdk-card:hover {
+            border-color: var(--green);
+            background: var(--bg-card-hover);
+        }
+        .sdk-card .sdk-icon {
+            font-size: 2.2rem;
+            margin-bottom: 14px;
+        }
+        .sdk-card h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+        .sdk-card p {
+            font-size: 0.82rem;
+            color: var(--text-tertiary);
+        }
+
+        /* ── QUICKSTART ── */
+        #quickstart { border-bottom: 1px solid var(--border); }
+        .code-block {
+            max-width: 780px;
+        }
+        .tab-row {
+            display: flex;
+            gap: 2px;
+            background: var(--bg-tertiary);
+            border-radius: 12px 12px 0 0;
+            padding: 4px;
+            overflow-x: auto;
+        }
+        .tab-btn {
+            padding: 10px 18px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-tertiary);
+            border-radius: 8px;
+            transition: all 0.15s;
+            font-family: inherit;
+            white-space: nowrap;
+        }
+        .tab-btn.active {
+            background: var(--bg-card);
+            color: var(--green);
+        }
+        .tab-btn:hover:not(.active) { color: var(--text-secondary); }
+        .tab-body {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-top: none;
+            border-radius: 0 0 12px 12px;
+            padding: 24px;
+            overflow-x: auto;
+        }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+        .tab-panel pre {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.82rem;
+            line-height: 1.8;
+            color: var(--text-secondary);
+            white-space: pre;
+        }
+        .tab-panel pre .kw { color: var(--purple); }
+        .tab-panel pre .fn { color: var(--blue); }
+        .tab-panel pre .str { color: var(--green); }
+        .tab-panel pre .cmt { color: var(--text-muted); }
+        .tab-panel pre .num { color: var(--amber); }
+
+        /* ── DEPLOY ── */
+        #deploy { border-bottom: 1px solid var(--border); }
+        .deploy-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+        .deploy-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px;
+            transition: all 0.2s;
+        }
+        .deploy-card:hover {
+            border-color: var(--green);
+            background: var(--bg-card-hover);
+        }
+        .deploy-card .d-icon {
+            font-size: 2rem;
+            margin-bottom: 16px;
+        }
+        .deploy-card h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        .deploy-card p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* ── BLOG POSTS ── */
+        #blog { border-bottom: 1px solid var(--border); }
+        .blog-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+        .blog-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: block;
+        }
+        .blog-card:hover {
+            border-color: var(--green);
+            background: var(--bg-card-hover);
+        }
+        .blog-card .blog-tag {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--green);
+            margin-bottom: 12px;
+            display: block;
+        }
+        .blog-card h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.4;
+            margin-bottom: 8px;
+        }
+        .blog-card p {
+            font-size: 0.82rem;
+            color: var(--text-tertiary);
+            line-height: 1.5;
+        }
+        .blog-card .arrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 16px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--green);
+        }
+
+        /* ── CTA ── */
+        .cta-section {
+            padding: 120px 32px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .cta-section::before {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 600px; height: 400px;
+            background: radial-gradient(ellipse, rgba(168, 85, 247, 0.1) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .cta-content {
+            position: relative;
+            z-index: 1;
+        }
+        .cta-section h2 {
+            font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+            font-weight: 800;
+            color: var(--text-primary);
+            margin-bottom: 16px;
+            letter-spacing: -0.02em;
+        }
+        .cta-section > .cta-content > p {
+            color: var(--text-secondary);
+            font-size: 1.05rem;
+            margin-bottom: 32px;
+        }
+        .cta-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        /* ── FOOTER ── */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 64px 32px 32px;
+        }
+        .footer-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 48px;
+        }
+        .footer-brand {
+            max-width: 280px;
+        }
+        .footer-brand .f-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-primary);
+            font-weight: 700;
+            font-size: 1.1rem;
+            text-decoration: none;
+            margin-bottom: 12px;
+        }
+        .footer-brand .f-logo svg { width: 24px; height: 24px; }
+        .footer-brand p {
+            font-size: 0.82rem;
+            color: var(--text-tertiary);
+            line-height: 1.6;
+        }
+        .footer-col h4 {
+            font-size: 0.78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+        .footer-col a {
+            display: block;
+            color: var(--text-tertiary);
+            text-decoration: none;
+            font-size: 0.85rem;
+            padding: 4px 0;
+            transition: color 0.15s;
+        }
+        .footer-col a:hover { color: var(--green); }
+        .footer-bottom {
+            max-width: 1200px;
+            margin: 40px auto 0;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .footer-bottom p {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+        .footer-bottom a {
+            color: var(--text-tertiary);
+            text-decoration: none;
+            font-size: 0.78rem;
+            transition: color 0.15s;
+        }
+        .footer-bottom a:hover { color: var(--green); }
+        .footer-social {
+            display: flex;
+            gap: 16px;
+        }
+
+        /* ── RESPONSIVE ── */
+        @media (max-width: 1024px) {
+            .features-grid, .backends-grid, .cap-grid, .deploy-grid, .blog-grid { grid-template-columns: repeat(2, 1fr); }
+            .enterprise-grid { grid-template-columns: 1fr; }
+            .footer-inner { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 768px) {
+            .nav-links { display: none; }
+            .nav-hamburger { display: block; }
+            .nav-links.show {
+                display: flex;
+                flex-direction: column;
+                position: absolute;
+                top: 64px; left: 0; right: 0;
+                background: var(--bg-primary);
+                border-bottom: 1px solid var(--border);
+                padding: 16px 24px;
+                gap: 4px;
+            }
+            .features-grid, .backends-grid, .cap-grid, .sdk-grid, .deploy-grid, .blog-grid { grid-template-columns: 1fr; }
+            .hero { padding: 120px 20px 60px; }
+            .hero-demo { display: none; }
+            section { padding: 80px 20px; }
+            .footer-inner { grid-template-columns: 1fr 1fr; }
+            .hero-actions { flex-direction: column; align-items: center; }
+            .stats-row { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 480px) {
+            .footer-inner { grid-template-columns: 1fr; }
+            .stats-row { grid-template-columns: 1fr; }
+        }
+
+        /* ── ANIMATIONS ── */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(16px);
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* ── WAVEFORM SVG ── */
+        .waveform-bars rect {
+            fill: var(--green);
+            animation: wave 1.4s ease-in-out infinite;
+        }
+        .waveform-bars rect:nth-child(1) { animation-delay: 0s; }
+        .waveform-bars rect:nth-child(2) { animation-delay: 0.12s; }
+        .waveform-bars rect:nth-child(3) { animation-delay: 0.24s; }
+        .waveform-bars rect:nth-child(4) { animation-delay: 0.36s; }
+        .waveform-bars rect:nth-child(5) { animation-delay: 0.48s; }
+        @keyframes wave {
+            0%, 100% { transform: scaleY(0.4); }
+            50% { transform: scaleY(1); }
+        }
+
+        /* ── STATS ROW ── */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1px;
+            background: var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+            margin-top: 64px;
+        }
+        .stat-cell {
+            background: var(--bg-secondary);
+            padding: 32px 24px;
+            text-align: center;
+        }
+        .stat-cell h3 {
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--green);
+            background: linear-gradient(135deg, #A855F7, #C084FC);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 4px;
+        }
+        .stat-cell p {
+            font-size: 0.82rem;
+            color: var(--text-tertiary);
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══ NAV ═══ -->
+<nav>
+    <div class="nav-inner">
+        <a href="#" class="nav-logo">
+            <svg viewBox="0 0 28 28" class="waveform-bars">
+                <rect x="2" y="6" width="3" rx="1.5" height="16" transform-origin="3.5 14"/>
+                <rect x="8" y="3" width="3" rx="1.5" height="22" transform-origin="9.5 14"/>
+                <rect x="14" y="1" width="3" rx="1.5" height="26" transform-origin="15.5 14"/>
+                <rect x="20" y="4" width="3" rx="1.5" height="20" transform-origin="21.5 14"/>
+                <rect x="26" y="7" width="3" rx="1.5" height="14" transform-origin="27.5 14"/>
+            </svg>
+            WhisperLive
+        </a>
+        <ul class="nav-links">
+            <li><a href="#backends">Backends</a></li>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#capabilities">Capabilities</a></li>
+            <li><a href="#sdks">SDKs</a></li>
+            <li><a href="#quickstart">Docs</a></li>
+            <li><a href="https://github.com/collabora/WhisperLive" class="nav-btn-ghost">GitHub</a></li>
+            <li><a href="#quickstart" class="nav-btn-green">Get Started</a></li>
+        </ul>
+        <button class="nav-hamburger" onclick="document.querySelector('.nav-links').classList.toggle('show')" aria-label="Toggle menu">&#9776;</button>
+    </div>
+</nav>
+
+<!-- ═══ HERO ═══ -->
+<section class="hero">
+    <div class="hero-content">
+        <div class="hero-badge">
+            <div class="badge-dot"></div>
+            Open Source &middot; <span>v0.8.0</span>
+        </div>
+        <h1>Real-Time Speech-to-Text<br><em>Powered by Whisper</em></h1>
+        <p class="hero-sub">
+            The most complete open-source transcription server. Multi-backend, multi-language, with enterprise features built in. Self-host on any hardware.
+        </p>
+        <div class="hero-actions">
+            <a href="https://github.com/collabora/WhisperLive" class="btn btn-green">
+                Get Started Free
+            </a>
+            <a href="https://github.com/collabora/WhisperLive" class="btn btn-outline">
+                View on GitHub &rarr;
+            </a>
+        </div>
+
+        <div class="hero-demo">
+            <div class="demo-header">
+                <div class="demo-dots"><span></span><span></span><span></span></div>
+                <div class="demo-title">whisperlive &mdash; server</div>
+                <div style="width: 38px;"></div>
+            </div>
+            <div class="demo-body">
+<span class="c"># Start with all features enabled</span>
+<span class="p">$</span> <span class="w">python3 run_server.py</span> <span class="f">--port</span> <span class="v">9090</span> <span class="f">--backend</span> <span class="v">faster_whisper</span> \
+    <span class="f">--enable_rest</span> <span class="f">--api_key</span> <span class="v">"sk-..."</span> <span class="f">--noise_reduction</span> <span class="v">near_field</span> \
+    <span class="f">--batch_inference</span> <span class="f">--metrics_port</span> <span class="v">9091</span>
+
+<span class="o">INFO  WhisperLive v0.8.0 starting...</span>
+<span class="o">INFO  Backend: faster_whisper | Model: small</span>
+<span class="o">INFO  REST API &rarr; http://0.0.0.0:8000</span>
+<span class="o">INFO  Swagger  &rarr; http://0.0.0.0:8000/docs</span>
+<span class="o">INFO  Metrics  &rarr; :9091/metrics</span>
+<span class="s">&#10003; Ready &mdash; accepting connections on :9090</span>
+            </div>
+        </div>
+
+        <div class="stats-row">
+            <div class="stat-cell">
+                <h3>3</h3>
+                <p>Inference Backends</p>
+            </div>
+            <div class="stat-cell">
+                <h3>20+</h3>
+                <p>Production Features</p>
+            </div>
+            <div class="stat-cell">
+                <h3>6</h3>
+                <p>Client SDKs &amp; Extensions</p>
+            </div>
+            <div class="stat-cell">
+                <h3>40+</h3>
+                <p>Contributors</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══ TRUST BAR ═══ -->
+<div class="trust-bar">
+    <p>Community-driven open source &middot; supported by</p>
+    <div class="trust-logos">
+        <span>Collabora</span>
+        <span style="font-weight: 400; color: var(--text-muted); font-size: 0.85rem;">and 40+ open source contributors worldwide</span>
+    </div>
+</div>
+
+<!-- ═══ BACKENDS ═══ -->
+<section id="backends">
+    <div class="section-inner">
+        <span class="section-label">Backends</span>
+        <h2 class="section-title">Choose Your Inference Engine</h2>
+        <p class="section-desc">Same API, same features. Pick the backend optimized for your hardware and deploy with one command.</p>
+
+        <div class="backends-grid fade-in">
+            <div class="backend-card">
+                <div class="backend-icon">&#9889;</div>
+                <h3>Faster Whisper</h3>
+                <p>CTranslate2-powered inference. Best general-purpose choice &mdash; fast on both CPU and GPU with int8/float16 quantization. Custom model support.</p>
+            </div>
+            <div class="backend-card">
+                <div class="backend-icon">&#128640;</div>
+                <h3>TensorRT</h3>
+                <p>NVIDIA TensorRT-LLM for maximum throughput on NVIDIA GPUs. Int4/int8 weight-only quantization for peak performance.</p>
+            </div>
+            <div class="backend-card">
+                <div class="backend-icon">&#128311;</div>
+                <h3>OpenVINO</h3>
+                <p>Intel-optimized inference on CPUs, iGPUs, and dGPUs. Plug-and-play Docker images with automatic hardware detection.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══ FEATURES ═══ -->
+<section id="features">
+    <div class="section-inner">
+        <span class="section-label">Features</span>
+        <h2 class="section-title">Everything for Production Transcription</h2>
+        <p class="section-desc">From real-time streaming to audio intelligence &mdash; all built in, all open source, all self-hosted.</p>
+
+        <div class="features-grid fade-in">
+            <div class="feature-card">
+                <span class="f-icon">&#127897;</span>
+                <h3>Real-Time WebSocket Streaming</h3>
+                <p>Sub-second latency over persistent connections. Stream from microphones, files, RTSP, or HLS sources.</p>
+                <span class="feature-tag tag-core">Core</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#128225;</span>
+                <h3>OpenAI-Compatible REST API</h3>
+                <p>Drop-in replacement for the OpenAI transcription endpoint. SSE streaming, auto-generated Swagger &amp; ReDoc docs.</p>
+                <span class="feature-tag tag-core">Core</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#128483;</span>
+                <h3>Speaker Diarization</h3>
+                <p>Real-time speaker identification using pyannote.audio embeddings with online cosine-similarity clustering.</p>
+                <span class="feature-tag tag-ai">AI</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#128100;</span>
+                <h3>Known Speaker Matching</h3>
+                <p>Enroll named speakers with audio clips. Get &ldquo;Alice&rdquo; instead of &ldquo;SPEAKER_00&rdquo; in your transcripts.</p>
+                <span class="feature-tag tag-ai">AI</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#128221;</span>
+                <h3>Word-Level Timestamps</h3>
+                <p>Per-word timing and confidence scores for every segment. Essential for subtitles and alignment.</p>
+                <span class="feature-tag tag-core">Core</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#128292;</span>
+                <h3>Custom Vocabulary / Hotwords</h3>
+                <p>Boost recognition of domain terms &mdash; product names, acronyms, medical jargon. Comma-separated keyword boosting.</p>
+                <span class="feature-tag tag-core">Core</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#127758;</span>
+                <h3>Live Translation Relay</h3>
+                <p>Pub/sub multilingual meeting translation. Broadcast transcriptions to subscribers in their preferred language.</p>
+                <span class="feature-tag tag-ai">AI</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#129302;</span>
+                <h3>Multi-Model Ensemble</h3>
+                <p>Run multiple Whisper models in parallel. Merge via confidence scoring, longest output, or majority voting.</p>
+                <span class="feature-tag tag-ai">AI</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#128263;</span>
+                <h3>Audio Noise Reduction</h3>
+                <p>Built-in preprocessing with near-field (stationary) and far-field (non-stationary) noise reduction modes.</p>
+                <span class="feature-tag tag-core">Core</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#129324;</span>
+                <h3>Profanity Filter</h3>
+                <p>Three masking modes &mdash; partial (d**n), full (****), or remove. Custom word lists supported.</p>
+                <span class="feature-tag tag-core">Core</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#128274;</span>
+                <h3>PII Redaction</h3>
+                <p>Auto-detect and redact SSNs, credit cards, phone numbers, emails, and IP addresses from transcripts.</p>
+                <span class="feature-tag tag-security">Security</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#129504;</span>
+                <h3>Audio Intelligence</h3>
+                <p>Post-transcription analysis &mdash; sentiment, topic detection, entity extraction, and extractive summarization.</p>
+                <span class="feature-tag tag-ai">AI</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#128202;</span>
+                <h3>Smart Formatting</h3>
+                <p>Auto-capitalize sentences, normalize spoken numbers to digits, and clean up punctuation automatically.</p>
+                <span class="feature-tag tag-core">Core</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#128260;</span>
+                <h3>Model Hot-Swap</h3>
+                <p>Switch Whisper models per-request. LRU cache keeps recently-used models warm in memory.</p>
+                <span class="feature-tag tag-enterprise">Enterprise</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#128268;</span>
+                <h3>Plugin Architecture</h3>
+                <p>Add custom post-processing steps. Priority-ordered, enable/disable at runtime, graceful error handling.</p>
+                <span class="feature-tag tag-enterprise">Enterprise</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#9889;</span>
+                <h3>Batch Inference</h3>
+                <p>Batch multiple sessions into single GPU calls. Configurable batch size and collection window.</p>
+                <span class="feature-tag tag-enterprise">Enterprise</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#127898;</span>
+                <h3>Multi-Channel Audio</h3>
+                <p>Split stereo/multi-channel audio per-channel. Merge transcriptions into a unified timeline.</p>
+                <span class="feature-tag tag-core">Core</span>
+            </div>
+            <div class="feature-card">
+                <span class="f-icon">&#127760;</span>
+                <h3>Language Detection</h3>
+                <p>Auto-detect spoken language with confidence scores. Every response includes language code and probability.</p>
+                <span class="feature-tag tag-core">Core</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══ ENTERPRISE ═══ -->
+<section id="enterprise">
+    <div class="section-inner">
+        <span class="section-label">Enterprise Ready</span>
+        <h2 class="section-title">Security, Observability &amp; Scale</h2>
+        <p class="section-desc">Production features you&rsquo;d expect from a commercial API &mdash; fully open source and self-hosted.</p>
+
+        <div class="enterprise-grid fade-in">
+            <div class="ent-card">
+                <h3>&#128273; API Key Authentication</h3>
+                <p>Protect REST and WebSocket endpoints with Bearer token auth. Unauthenticated connections are rejected before any GPU resources are allocated.</p>
+            </div>
+            <div class="ent-card">
+                <h3>&#128678; Rate Limiting</h3>
+                <p>Per-IP sliding window rate limiting on REST endpoints. Configurable RPM threshold with HTTP 429 responses.</p>
+            </div>
+            <div class="ent-card">
+                <h3>&#128200; Prometheus Metrics</h3>
+                <p>Full instrumentation &mdash; active connections, transcription latency histograms, audio processed, segments emitted, REST request counters.</p>
+            </div>
+            <div class="ent-card">
+                <h3>&#128257; Auto-Reconnect</h3>
+                <p>Client-side automatic reconnection with configurable retry count and backoff delay. Only triggers on unexpected disconnects.</p>
+            </div>
+            <div class="ent-card">
+                <h3>&#128214; OpenAPI Documentation</h3>
+                <p>Auto-generated interactive API docs &mdash; Swagger UI at <code>/docs</code>, ReDoc at <code>/redoc</code>, and OpenAPI JSON schema.</p>
+            </div>
+            <div class="ent-card">
+                <h3>&#127959; Horizontal Scaling</h3>
+                <p>Multi-GPU deployment behind nginx/HAProxy with WebSocket sticky sessions. Kubernetes-ready with Docker Compose templates.</p>
+            </div>
+            <div class="ent-card">
+                <h3>&#127891; Fine-Tune Custom Models</h3>
+                <p>Train Whisper on your domain data &mdash; medical, legal, accented speech. A key open-source differentiator commercial APIs can&rsquo;t match.</p>
+            </div>
+            <div class="ent-card">
+                <h3>&#128051; Docker Everything</h3>
+                <p>Dockerfiles for GPU, CPU, TensorRT, OpenVINO, Edge, and Jetson. One command from zero to production.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══ CAPABILITIES GRID (Deepgram-style) ═══ -->
+<section id="capabilities">
+    <div class="section-inner">
+        <span class="section-label">Discover Capabilities</span>
+        <h2 class="section-title">Built for the Real World</h2>
+        <p class="section-desc">WhisperLive&rsquo;s capabilities give developers everything they need to produce accurate, readable, and secure transcripts.</p>
+
+        <div class="cap-grid fade-in">
+            <div class="cap-card">
+                <div class="cap-icon">&#128292;</div>
+                <h3>Hotword Prompting</h3>
+                <p>Improve recognition of critical words or phrases with keyword boosting passed to faster-whisper.</p>
+                <a href="#features" class="cap-link">Learn more &rarr;</a>
+            </div>
+            <div class="cap-card">
+                <div class="cap-icon">&#128202;</div>
+                <h3>Smart Formatting</h3>
+                <p>Enhance readability with automatic capitalization, number normalization, and punctuation cleanup.</p>
+                <a href="#features" class="cap-link">Learn more &rarr;</a>
+            </div>
+            <div class="cap-card">
+                <div class="cap-icon">&#128483;</div>
+                <h3>Diarization</h3>
+                <p>Detect speaker changes and label who said what in multi-speaker audio with pyannote.audio.</p>
+                <a href="#features" class="cap-link">Learn more &rarr;</a>
+            </div>
+            <div class="cap-card">
+                <div class="cap-icon">#</div>
+                <h3>Numerals</h3>
+                <p>Turn spoken numbers into digits (e.g., &ldquo;twenty one&rdquo; &rarr; &ldquo;21&rdquo;) for consistency and readability.</p>
+                <a href="#features" class="cap-link">Learn more &rarr;</a>
+            </div>
+            <div class="cap-card">
+                <div class="cap-icon">&#128274;</div>
+                <h3>Redaction</h3>
+                <p>Automatically remove sensitive PII &mdash; SSNs, credit cards, phone numbers, emails &mdash; from transcripts.</p>
+                <a href="#features" class="cap-link">Learn more &rarr;</a>
+            </div>
+            <div class="cap-card">
+                <div class="cap-icon">&#128263;</div>
+                <h3>Noise Reduction</h3>
+                <p>Near-field and far-field noise reduction preprocessing for cleaner input and better accuracy.</p>
+                <a href="#features" class="cap-link">Learn more &rarr;</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══ SDKs ═══ -->
+<section id="sdks">
+    <div class="section-inner">
+        <span class="section-label">Client SDKs</span>
+        <h2 class="section-title">Integrate in Your Language</h2>
+        <p class="section-desc">Official client libraries, browser extensions, and native mobile support.</p>
+
+        <div class="sdk-grid fade-in">
+            <div class="sdk-card">
+                <div class="sdk-icon">&#128013;</div>
+                <h3>Python</h3>
+                <p>Built-in client with WebSocket, REST, and all features.</p>
+            </div>
+            <div class="sdk-card">
+                <div class="sdk-icon">&#128311;</div>
+                <h3>JavaScript / TypeScript</h3>
+                <p>REST, SSE streaming, and WebSocket for Node.js &amp; browsers.</p>
+            </div>
+            <div class="sdk-card">
+                <div class="sdk-icon">&#128309;</div>
+                <h3>Go</h3>
+                <p>Lightweight REST client with transcription and health checks.</p>
+            </div>
+        </div>
+        <div class="sdk-grid fade-in" style="margin-top: 16px;">
+            <div class="sdk-card">
+                <div class="sdk-icon">&#127760;</div>
+                <h3>Chrome Extension</h3>
+                <p>Transcribe any browser tab audio in real-time.</p>
+            </div>
+            <div class="sdk-card">
+                <div class="sdk-icon">&#129418;</div>
+                <h3>Firefox Extension</h3>
+                <p>Same great experience on Firefox.</p>
+            </div>
+            <div class="sdk-card">
+                <div class="sdk-icon">&#128241;</div>
+                <h3>iOS Client</h3>
+                <p>Native Swift client for iPhone &amp; iPad.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══ QUICKSTART ═══ -->
+<section id="quickstart">
+    <div class="section-inner">
+        <span class="section-label">Quick Start</span>
+        <h2 class="section-title">Up and Running in Minutes</h2>
+        <p class="section-desc">Pick your language and start transcribing.</p>
+
+        <div class="code-block fade-in">
+            <div class="tab-row">
+                <button class="tab-btn active" data-tab="python">Python</button>
+                <button class="tab-btn" data-tab="javascript">JavaScript</button>
+                <button class="tab-btn" data-tab="go">Go</button>
+                <button class="tab-btn" data-tab="docker">Docker</button>
+                <button class="tab-btn" data-tab="rest">REST API</button>
+            </div>
+            <div class="tab-body">
+                <div class="tab-panel active" id="tab-python">
+<pre><span class="cmt"># Install</span>
+pip install whisper-live
+
+<span class="cmt"># Start server</span>
+python3 run_server.py <span class="kw">--port</span> <span class="num">9090</span> <span class="kw">--backend</span> <span class="str">faster_whisper</span> <span class="kw">--enable_rest</span>
+
+<span class="cmt"># Transcribe from Python</span>
+<span class="kw">from</span> whisper_live.client <span class="kw">import</span> TranscriptionClient
+
+client = TranscriptionClient(
+    <span class="str">"localhost"</span>, <span class="num">9090</span>,
+    model=<span class="str">"small"</span>,
+    word_timestamps=<span class="kw">True</span>,
+    enable_diarization=<span class="kw">True</span>,
+    noise_reduction=<span class="str">"near_field"</span>,
+)
+
+client(<span class="str">"audio.wav"</span>)   <span class="cmt"># transcribe a file</span>
+client()              <span class="cmt"># transcribe from microphone</span></pre>
+                </div>
+                <div class="tab-panel" id="tab-javascript">
+<pre><span class="kw">import</span> { WhisperLiveClient } <span class="kw">from</span> <span class="str">'./whisperlive'</span>;
+
+<span class="kw">const</span> client = <span class="kw">new</span> <span class="fn">WhisperLiveClient</span>(<span class="str">'http://localhost:8000'</span>, {
+    apiKey: <span class="str">'your-key'</span>,
+});
+
+<span class="cmt">// Transcribe a file</span>
+<span class="kw">const</span> result = <span class="kw">await</span> client.<span class="fn">transcribe</span>(audioFile);
+console.<span class="fn">log</span>(result.text);
+
+<span class="cmt">// SSE streaming</span>
+<span class="kw">for await</span> (<span class="kw">const</span> segment <span class="kw">of</span> client.<span class="fn">transcribeStream</span>(audioFile)) {
+    console.<span class="fn">log</span>(segment.text);
+}</pre>
+                </div>
+                <div class="tab-panel" id="tab-go">
+<pre><span class="kw">import</span> wl <span class="str">"github.com/collabora/WhisperLive/sdks/go"</span>
+
+client := wl.<span class="fn">NewClient</span>(<span class="str">"http://localhost:8000"</span>, &amp;wl.Config{
+    APIKey: <span class="str">"your-key"</span>,
+})
+
+result, err := client.<span class="fn">Transcribe</span>(<span class="str">"audio.wav"</span>, <span class="kw">nil</span>)
+fmt.<span class="fn">Println</span>(result.Text)
+
+<span class="cmt">// Check server health</span>
+health, _ := client.<span class="fn">Health</span>()
+fmt.<span class="fn">Printf</span>(<span class="str">"Status: %s (%d/%d clients)\n"</span>,
+    health.Status, health.Clients, health.MaxClients)</pre>
+                </div>
+                <div class="tab-panel" id="tab-docker">
+<pre><span class="cmt"># GPU (NVIDIA)</span>
+docker run -it --gpus all -p <span class="num">9090</span>:<span class="num">9090</span> ghcr.io/collabora/whisperlive-gpu:latest
+
+<span class="cmt"># CPU only</span>
+docker run -it -p <span class="num">9090</span>:<span class="num">9090</span> ghcr.io/collabora/whisperlive-cpu:latest
+
+<span class="cmt"># OpenVINO (Intel GPU)</span>
+docker run -it --device=/dev/dri -p <span class="num">9090</span>:<span class="num">9090</span> ghcr.io/collabora/whisperlive-openvino
+
+<span class="cmt"># Edge (Raspberry Pi / ARM64)</span>
+docker build -f docker/Dockerfile.edge -t whisperlive-edge .
+docker run -p <span class="num">9090</span>:<span class="num">9090</span> -p <span class="num">8000</span>:<span class="num">8000</span> whisperlive-edge
+
+<span class="cmt"># NVIDIA Jetson</span>
+docker build -f docker/Dockerfile.jetson -t whisperlive-jetson .
+docker run --runtime nvidia -p <span class="num">9090</span>:<span class="num">9090</span> whisperlive-jetson</pre>
+                </div>
+                <div class="tab-panel" id="tab-rest">
+<pre><span class="cmt"># Transcribe a file</span>
+curl -X POST http://localhost:<span class="num">8000</span>/v1/transcriptions \
+  -H <span class="str">"Authorization: Bearer sk-..."</span> \
+  -F <span class="str">"file=@audio.wav"</span> \
+  -F <span class="str">"model=small"</span>
+
+<span class="cmt"># Stream with SSE</span>
+curl -X POST http://localhost:<span class="num">8000</span>/v1/transcriptions \
+  -H <span class="str">"Authorization: Bearer sk-..."</span> \
+  -F <span class="str">"file=@audio.wav"</span> \
+  -F <span class="str">"stream=true"</span>
+
+<span class="cmt"># List loaded models</span>
+curl http://localhost:<span class="num">8000</span>/v1/models
+
+<span class="cmt"># Health check</span>
+curl http://localhost:<span class="num">8000</span>/health</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══ DEPLOYMENT ═══ -->
+<section id="deploy">
+    <div class="section-inner">
+        <span class="section-label">Deployment</span>
+        <h2 class="section-title">Run Anywhere</h2>
+        <p class="section-desc">From a Raspberry Pi to a GPU cluster &mdash; WhisperLive scales to your needs.</p>
+
+        <div class="deploy-grid fade-in">
+            <div class="deploy-card">
+                <div class="d-icon">&#128421;</div>
+                <h3>Cloud GPU</h3>
+                <p>Docker images for NVIDIA GPU instances. Deploy on AWS, GCP, Azure with the included horizontal scaling guide and Kubernetes templates.</p>
+            </div>
+            <div class="deploy-card">
+                <div class="d-icon">&#128187;</div>
+                <h3>CPU / Intel</h3>
+                <p>OpenVINO backend for efficient CPU inference on Intel hardware. Also works with Faster Whisper&rsquo;s int8 quantization on any CPU.</p>
+            </div>
+            <div class="deploy-card">
+                <div class="d-icon">&#128223;</div>
+                <h3>Edge &amp; Embedded</h3>
+                <p>Raspberry Pi, NVIDIA Jetson, and ARM64 devices. Optimized Dockerfiles with model selection guides per device class.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══ BLOG POSTS ═══ -->
+<section id="blog">
+    <div class="section-inner">
+        <span class="section-label">Resources</span>
+        <h2 class="section-title">From the Blog</h2>
+        <p class="section-desc">Read about the technology and use cases behind WhisperLive.</p>
+
+        <div class="blog-grid fade-in">
+            <a href="https://www.collabora.com/news-and-blog/blog/2024/05/28/transforming-speech-technology-with-whisperlive/" class="blog-card">
+                <span class="blog-tag">Blog Post</span>
+                <h3>Transforming Speech Technology with WhisperLive</h3>
+                <p>A deep dive into how WhisperLive enables real-time transcription at production scale.</p>
+                <span class="arrow">Read more &rarr;</span>
+            </a>
+            <a href="https://www.collabora.com/news-and-blog/news-and-events/whisperfusion-ultra-low-latency-conversations-with-an-ai-chatbot.html" class="blog-card">
+                <span class="blog-tag">Case Study</span>
+                <h3>WhisperFusion: Ultra-Low Latency AI Conversations</h3>
+                <p>How WhisperLive powers WhisperFusion for ultra-low latency conversations with AI chatbots.</p>
+                <span class="arrow">Read more &rarr;</span>
+            </a>
+            <a href="https://www.collabora.com/news-and-blog/news-and-events/breaking-language-barriers-20-moving-closer-production-ready-hindi-asr.html" class="blog-card">
+                <span class="blog-tag">Research</span>
+                <h3>Breaking Language Barriers: Production-Ready Hindi ASR</h3>
+                <p>Moving closer towards fully reliable, production-ready Hindi automatic speech recognition.</p>
+                <span class="arrow">Read more &rarr;</span>
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- ═══ CTA ═══ -->
+<section class="cta-section">
+    <div class="cta-content">
+        <h2>Ready to get started?</h2>
+        <p>WhisperLive is free, open source, and ready for production. Join 40+ contributors building the future of speech-to-text.</p>
+        <div class="cta-actions">
+            <a href="https://github.com/collabora/WhisperLive" class="btn btn-green">
+                Get Started Free
+            </a>
+            <a href="https://github.com/collabora/WhisperLive/issues" class="btn btn-outline">
+                Report an Issue
+            </a>
+        </div>
+        <p style="margin-top: 40px; font-size: 0.85rem; color: var(--text-muted);">
+            Supported by <a href="https://www.collabora.com" style="color: var(--green); text-decoration: none;">Collabora</a> &middot; Open to contributions from everyone
+        </p>
+    </div>
+</section>
+
+<!-- ═══ FOOTER ═══ -->
+<footer>
+    <div class="footer-inner">
+        <div class="footer-brand">
+            <a href="#" class="f-logo">
+                <svg viewBox="0 0 28 28" class="waveform-bars" style="width: 22px; height: 22px;">
+                    <rect x="2" y="6" width="3" rx="1.5" height="16" transform-origin="3.5 14"/>
+                    <rect x="8" y="3" width="3" rx="1.5" height="22" transform-origin="9.5 14"/>
+                    <rect x="14" y="1" width="3" rx="1.5" height="26" transform-origin="15.5 14"/>
+                    <rect x="20" y="4" width="3" rx="1.5" height="20" transform-origin="21.5 14"/>
+                    <rect x="26" y="7" width="3" rx="1.5" height="14" transform-origin="27.5 14"/>
+                </svg>
+                WhisperLive
+            </a>
+            <p>Community-driven open-source real-time speech transcription powered by OpenAI Whisper. Supported by Collabora and contributors worldwide.</p>
+        </div>
+        <div class="footer-col">
+            <h4>Resources</h4>
+            <a href="https://github.com/collabora/WhisperLive">GitHub</a>
+            <a href="https://github.com/collabora/WhisperLive/blob/main/README.md">Documentation</a>
+            <a href="#enterprise">Scaling Guide</a>
+            <a href="#deploy">Deployment Guide</a>
+            <a href="#deploy">Edge Deployment</a>
+        </div>
+        <div class="footer-col">
+            <h4>Community</h4>
+            <a href="https://github.com/collabora/WhisperLive/issues">Issues</a>
+            <a href="https://github.com/collabora/WhisperLive/pulls">Pull Requests</a>
+            <a href="../html/index.html">API Docs</a>
+        </div>
+        <div class="footer-col">
+            <h4>Company</h4>
+            <a href="https://www.collabora.com">Collabora</a>
+            <a href="https://www.collabora.com/news-and-blog/blog/2024/05/28/transforming-speech-technology-with-whisperlive/">Blog</a>
+            <a href="mailto:vineet.suryan@collabora.com">Contact</a>
+        </div>
+    </div>
+    <div class="footer-bottom">
+        <p>&copy; 2024&ndash;2026 Collabora Ltd. Open source under the MIT License.</p>
+        <div class="footer-social">
+            <a href="https://github.com/collabora/WhisperLive">GitHub</a>
+        </div>
+    </div>
+</footer>
+
+<script>
+    // Tab switching
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const parent = btn.closest('.code-block') || document;
+            parent.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            parent.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+        });
+    });
+
+    // Smooth scroll
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            document.querySelector('.nav-links').classList.remove('show');
+        });
+    });
+
+    // Scroll fade-in
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+            }
+        });
+    }, { threshold: 0.05, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>
