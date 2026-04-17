@@ -160,6 +160,7 @@ class TranscriptionServer:
         self.use_vad = True
         self.single_model = False
         self.batch_config = None
+        self.raw_pcm_input = False
 
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
@@ -316,6 +317,9 @@ class TranscriptionServer:
         frame_data = websocket.recv()
         if frame_data == b"END_OF_AUDIO":
             return False
+        if self.raw_pcm_input:
+            audio_np = np.frombuffer(frame_data, dtype=np.int16)
+            return audio_np.astype(np.float32) / 32768.0
         return np.frombuffer(frame_data, dtype=np.float32)
 
     def handle_new_connection(self, websocket, faster_whisper_custom_model_path,
@@ -431,7 +435,8 @@ class TranscriptionServer:
             cors_origins: Optional[str] = None,
             batch_enabled=False,
             batch_max_size=8,
-            batch_window_ms=50):
+            batch_window_ms=50,
+            raw_pcm_input=False):
         """
         Run the transcription server.
 
@@ -449,6 +454,7 @@ class TranscriptionServer:
                 to 50.
         """
         self.cache_path = cache_path
+        self.raw_pcm_input = raw_pcm_input
         self.client_manager = ClientManager(max_clients, max_connection_time)
         if faster_whisper_custom_model_path is not None and not os.path.exists(faster_whisper_custom_model_path):
             if "/" not in faster_whisper_custom_model_path:
