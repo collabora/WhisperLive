@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhisperLive Audio Streaming</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        h1 {
+            text-align: center;
+            color: #4a5568;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            min-width: 120px;
+        }
+
+        .start-btn {
+            background: linear-gradient(45deg, #48bb78, #38a169);
+            color: white;
+        }
+
+        .start-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(72, 187, 120, 0.4);
+        }
+
+        .stop-btn {
+            background: linear-gradient(45deg, #f56565, #e53e3e);
+            color: white;
+        }
+
+        .stop-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(245, 101, 101, 0.4);
+        }
+
+        .status {
+            text-align: center;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 18px;
+            transition: all 0.3s ease;
+        }
+
+        .status.disconnected {
+            background: linear-gradient(45deg, #fed7d7, #feb2b2);
+            color: #c53030;
+        }
+
+        .status.connecting {
+            background: linear-gradient(45deg, #feebc8, #fbd38d);
+            color: #c05621;
+        }
+
+        .status.connected {
+            background: linear-gradient(45deg, #c6f6d5, #9ae6b4);
+            color: #2f855a;
+        }
+
+        .audio-visualizer {
+            width: 100%;
+            height: 100px;
+            background: #f7fafc;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #e2e8f0;
+        }
+
+        .volume-bar {
+            width: 80%;
+            height: 20px;
+            background: #e2e8f0;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .volume-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #48bb78, #38a169, #2f855a);
+            width: 0%;
+            transition: width 0.1s ease;
+            border-radius: 10px;
+        }
+
+        .transcription {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #667eea;
+            min-height: 200px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-size: 16px;
+            line-height: 1.6;
+        }
+
+        .transcription h3 {
+            margin-top: 0;
+            color: #4a5568;
+            font-size: 20px;
+        }
+
+        .config {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border: 1px solid #e2e8f0;
+        }
+
+        .config h3 {
+            margin-top: 0;
+            color: #4a5568;
+        }
+
+        .config label {
+            display: block;
+            margin: 10px 0 5px 0;
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        .config input, .config select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .error {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #f56565;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .recording {
+            animation: pulse 1s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 WhisperLive Audio Streaming</h1>
+        
+        <div class="config">
+            <h3>Configuration</h3>
+            <label for="wsUrl">WebSocket URL:</label>
+            <!-- // Use wss://yourserver.com/whisper-ws in production -->
+            <input type="text" id="wsUrl" value="ws://localhost:9090" placeholder="ws://localhost:9090">
+            
+            <label for="sampleRate">Sample Rate:</label>
+            <select id="sampleRate">
+                <option value="16000" selected>16000 Hz</option>
+                <option value="44100">44100 Hz</option>
+                <option value="48000">48000 Hz</option>
+            </select>
+            
+            <label for="language">Language:</label>
+            <select id="language">
+                <option value="en" selected>English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="it">Italian</option>
+                <option value="pt">Portuguese</option>
+                <option value="auto">Auto-detect</option>
+            </select>
+            
+            <label for="audioMethod">Audio Processing Method:</label>
+            <select id="audioMethod">
+                <option value="webaudio" selected>Web Audio API (Direct PCM)</option>
+                <option value="mediarecorder">MediaRecorder (Encoded Audio)</option>
+            </select>
+        </div>
+
+        <div class="controls">
+            <button id="startBtn" class="start-btn">Start Recording</button>
+            <button id="stopBtn" class="stop-btn" disabled>Stop Recording</button>
+        </div>
+
+        <div id="status" class="status disconnected">Disconnected</div>
+
+        <div class="audio-visualizer">
+            <div class="volume-bar">
+                <div id="volumeFill" class="volume-fill"></div>
+            </div>
+        </div>
+
+        <div class="transcription">
+            <h3>Live Transcription</h3>
+            <div id="transcriptionText">Click "Start Recording" to begin transcription...</div>
+        </div>
+
+        <div id="errorDiv" class="error" style="display: none;"></div>
+    </div>
+
+    <script>
+        class WhisperLiveClient {
+            constructor() {
+                this.websocket = null;
+                this.mediaRecorder = null;
+                this.audioStream = null;
+                this.audioContext = null;
+                this.analyser = null;
+                this.dataArray = null;
+                this.isRecording = false;
+                this.isConnected = false;
+                this.scriptProcessor = null;
+                this.useWebAudioAPI = true; // Use Web Audio API for direct PCM processing
+                
+                this.config = {
+                    sampleRate: 16000,
+                    language: 'en',
+                    wsUrl: 'ws://localhost:9090' // Use wss://yourserver.com/whisper-ws in production
+                };
+                
+                this.setupEventListeners();
+                this.updateStatus('disconnected', `Disconnected from ${this.config.wsUrl}`);
+            }
+
+            setupEventListeners() {
+                document.getElementById('startBtn').addEventListener('click', () => this.startRecording());
+                document.getElementById('stopBtn').addEventListener('click', () => this.stopRecording());
+                
+                // Configuration change listeners
+                document.getElementById('wsUrl').addEventListener('change', (e) => {
+                    this.config.wsUrl = e.target.value;
+                });
+                
+                document.getElementById('sampleRate').addEventListener('change', (e) => {
+                    this.config.sampleRate = parseInt(e.target.value);
+                });
+                
+                document.getElementById('language').addEventListener('change', (e) => {
+                    this.config.language = e.target.value;
+                });
+                
+                document.getElementById('audioMethod').addEventListener('change', (e) => {
+                    this.useWebAudioAPI = e.target.value === 'webaudio';
+                });
+            }
+
+            async startRecording() {
+                try {
+                    this.hideError();
+                    
+                    // Connect to WebSocket first
+                    await this.connectWebSocket();
+                    
+                    // Get microphone access
+                    await this.initializeAudio();
+                    
+                    // Start recording based on the method used
+                    if (this.useWebAudioAPI) {
+                        // Web Audio API is already processing in real-time
+                        this.isRecording = true;
+                    } else {
+                        // Start MediaRecorder with smaller chunks for better real-time performance
+                        this.mediaRecorder.start(250); // Send data every 250ms
+                        this.isRecording = true;
+                    }
+                    
+                    this.updateUI(true);
+                    this.updateStatus('connected', 'Recording... 🎙️');
+                    
+                    // Start audio visualization
+                    this.startAudioVisualization();
+                    
+                } catch (error) {
+                    this.showError('Failed to start recording: ' + error.message);
+                    console.error('Error starting recording:', error);
+                }
+            }
+
+            async stopRecording() {
+                this.isRecording = false;
+                
+                if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+                    this.mediaRecorder.stop();
+                }
+                
+                if (this.scriptProcessor) {
+                    this.scriptProcessor.disconnect();
+                    this.scriptProcessor = null;
+                }
+                
+                if (this.audioStream) {
+                    this.audioStream.getTracks().forEach(track => track.stop());
+                }
+                
+                if (this.audioContext && this.audioContext.state !== 'closed') {
+                    this.audioContext.close();
+                }
+                
+                if (this.websocket) {
+                    this.websocket.close();
+                }
+                
+                this.updateUI(false);
+                this.updateStatus('disconnected', `Disconnected from ${this.config.wsUrl}`);
+                this.updateVolumeBar(0);
+            }
+
+            async connectWebSocket() {
+                return new Promise((resolve, reject) => {
+                    console.log(`Connecting to WebSocket: ${this.config.wsUrl}`);
+                    this.updateStatus('connecting', `Connecting to ${this.config.wsUrl}...`);
+                    
+                    this.websocket = new WebSocket(this.config.wsUrl);
+                    
+                    this.websocket.onopen = () => {
+                        console.log(`WebSocket connected to: ${this.config.wsUrl}`);
+                        this.isConnected = true;
+                        
+                        // Generate a random UID
+                        const uid = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+                        
+                        // Send configuration in the required format
+                        const configMessage = {
+                            type: 'config',
+                            language: this.config.language,
+                            use_vad: true,
+                            max_clients: 4,
+                            max_connection_time: 600,
+                            uid: uid,
+                            task: 'transcribe',
+                            sample_rate: this.config.sampleRate,
+                            send_last_n_segments: 10,
+                            no_speech_thresh: 0.45,
+                            clip_audio: false,
+                            same_output_threshold: 10,
+                            initial_prompt: '',
+                            vad_parameters: {}
+                        };
+                        
+                        this.websocket.send(JSON.stringify(configMessage));
+                        resolve();
+                    };
+                    
+                    this.websocket.onmessage = (event) => {
+                        try {
+                            const message = JSON.parse(event.data);
+                            console.log('websocket message:', message);
+                            this.handleWebSocketMessage(message);
+                        } catch (error) {
+                            console.error('Error parsing WebSocket message:', error);
+                        }
+                    };
+                    
+                    this.websocket.onerror = (error) => {
+                        console.error(`WebSocket error for ${this.config.wsUrl}:`, error);
+                        this.showError(`WebSocket connection error for ${this.config.wsUrl}`);
+                        reject(new Error('WebSocket connection failed'));
+                    };
+                    
+                    this.websocket.onclose = () => {
+                        console.log(`WebSocket disconnected from: ${this.config.wsUrl}`);
+                        this.isConnected = false;
+                        if (this.isRecording) {
+                            this.updateStatus('disconnected', `Connection lost to ${this.config.wsUrl}`);
+                        }
+                    };
+                    
+                    // Timeout after 10 seconds
+                    setTimeout(() => {
+                        if (!this.isConnected) {
+                            reject(new Error('WebSocket connection timeout'));
+                        }
+                    }, 10000);
+                });
+            }
+
+            async initializeAudio() {
+                try {
+                    this.audioStream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            sampleRate: this.config.sampleRate,
+                            channelCount: 1,
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        } 
+                    });
+                    
+                    // Setup audio context for visualization and processing
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                        sampleRate: this.config.sampleRate
+                    });
+                    
+                    this.analyser = this.audioContext.createAnalyser();
+                    const source = this.audioContext.createMediaStreamSource(this.audioStream);
+                    source.connect(this.analyser);
+                    
+                    this.analyser.fftSize = 256;
+                    this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+                    
+                    if (this.useWebAudioAPI) {
+                        // Use Web Audio API for direct PCM processing
+                        this.setupWebAudioProcessing(source);
+                    } else {
+                        // Use MediaRecorder as fallback
+                        this.setupMediaRecorder();
+                    }
+                    
+                } catch (error) {
+                    throw new Error('Microphone access denied or not available: ' + error.message);
+                }
+            }
+
+            setupWebAudioProcessing(source) {
+                // Create a script processor for real-time audio processing
+                const bufferSize = 4096;
+                this.scriptProcessor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
+                
+                this.scriptProcessor.onaudioprocess = (event) => {
+                    if (!this.isRecording || !this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+                        return;
+                    }
+                    
+                    const inputBuffer = event.inputBuffer;
+                    const inputData = inputBuffer.getChannelData(0);
+                    // Send PCM data directly
+                    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+                        this.websocket.send(inputData.buffer)
+                    }
+                };
+                
+                // Connect the audio processing chain
+                source.connect(this.scriptProcessor);
+                this.scriptProcessor.connect(this.audioContext.destination);
+            }
+
+            setupMediaRecorder() {
+                // Try to use the best available audio format
+                const mimeTypes = [
+                    'audio/webm;codecs=pcm',
+                    'audio/wav',
+                    'audio/webm;codecs=opus',
+                    'audio/webm',
+                    'audio/mp4'
+                ];
+                
+                let selectedMimeType = '';
+                for (const mimeType of mimeTypes) {
+                    if (MediaRecorder.isTypeSupported(mimeType)) {
+                        selectedMimeType = mimeType;
+                        break;
+                    }
+                }
+                
+                if (!selectedMimeType) {
+                    throw new Error('No supported audio format found');
+                }
+                
+                console.log('Using audio format:', selectedMimeType);
+                
+                // Setup MediaRecorder
+                this.mediaRecorder = new MediaRecorder(this.audioStream, {
+                    mimeType: selectedMimeType
+                });
+                
+                this.mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0 && this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+                        this.sendAudioData(event.data);
+                    }
+                };
+            }
+
+            async sendAudioData(audioBlob) {
+                try {
+                    // Convert blob to ArrayBuffer
+                    const arrayBuffer = await audioBlob.arrayBuffer();
+                    
+                    // Decode audio data to get raw PCM
+                    const audioData = await this.decodeAudioData(arrayBuffer);
+                    
+                    // Send raw PCM data
+                    this.websocket.send(audioData);
+                } catch (error) {
+                    console.error('Error sending audio data:', error);
+                }
+            }
+
+            async decodeAudioData(arrayBuffer) {
+                try {
+                    // Create a temporary audio context for decoding
+                    const tempAudioContext = new (window.AudioContext || window.webkitAudioContext)({
+                        sampleRate: this.config.sampleRate
+                    });
+                    
+                    // Decode the audio data
+                    const audioBuffer = await tempAudioContext.decodeAudioData(arrayBuffer);
+                    
+                    // Get the first channel (mono)
+                    const channelData = audioBuffer.getChannelData(0);
+                    
+                    // Close the temporary context
+                    tempAudioContext.close();
+                    
+                    return channelData.buffer;
+                } catch (error) {
+                    console.error('Error decoding audio data:', error);
+                    // Fallback: send raw data
+                    return arrayBuffer;
+                }
+            }
+
+            handleWebSocketMessage(message) {
+                if(!message.segments) {
+                    console.log('Ignoring non-transcription message:', message);
+                    return;
+                }
+                let messageText = '';
+                message.segments.forEach((segment) => {
+                    // each segment has start, end, text, and completed
+                    //messageText += segment.completed ? segment.text : '';
+                    messageText += segment.text;
+                });
+                this.updateTranscription({text: messageText});
+            }
+
+            updateTranscription(data) {
+                const transcriptionDiv = document.getElementById('transcriptionText');
+                const timestamp = new Date().toLocaleTimeString();
+                
+                if (data.text && data.text.trim()) {
+                    const newText = `[${timestamp}] ${data.text}\n`;
+                    transcriptionDiv.innerHTML += newText;
+                    transcriptionDiv.scrollTop = transcriptionDiv.scrollHeight;
+                }
+            }
+
+            startAudioVisualization() {
+                const animate = () => {
+                    if (!this.isRecording) return;
+                    
+                    this.analyser.getByteFrequencyData(this.dataArray);
+                    
+                    // Calculate average volume
+                    let sum = 0;
+                    for (let i = 0; i < this.dataArray.length; i++) {
+                        sum += this.dataArray[i];
+                    }
+                    const average = sum / this.dataArray.length;
+                    const volume = (average / 255) * 100;
+                    
+                    this.updateVolumeBar(volume);
+                    
+                    requestAnimationFrame(animate);
+                };
+                
+                animate();
+            }
+
+            updateVolumeBar(volume) {
+                const volumeFill = document.getElementById('volumeFill');
+                volumeFill.style.width = `${volume}%`;
+            }
+
+            updateUI(isRecording) {
+                document.getElementById('startBtn').disabled = isRecording;
+                document.getElementById('stopBtn').disabled = !isRecording;
+                
+                const container = document.querySelector('.container');
+                if (isRecording) {
+                    container.classList.add('recording');
+                } else {
+                    container.classList.remove('recording');
+                }
+                
+                // Disable configuration inputs during recording
+                document.getElementById('wsUrl').disabled = isRecording;
+                document.getElementById('sampleRate').disabled = isRecording;
+                document.getElementById('language').disabled = isRecording;
+                document.getElementById('audioMethod').disabled = isRecording;
+            }
+
+            updateStatus(statusClass, statusText) {
+                const statusDiv = document.getElementById('status');
+                statusDiv.className = `status ${statusClass}`;
+                statusDiv.textContent = statusText;
+            }
+
+            showError(message) {
+                const errorDiv = document.getElementById('errorDiv');
+                errorDiv.textContent = message;
+                errorDiv.style.display = 'block';
+            }
+
+            hideError() {
+                const errorDiv = document.getElementById('errorDiv');
+                errorDiv.style.display = 'none';
+            }
+        }
+
+        // Initialize the client when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new WhisperLiveClient();
+        });
+    </script>
+</body>
+</html>
