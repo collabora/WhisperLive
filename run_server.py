@@ -109,6 +109,13 @@ if __name__ == "__main__":
         default=0,
         help='Port for Prometheus /metrics endpoint. 0 = disabled (default). Requires prometheus_client.'
     )
+    parser.add_argument(
+        '--noise_reduction',
+        type=str,
+        default=None,
+        choices=['near_field', 'far_field'],
+        help='Enable audio noise reduction. "near_field" for close-mic, "far_field" for distant audio. Requires noisereduce.'
+    )
     args = parser.parse_args()
 
     if args.backend == "tensorrt":
@@ -142,4 +149,5 @@ if __name__ == "__main__":
         api_key=args.api_key,
         rate_limit_rpm=args.rate_limit_rpm,
         metrics_port=args.metrics_port,
+        noise_reduction=args.noise_reduction,
     )

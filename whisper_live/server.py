@@ -180,6 +180,7 @@ class TranscriptionServer:
         self.raw_pcm_input = False
         self.plugin_registry = None
         self._model_cache = None
+        self._noise_reducer = None
 
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
@@ -410,8 +411,12 @@ class TranscriptionServer:
             return False
         if self.raw_pcm_input:
             audio_np = np.frombuffer(frame_data, dtype=np.int16)
-            return audio_np.astype(np.float32) / 32768.0
-        return np.frombuffer(frame_data, dtype=np.float32)
+            audio_np = audio_np.astype(np.float32) / 32768.0
+        else:
+            audio_np = np.frombuffer(frame_data, dtype=np.float32)
+        if self._noise_reducer is not None:
+            audio_np = self._noise_reducer.reduce(audio_np)
+        return audio_np
 
     def handle_new_connection(self, websocket, faster_whisper_custom_model_path,
                               whisper_tensorrt_path, trt_multilingual, trt_py_session=False):
@@ -678,7 +683,8 @@ class TranscriptionServer:
             api_key: Optional[str] = None,
             rate_limit_rpm: int = 0,
             metrics_port: int = 0,
-            plugin_registry=None):
+            plugin_registry=None,
+            noise_reduction: Optional[str] = None):
         """
         Run the transcription server.
 
@@ -746,6 +752,12 @@ class TranscriptionServer:
             max_models=3,
             default_model=faster_whisper_custom_model_path or "small",
         )
+
+        # Initialize noise reduction if requested
+        if noise_reduction:
+            from whisper_live.noise_reduction import NoiseReducer
+            self._noise_reducer = NoiseReducer(mode=noise_reduction)
+            logging.info(f"Noise reduction enabled: {noise_reduction} mode")
 
         # New OpenAI-compatible REST API (toggleable via enable_rest boolean)
         if enable_rest:
