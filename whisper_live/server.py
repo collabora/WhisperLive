@@ -732,7 +732,12 @@ class TranscriptionServer:
             storage_backend: str = "local",
             storage_bucket: Optional[str] = None,
             storage_prefix: str = "whisperlive/",
-            data_retention_days: int = 0):
+            data_retention_days: int = 0,
+            user_store_path: Optional[str] = None,
+            jwt_jwks_url: Optional[str] = None,
+            jwt_secret: Optional[str] = None,
+            jwt_audience: Optional[str] = None,
+            jwt_issuer: Optional[str] = None):
         """
         Run the transcription server.
 
@@ -766,6 +771,23 @@ class TranscriptionServer:
             storage_kwargs["bucket"] = storage_bucket
             storage_kwargs["prefix"] = storage_prefix
         self._storage = create_storage(storage_backend, **storage_kwargs)
+
+        # Initialize user management / ACL
+        self._user_store = None
+        self._jwt_validator = None
+        if user_store_path:
+            from whisper_live.acl import UserStore
+            self._user_store = UserStore(path=user_store_path)
+            logging.info(f"User store loaded from {user_store_path}")
+        if jwt_jwks_url or jwt_secret:
+            from whisper_live.acl import JWTValidator
+            self._jwt_validator = JWTValidator(
+                jwks_url=jwt_jwks_url,
+                secret=jwt_secret,
+                audience=jwt_audience,
+                issuer=jwt_issuer,
+            )
+            logging.info("JWT validation enabled")
         self.cache_path = cache_path
         self.raw_pcm_input = raw_pcm_input
         self.plugin_registry = plugin_registry
@@ -849,14 +871,44 @@ class TranscriptionServer:
                 allow_headers=["*"],  # Allows all headers
             )
 
-            # Optional API key authentication
-            if api_key:
+            # Authentication middleware
+            if self._user_store or api_key:
                 @app.middleware("http")
-                async def _check_api_key(request: Request, call_next):
+                async def _check_auth(request: Request, call_next):
+                    # Skip auth for health, docs, and static
+                    path = request.url.path
+                    if path in ("/health", "/docs", "/redoc", "/openapi.json", "/"):
+                        return await call_next(request)
+
                     auth = request.headers.get("Authorization", "")
-                    if auth != f"Bearer {api_key}":
-                        return JSONResponse({"error": "Invalid or missing API key"}, status_code=401)
-                    return await call_next(request)
+                    token = auth.replace("Bearer ", "") if auth.startswith("Bearer ") else ""
+
+                    # Try user store first
+                    if self._user_store and token:
+                        user = self._user_store.authenticate(token)
+                        if user:
+                            # Check per-user rate limit
+                            if not self._user_store.check_rate_limit(user.user_id):
+                                return JSONResponse({"error": "Rate limit exceeded"}, status_code=429)
+                            # Check quota
+                            if not self._user_store.check_quota(user.user_id):
+                                return JSONResponse({"error": "Monthly quota exceeded"}, status_code=429)
+                            # Attach user to request state
+                            request.state.user = user
+                            return await call_next(request)
+
+                    # Try JWT
+                    if self._jwt_validator and token:
+                        claims = self._jwt_validator.validate(token)
+                        if claims:
+                            request.state.jwt_claims = claims
+                            return await call_next(request)
+
+                    # Fall back to simple API key
+                    if api_key and token == api_key:
+                        return await call_next(request)
+
+                    return JSONResponse({"error": "Invalid or missing API key"}, status_code=401)
 
             # Optional rate limiting (requests per minute per client IP)
             if rate_limit_rpm > 0:
@@ -1255,6 +1307,109 @@ class TranscriptionServer:
 
                 threading.Thread(target=_retention_cleanup_loop, daemon=True).start()
                 logging.info(f"Data retention enabled: {data_retention_days} days")
+
+            # --- Admin / User management endpoints ---
+            if self._user_store:
+                from whisper_live.acl import Role
+
+                def _require_admin(request: Request):
+                    user = getattr(request.state, "user", None)
+                    if not user or not Role(user.role).can_admin():
+                        return None
+                    return user
+
+                @app.get("/v1/admin/users", tags=["Admin"],
+                         summary="List all users",
+                         description="Admin-only. Returns all registered users.")
+                async def list_users(request: Request):
+                    if not _require_admin(request):
+                        return JSONResponse({"error": "Admin access required"}, status_code=403)
+                    users = self._user_store.list_users()
+                    # Redact key hashes
+                    for u in users:
+                        u.pop("api_key_hash", None)
+                    return {"users": users}
+
+                @app.post("/v1/admin/users", tags=["Admin"],
+                          summary="Create a user",
+                          description="Admin-only. Create a new user with API key.")
+                async def create_user(
+                    request: Request,
+                    name: str = Form(...),
+                    role: str = Form(default="user"),
+                    rate_limit_rpm: int = Form(default=60),
+                    quota_minutes: int = Form(default=0),
+                ):
+                    if not _require_admin(request):
+                        return JSONResponse({"error": "Admin access required"}, status_code=403)
+                    try:
+                        user_role = Role(role)
+                    except ValueError:
+                        return JSONResponse({"error": f"Invalid role. Must be: admin, user, readonly"}, status_code=400)
+                    user, api_key = self._user_store.create_user(
+                        name=name, role=user_role,
+                        rate_limit_rpm=rate_limit_rpm,
+                        quota_minutes=quota_minutes,
+                    )
+                    return {
+                        "user_id": user.user_id,
+                        "name": user.name,
+                        "role": user.role.value,
+                        "api_key": api_key,  # Only shown once at creation
+                        "rate_limit_rpm": user.rate_limit_rpm,
+                        "quota_minutes": user.quota_minutes,
+                    }
+
+                @app.patch("/v1/admin/users/{user_id}", tags=["Admin"],
+                           summary="Update a user",
+                           description="Admin-only. Update user settings.")
+                async def update_user(
+                    request: Request,
+                    user_id: str,
+                    name: Optional[str] = Form(default=None),
+                    role: Optional[str] = Form(default=None),
+                    rate_limit_rpm: Optional[int] = Form(default=None),
+                    quota_minutes: Optional[int] = Form(default=None),
+                    enabled: Optional[bool] = Form(default=None),
+                ):
+                    if not _require_admin(request):
+                        return JSONResponse({"error": "Admin access required"}, status_code=403)
+                    kwargs = {}
+                    if name is not None:
+                        kwargs["name"] = name
+                    if role is not None:
+                        kwargs["role"] = role
+                    if rate_limit_rpm is not None:
+                        kwargs["rate_limit_rpm"] = rate_limit_rpm
+                    if quota_minutes is not None:
+                        kwargs["quota_minutes"] = quota_minutes
+                    if enabled is not None:
+                        kwargs["enabled"] = enabled
+                    user = self._user_store.update_user(user_id, **kwargs)
+                    if not user:
+                        return JSONResponse({"error": "User not found"}, status_code=404)
+                    return {"status": "updated", "user_id": user_id}
+
+                @app.delete("/v1/admin/users/{user_id}", tags=["Admin"],
+                            summary="Delete a user",
+                            description="Admin-only. Delete a user and revoke their API key.")
+                async def delete_user(request: Request, user_id: str):
+                    if not _require_admin(request):
+                        return JSONResponse({"error": "Admin access required"}, status_code=403)
+                    if self._user_store.delete_user(user_id):
+                        return {"status": "deleted", "user_id": user_id}
+                    return JSONResponse({"error": "User not found"}, status_code=404)
+
+                @app.post("/v1/admin/users/{user_id}/rotate-key", tags=["Admin"],
+                          summary="Rotate API key",
+                          description="Admin-only. Generate a new API key for a user. Old key is invalidated.")
+                async def rotate_key(request: Request, user_id: str):
+                    if not _require_admin(request):
+                        return JSONResponse({"error": "Admin access required"}, status_code=403)
+                    new_key = self._user_store.rotate_key(user_id)
+                    if not new_key:
+                        return JSONResponse({"error": "User not found"}, status_code=404)
+                    return {"user_id": user_id, "api_key": new_key}
 
             # Serve the web transcription UI from the web/ directory
             web_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")

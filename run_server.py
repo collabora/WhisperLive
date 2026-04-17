@@ -146,6 +146,36 @@ if __name__ == "__main__":
         default=0,
         help='Auto-delete stored data older than N days. 0 = disabled (default).'
     )
+    parser.add_argument(
+        '--user_store',
+        type=str,
+        default=None,
+        help='Path to JSON file for user management. Enables multi-user API keys with roles/quotas.'
+    )
+    parser.add_argument(
+        '--jwt_jwks_url',
+        type=str,
+        default=None,
+        help='JWKS URL for JWT validation (Cognito, Auth0, Keycloak). Requires PyJWT[crypto].'
+    )
+    parser.add_argument(
+        '--jwt_secret',
+        type=str,
+        default=None,
+        help='Shared secret for HS256 JWT validation.'
+    )
+    parser.add_argument(
+        '--jwt_audience',
+        type=str,
+        default=None,
+        help='Expected JWT audience claim.'
+    )
+    parser.add_argument(
+        '--jwt_issuer',
+        type=str,
+        default=None,
+        help='Expected JWT issuer claim.'
+    )
     args = parser.parse_args()
 
     if args.backend == "tensorrt":
@@ -185,4 +215,9 @@ if __name__ == "__main__":
         storage_bucket=args.storage_bucket,
         storage_prefix=args.storage_prefix,
         data_retention_days=args.data_retention_days,
+        user_store_path=args.user_store,
+        jwt_jwks_url=args.jwt_jwks_url,
+        jwt_secret=args.jwt_secret,
+        jwt_audience=args.jwt_audience,
+        jwt_issuer=args.jwt_issuer,
     )
