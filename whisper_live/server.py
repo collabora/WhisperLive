@@ -6,6 +6,7 @@ import queue
 import json
 import functools
 import logging
+import signal
 import shutil
 import tempfile
 from typing import Optional, List
@@ -29,6 +30,40 @@ from whisper_live.vad import VoiceActivityDetector
 from whisper_live.backend.base import ServeClientBase
 
 logging.basicConfig(level=logging.INFO)
+
+
+class JSONFormatter(logging.Formatter):
+    """Structured JSON log formatter for production deployments."""
+
+    def format(self, record):
+        log_entry = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info and record.exc_info[0]:
+            log_entry["exception"] = self.formatException(record.exc_info)
+        # Attach extra fields if present
+        for attr in ("request_id", "client_uid", "client_ip", "endpoint"):
+            if hasattr(record, attr):
+                log_entry[attr] = getattr(record, attr)
+        return json.dumps(log_entry)
+
+
+def configure_logging(json_logs: bool = False, level: int = logging.INFO):
+    """Configure root logger. Use json_logs=True for production/CloudWatch."""
+    root = logging.getLogger()
+    root.setLevel(level)
+    handler = logging.StreamHandler()
+    if json_logs:
+        handler.setFormatter(JSONFormatter())
+    else:
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)s %(name)s: %(message)s"
+        ))
+    root.handlers.clear()
+    root.addHandler(handler)
 
 class ClientManager:
     def __init__(self, max_clients=4, max_connection_time=600):
@@ -182,6 +217,8 @@ class TranscriptionServer:
         self.plugin_registry = None
         self._model_cache = None
         self._noise_reducer = None
+        self._shutting_down = False
+        self._ws_server = None
 
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
@@ -690,7 +727,12 @@ class TranscriptionServer:
             rate_limit_rpm: int = 0,
             metrics_port: int = 0,
             plugin_registry=None,
-            noise_reduction: Optional[str] = None):
+            noise_reduction: Optional[str] = None,
+            json_logs: bool = False,
+            storage_backend: str = "local",
+            storage_bucket: Optional[str] = None,
+            storage_prefix: str = "whisperlive/",
+            data_retention_days: int = 0):
         """
         Run the transcription server.
 
@@ -706,7 +748,24 @@ class TranscriptionServer:
             batch_window_ms (int): Maximum time in milliseconds to wait for
                 the batch to fill after the first request arrives. Defaults
                 to 50.
+            json_logs (bool): Emit structured JSON logs for CloudWatch/ELK.
+                Defaults to False.
+            storage_backend (str): "local" or "s3". Defaults to "local".
+            storage_bucket (str): S3 bucket name (required if storage_backend="s3").
+            storage_prefix (str): S3 key prefix. Defaults to "whisperlive/".
+            data_retention_days (int): Auto-delete data older than this. 0 = disabled.
         """
+        configure_logging(json_logs=json_logs)
+
+        # Initialize storage backend
+        from whisper_live.storage import create_storage
+        storage_kwargs = {}
+        if storage_backend == "s3":
+            if not storage_bucket:
+                raise ValueError("storage_bucket is required when storage_backend='s3'")
+            storage_kwargs["bucket"] = storage_bucket
+            storage_kwargs["prefix"] = storage_prefix
+        self._storage = create_storage(storage_backend, **storage_kwargs)
         self.cache_path = cache_path
         self.raw_pcm_input = raw_pcm_input
         self.plugin_registry = plugin_registry
@@ -818,17 +877,66 @@ class TranscriptionServer:
                         bucket.append(now)
                     return await call_next(request)
 
+            # Security headers middleware (HSTS, CSP, etc.)
+            @app.middleware("http")
+            async def _security_headers(request: Request, call_next):
+                response = await call_next(request)
+                response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+                response.headers["X-Content-Type-Options"] = "nosniff"
+                response.headers["X-Frame-Options"] = "DENY"
+                response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+                return response
+
+            # Reject oversized uploads (default 500 MB)
+            max_upload_bytes = int(os.environ.get("WHISPER_MAX_UPLOAD_BYTES", 500 * 1024 * 1024))
+
+            @app.middleware("http")
+            async def _check_upload_size(request: Request, call_next):
+                content_length = request.headers.get("content-length")
+                if content_length and int(content_length) > max_upload_bytes:
+                    return JSONResponse(
+                        {"error": f"Upload too large. Maximum size: {max_upload_bytes // (1024*1024)} MB"},
+                        status_code=413,
+                    )
+                return await call_next(request)
+
 
             @app.get("/health", tags=["System"],
                      summary="Health check",
-                     description="Returns server health status and connected client count.")
+                     description="Returns server health status, connected client count, GPU availability, and model readiness.")
             async def health_check():
                 client_count = len(self.client_manager.clients) if self.client_manager else 0
-                return {
-                    "status": "ok",
+                max_clients = self.client_manager.max_clients if self.client_manager else 0
+
+                gpu_available = torch.cuda.is_available()
+                gpu_info = None
+                if gpu_available:
+                    gpu_info = {
+                        "device_count": torch.cuda.device_count(),
+                        "device_name": torch.cuda.get_device_name(0),
+                    }
+                    try:
+                        mem = torch.cuda.mem_get_info(0)
+                        gpu_info["free_vram_mb"] = round(mem[0] / 1024 / 1024)
+                        gpu_info["total_vram_mb"] = round(mem[1] / 1024 / 1024)
+                    except Exception:
+                        pass
+
+                models_loaded = self._model_cache.list_loaded() if self._model_cache else []
+
+                status = "draining" if self._shutting_down else "ok"
+                status_code = 503 if self._shutting_down else 200
+
+                body = {
+                    "status": status,
                     "clients": client_count,
-                    "max_clients": self.client_manager.max_clients if self.client_manager else 0,
+                    "max_clients": max_clients,
+                    "gpu_available": gpu_available,
+                    "gpu": gpu_info,
+                    "models_loaded": models_loaded,
+                    "noise_reduction": self._noise_reducer is not None,
                 }
+                return JSONResponse(body, status_code=status_code)
 
             @app.get("/v1/plugins", tags=["System"],
                      summary="List plugins",
@@ -1101,6 +1209,53 @@ class TranscriptionServer:
                     wl_metrics.track_error("intelligence")
                     return JSONResponse({"error": str(e)}, status_code=500)
 
+            # --- Data management / GDPR endpoints ---
+
+            @app.get("/v1/jobs/{job_id}", tags=["Data Management"],
+                     summary="Get job result",
+                     description="Retrieve stored transcription result for a job.")
+            async def get_job_result(job_id: str):
+                result = self._storage.get_result(job_id)
+                if result is None:
+                    return JSONResponse({"error": "Job not found"}, status_code=404)
+                return result
+
+            @app.delete("/v1/jobs/{job_id}", tags=["Data Management"],
+                        summary="Delete job data",
+                        description="Delete all stored audio and result data for a job.")
+            async def delete_job(job_id: str):
+                self._storage.delete_job(job_id)
+                return {"status": "deleted", "job_id": job_id}
+
+            @app.delete("/v1/users/{user_id}/data", tags=["Data Management"],
+                        summary="GDPR: Delete all user data",
+                        description="Delete all audio and result data associated with a user. "
+                                    "Implements GDPR right to deletion.")
+            async def delete_user_data(user_id: str):
+                count = self._storage.delete_all_for_user(user_id)
+                return {"status": "deleted", "user_id": user_id, "files_deleted": count}
+
+            # Periodic data retention cleanup
+            if data_retention_days > 0:
+                retention_seconds = data_retention_days * 86400
+
+                def _retention_cleanup_loop():
+                    while not self._shutting_down:
+                        try:
+                            deleted = self._storage.cleanup_expired(retention_seconds)
+                            if deleted:
+                                logging.info(f"Data retention cleanup: deleted {deleted} expired files")
+                        except Exception as e:
+                            logging.error(f"Data retention cleanup error: {e}")
+                        # Run every hour
+                        for _ in range(3600):
+                            if self._shutting_down:
+                                break
+                            time.sleep(1)
+
+                threading.Thread(target=_retention_cleanup_loop, daemon=True).start()
+                logging.info(f"Data retention enabled: {data_retention_days} days")
+
             # Serve the web transcription UI from the web/ directory
             web_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
             if os.path.isdir(web_dir):
@@ -1151,6 +1306,28 @@ class TranscriptionServer:
             port,
             **extra_ws_kwargs,
         ) as server:
+            self._ws_server = server
+
+            def _graceful_shutdown(signum, frame):
+                sig_name = signal.Signals(signum).name
+                logging.info(f"Received {sig_name} — initiating graceful shutdown")
+                self._shutting_down = True
+                # Stop accepting new connections
+                server.shutdown()
+                # Drain existing clients
+                if self.client_manager:
+                    with self.client_manager.lock:
+                        clients = list(self.client_manager.clients.items())
+                    for ws, client in clients:
+                        try:
+                            client.disconnect()
+                            ws.close()
+                        except Exception:
+                            pass
+                logging.info("Graceful shutdown complete")
+
+            signal.signal(signal.SIGTERM, _graceful_shutdown)
+            signal.signal(signal.SIGINT, _graceful_shutdown)
             server.serve_forever()
 
     def voice_activity(self, websocket, frame_np):

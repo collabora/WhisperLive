@@ -116,6 +116,36 @@ if __name__ == "__main__":
         choices=['near_field', 'far_field'],
         help='Enable audio noise reduction. "near_field" for close-mic, "far_field" for distant audio. Requires noisereduce.'
     )
+    parser.add_argument(
+        '--json_logs',
+        action='store_true',
+        help='Emit structured JSON logs (for CloudWatch, ELK, or similar). Default: human-readable.'
+    )
+    parser.add_argument(
+        '--storage_backend',
+        type=str,
+        default='local',
+        choices=['local', 's3'],
+        help='Storage backend for audio files and results. "local" (default) or "s3".'
+    )
+    parser.add_argument(
+        '--storage_bucket',
+        type=str,
+        default=None,
+        help='S3 bucket name (required when --storage_backend=s3).'
+    )
+    parser.add_argument(
+        '--storage_prefix',
+        type=str,
+        default='whisperlive/',
+        help='S3 key prefix for stored files. Default: "whisperlive/".'
+    )
+    parser.add_argument(
+        '--data_retention_days',
+        type=int,
+        default=0,
+        help='Auto-delete stored data older than N days. 0 = disabled (default).'
+    )
     args = parser.parse_args()
 
     if args.backend == "tensorrt":
@@ -150,4 +180,9 @@ if __name__ == "__main__":
         rate_limit_rpm=args.rate_limit_rpm,
         metrics_port=args.metrics_port,
         noise_reduction=args.noise_reduction,
+        json_logs=args.json_logs,
+        storage_backend=args.storage_backend,
+        storage_bucket=args.storage_bucket,
+        storage_prefix=args.storage_prefix,
+        data_retention_days=args.data_retention_days,
     )

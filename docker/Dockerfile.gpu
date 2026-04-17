@@ -23,4 +23,12 @@ ENV LD_LIBRARY_PATH="/usr/local/lib/python3.10/site-packages/nvidia/cublas/lib:/
 COPY whisper_live /app/whisper_live
 COPY run_server.py /app
 
-CMD ["python", "run_server.py"]
+# Health check for ALB/ECS integration
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
+# Expose WebSocket and REST API ports
+EXPOSE 9090 8000
+
+# Use exec form so SIGTERM is forwarded to the Python process for graceful shutdown
+CMD ["python", "run_server.py", "--enable_rest"]
