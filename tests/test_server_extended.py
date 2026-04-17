@@ -169,6 +169,28 @@ class TestTranscriptionServerGetAudio(unittest.TestCase):
         result = self.server.get_audio_from_websocket(ws)
         np.testing.assert_array_almost_equal(result, audio)
 
+    def test_raw_pcm_input_normalizes_int16(self):
+        import numpy as np
+        self.server.raw_pcm_input = True
+        ws = MagicMock()
+        pcm = np.array([0, 16384, -16384, 32767], dtype=np.int16)
+        ws.recv.return_value = pcm.tobytes()
+        result = self.server.get_audio_from_websocket(ws)
+        expected = pcm.astype(np.float32) / 32768.0
+        np.testing.assert_array_almost_equal(result, expected)
+        self.assertTrue(result.dtype == np.float32)
+        self.assertTrue(np.all(result >= -1.0))
+        self.assertTrue(np.all(result <= 1.0))
+
+    def test_raw_pcm_input_off_reads_float32(self):
+        import numpy as np
+        self.server.raw_pcm_input = False
+        ws = MagicMock()
+        audio = np.array([0.5, -0.5], dtype=np.float32)
+        ws.recv.return_value = audio.tobytes()
+        result = self.server.get_audio_from_websocket(ws)
+        np.testing.assert_array_almost_equal(result, audio)
+
 
 class TestTranscriptionServerHandleNewConnection(unittest.TestCase):
     def setUp(self):
