@@ -36,6 +36,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         translation_queue=None,
         hotwords=None,
         diarization=None,
+        word_timestamps=False,
     ):
         """
         Initialize a ServeClient instance.
@@ -67,6 +68,7 @@ class ServeClientFasterWhisper(ServeClientBase):
             same_output_threshold,
             translation_queue,
             diarization,
+            word_timestamps,
         )
         self.cache_path = cache_path
         self.model_sizes = [
@@ -217,6 +219,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 initial_prompt=self.initial_prompt,
                 use_vad=self.use_vad,
                 vad_parameters=self.vad_parameters if self.use_vad else None,
+                word_timestamps=self.word_timestamps,
             )
             ServeClientFasterWhisper.BATCH_WORKER.submit(request)
             request.future.wait(timeout=30)
@@ -236,7 +239,8 @@ class ServeClientFasterWhisper(ServeClientBase):
             task=self.task,
             vad_filter=self.use_vad,
             vad_parameters=self.vad_parameters if self.use_vad else None,
-            hotwords=self.hotwords)
+            hotwords=self.hotwords,
+            word_timestamps=self.word_timestamps)
         if ServeClientFasterWhisper.SINGLE_MODEL:
             ServeClientFasterWhisper.SINGLE_MODEL_LOCK.release()
 

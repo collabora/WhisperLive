@@ -293,6 +293,7 @@ class TranscriptionServer:
                     translation_queue=translation_queue,
                     hotwords=options.get("hotwords"),
                     diarization=self._create_diarizer(options),
+                    word_timestamps=options.get("word_timestamps", False),
                 )
 
                 logging.info("Running faster_whisper backend.")
