@@ -39,6 +39,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         diarization=None,
         smart_formatting=False,
         pii_redaction=None,
+        profanity_filter=None,
     ):
         """
         Initialize a ServeClient instance.
@@ -74,6 +75,7 @@ class ServeClientFasterWhisper(ServeClientBase):
             smart_formatting,
             pii_redaction,
         )
+        self.profanity_filter = profanity_filter
         self.cache_path = cache_path
         self.model_sizes = [
             "tiny", "tiny.en", "base", "base.en", "small", "small.en",

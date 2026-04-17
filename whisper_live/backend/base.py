@@ -8,6 +8,7 @@ import numpy as np
 from whisper_live import metrics as wl_metrics
 from whisper_live.formatting import format_transcript
 from whisper_live.pii_redaction import redact_pii
+from whisper_live.profanity_filter import filter_profanity
 
 
 class ServeClientBase(object):
@@ -64,6 +65,7 @@ class ServeClientBase(object):
         self.diarization = diarization
         self.smart_formatting = smart_formatting
         self.pii_redaction = pii_redaction
+        self.profanity_filter = None
 
         self.frames = b""
         self.timestamp_offset = 0.0
@@ -152,6 +154,8 @@ class ServeClientBase(object):
                 of the transcription.
         """
         formatted_text = format_transcript(text) if self.smart_formatting else text
+        if self.profanity_filter:
+            formatted_text = filter_profanity(formatted_text, **self.profanity_filter)
         if self.pii_redaction:
             formatted_text = redact_pii(formatted_text, pii_types=self.pii_redaction)
         seg = {

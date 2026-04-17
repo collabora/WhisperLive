@@ -51,6 +51,7 @@ class Client:
         max_speakers=10,
         smart_formatting=False,
         pii_redaction=None,
+        profanity_filter=None,
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -119,6 +120,7 @@ class Client:
         self.max_speakers = max_speakers
         self.smart_formatting = smart_formatting
         self.pii_redaction = pii_redaction
+        self.profanity_filter = profanity_filter
 
         self.audio_bytes = None
 
@@ -338,6 +340,7 @@ class Client:
                     "max_speakers": self.max_speakers,
                     "smart_formatting": self.smart_formatting,
                     "pii_redaction": self.pii_redaction,
+                    "profanity_filter": self.profanity_filter,
                 }
             )
         )
@@ -865,6 +868,7 @@ class TranscriptionClient(TranscriptionTeeClient):
         max_speakers=10,
         smart_formatting=False,
         pii_redaction=None,
+        profanity_filter=None,
     ):
         self.client = Client(
             host,
@@ -893,6 +897,7 @@ class TranscriptionClient(TranscriptionTeeClient):
             max_speakers=max_speakers,
             smart_formatting=smart_formatting,
             pii_redaction=pii_redaction,
+            profanity_filter=profanity_filter,
         )
 
         if save_output_recording and not output_recording_filename.endswith(".wav"):

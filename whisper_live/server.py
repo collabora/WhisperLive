@@ -298,6 +298,7 @@ class TranscriptionServer:
                     diarization=self._create_diarizer(options),
                     smart_formatting=options.get("smart_formatting", False),
                     pii_redaction=self._parse_pii_option(options),
+                    profanity_filter=self._parse_profanity_option(options),
                 )
 
                 logging.info("Running faster_whisper backend.")
@@ -361,6 +362,32 @@ class TranscriptionServer:
             return set(pii)
         if isinstance(pii, str):
             return {t.strip() for t in pii.split(",") if t.strip()}
+        return None
+
+    def _parse_profanity_option(self, options):
+        """Parse profanity filter option from client handshake.
+
+        Returns:
+            dict of kwargs for filter_profanity(), or None if disabled.
+        """
+        pf = options.get("profanity_filter")
+        if not pf:
+            return None
+        if pf is True:
+            return {"mode": "partial"}
+        if isinstance(pf, str):
+            if pf in ("partial", "full", "remove"):
+                return {"mode": pf}
+            return {"mode": "partial"}
+        if isinstance(pf, dict):
+            result = {"mode": pf.get("mode", "partial")}
+            if "mask_char" in pf:
+                result["mask_char"] = pf["mask_char"]
+            if "extra_words" in pf:
+                result["extra_words"] = set(pf["extra_words"])
+            if "custom_words" in pf:
+                result["custom_words"] = set(pf["custom_words"])
+            return result
         return None
 
     def get_audio_from_websocket(self, websocket):
