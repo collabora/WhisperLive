@@ -90,6 +90,13 @@ if __name__ == "__main__":
         help='Expect raw PCM int16 audio from clients instead of float32. '
              'Audio will be normalized to float32 range [-1.0, 1.0].'
     )
+    parser.add_argument(
+        '--api_key',
+        type=str,
+        default=None,
+        help='Optional API key for authenticating WebSocket connections. '
+             'Clients must send "Authorization: Bearer <key>" header or "?token=<key>" query parameter.'
+    )
     args = parser.parse_args()
 
     if args.backend == "tensorrt":
@@ -120,4 +127,5 @@ if __name__ == "__main__":
         batch_max_size=args.batch_max_size,
         batch_window_ms=args.batch_window_ms,
         raw_pcm_input=args.raw_pcm_input,
+        api_key=args.api_key,
     )
