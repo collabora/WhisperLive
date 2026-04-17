@@ -6,6 +6,11 @@ from whisper_live.formatting import (
     _replace_spoken_numbers,
     _capitalize_sentences,
     _collapse_whitespace,
+    smart_format,
+    find_and_replace,
+    _format_currency,
+    _format_percentages,
+    _format_ordinals,
 )
 
 
@@ -119,6 +124,74 @@ class TestFormatTranscript(unittest.TestCase):
     def test_both_disabled(self):
         result = format_transcript("  hello   world  ", capitalize=False, numbers=False)
         self.assertEqual(result, "hello world")
+
+    def test_smart_format_flag(self):
+        result = format_transcript("it costs 50 dollars", smart=True, capitalize=False, numbers=False)
+        self.assertEqual(result, "it costs $50")
+
+
+class TestSmartFormat(unittest.TestCase):
+    def test_currency_dollars(self):
+        self.assertEqual(_format_currency("it costs 50 dollars"), "it costs $50")
+
+    def test_currency_euros(self):
+        self.assertEqual(_format_currency("I paid 200 euros"), "I paid €200")
+
+    def test_currency_pounds(self):
+        self.assertEqual(_format_currency("that is 10 pounds"), "that is £10")
+
+    def test_percentages(self):
+        self.assertEqual(_format_percentages("it went up 25 percent"), "it went up 25%")
+
+    def test_ordinals(self):
+        result = _format_ordinals("the first and second place")
+        self.assertEqual(result, "the 1st and 2nd place")
+
+    def test_smart_format_combined(self):
+        result = smart_format("I spent 100 dollars which is 20 percent of my income")
+        self.assertIn("$100", result)
+        self.assertIn("20%", result)
+
+    def test_empty(self):
+        self.assertEqual(smart_format(""), "")
+        self.assertIsNone(smart_format(None))
+
+
+class TestFindAndReplace(unittest.TestCase):
+    def test_simple_replace(self):
+        result = find_and_replace("hello world", [("world", "earth")])
+        self.assertEqual(result, "hello earth")
+
+    def test_case_insensitive(self):
+        result = find_and_replace("Hello World", [("hello", "hi")])
+        self.assertEqual(result, "hi World")
+
+    def test_case_sensitive(self):
+        result = find_and_replace("Hello hello", [("hello", "hi")], case_sensitive=True)
+        self.assertEqual(result, "Hello hi")
+
+    def test_regex_mode(self):
+        result = find_and_replace(
+            "call 555-1234 now",
+            [(r"\d{3}-\d{4}", "[PHONE]")],
+            use_regex=True,
+        )
+        self.assertEqual(result, "call [PHONE] now")
+
+    def test_multiple_replacements(self):
+        result = find_and_replace(
+            "the cat sat on the mat",
+            [("cat", "dog"), ("mat", "rug")],
+        )
+        self.assertEqual(result, "the dog sat on the rug")
+
+    def test_empty_input(self):
+        self.assertEqual(find_and_replace("", [("a", "b")]), "")
+        self.assertEqual(find_and_replace("hello", []), "hello")
+
+    def test_special_chars_escaped(self):
+        result = find_and_replace("price is $10.00", [("$10.00", "ten dollars")])
+        self.assertEqual(result, "price is ten dollars")
 
 
 if __name__ == "__main__":

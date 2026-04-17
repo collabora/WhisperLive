@@ -1031,6 +1031,8 @@ class TranscriptionServer:
                 channel_labels: Optional[str] = Form(default=None),
                 detect_utterances: bool = Form(default=False),
                 detect_paragraphs: bool = Form(default=False),
+                smart_format: bool = Form(default=False),
+                find_replace: Optional[str] = Form(default=None),
             ):
                 if stream:
                     return self._stream_transcription(
@@ -1151,6 +1153,23 @@ class TranscriptionServer:
 
                     text = " ".join([s.text.strip() for s in segments])
                     os.unlink(tmp_path)
+
+                    # Apply smart formatting and find & replace
+                    if smart_format or find_replace:
+                        from whisper_live.formatting import (
+                            format_transcript as _fmt,
+                            find_and_replace as _fnr,
+                        )
+                        if smart_format:
+                            text = _fmt(text, smart=True)
+                        if find_replace:
+                            import json as _json
+                            try:
+                                pairs = _json.loads(find_replace)
+                                if isinstance(pairs, list):
+                                    text = _fnr(text, [(p["find"], p["replace"]) for p in pairs])
+                            except (ValueError, KeyError, TypeError):
+                                pass  # Silently skip malformed find_replace
 
                     if response_format == "text":
                         wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
