@@ -24,6 +24,9 @@ class ServeClientBase(object):
     same_output_threshold: int
     """Number of repeated outputs before considering it as a valid segment."""
 
+    MAX_TRANSCRIPT_LENGTH = 500
+    MAX_TRANSLATION_QUEUE_SIZE = 100
+
     def __init__(
         self,
         client_uid,
@@ -376,4 +379,12 @@ class ServeClientBase(object):
             with self.lock:
                 self.timestamp_offset += offset
 
+        self._trim_transcript()
         return last_segment
+
+    def _trim_transcript(self):
+        """Trims transcript and text lists to prevent unbounded memory growth."""
+        if len(self.transcript) > self.MAX_TRANSCRIPT_LENGTH:
+            self.transcript = self.transcript[-self.MAX_TRANSCRIPT_LENGTH:]
+        if len(self.text) > self.MAX_TRANSCRIPT_LENGTH:
+            self.text = self.text[-self.MAX_TRANSCRIPT_LENGTH:]
