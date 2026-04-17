@@ -84,8 +84,13 @@ class S3Storage:
         kwargs = {}
         if region:
             kwargs["region_name"] = region
+        # Support S3-compatible endpoints (MinIO, LocalStack, etc.)
+        endpoint_url = os.environ.get("AWS_ENDPOINT_URL")
+        if endpoint_url:
+            kwargs["endpoint_url"] = endpoint_url
         self._s3 = boto3.client("s3", **kwargs)
-        logger.info(f"S3 storage initialized: s3://{bucket}/{prefix}")
+        logger.info(f"S3 storage initialized: s3://{bucket}/{prefix}"
+                    + (f" (endpoint: {endpoint_url})" if endpoint_url else ""))
 
     def _key(self, filename: str) -> str:
         return f"{self.prefix}{filename}"
