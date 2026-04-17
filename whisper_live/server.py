@@ -1,6 +1,7 @@
 import os
 import time
 import threading
+import collections
 import queue
 import json
 import functools
@@ -8,7 +9,7 @@ import logging
 import shutil
 import tempfile
 from typing import Optional, List
-from fastapi import FastAPI, UploadFile, Form
+from fastapi import FastAPI, UploadFile, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.responses import PlainTextResponse, JSONResponse, StreamingResponse
@@ -533,6 +534,8 @@ class TranscriptionServer:
             batch_window_ms=50,
             raw_pcm_input=False,
             metrics_port: int = 0,
+            api_key: Optional[str] = None,
+            rate_limit_rpm: int = 0,
             segment_post_processor=None):
         """
         Run the transcription server.
@@ -611,6 +614,34 @@ class TranscriptionServer:
                 allow_methods=["*"],  # Allows all methods (GET, POST, etc.)
                 allow_headers=["*"],  # Allows all headers
             )
+
+            # Optional API key authentication
+            if api_key:
+                @app.middleware("http")
+                async def _check_api_key(request: Request, call_next):
+                    auth = request.headers.get("Authorization", "")
+                    if auth != f"Bearer {api_key}":
+                        return JSONResponse({"error": "Invalid or missing API key"}, status_code=401)
+                    return await call_next(request)
+
+            # Optional rate limiting (requests per minute per client IP)
+            if rate_limit_rpm > 0:
+                _rate_lock = threading.Lock()
+                _rate_buckets: dict = {}  # ip -> deque of timestamps
+
+                @app.middleware("http")
+                async def _rate_limit(request: Request, call_next):
+                    client_ip = request.client.host if request.client else "unknown"
+                    now = time.time()
+                    with _rate_lock:
+                        bucket = _rate_buckets.setdefault(client_ip, collections.deque())
+                        # Discard entries older than 60s
+                        while bucket and bucket[0] < now - 60:
+                            bucket.popleft()
+                        if len(bucket) >= rate_limit_rpm:
+                            return JSONResponse({"error": "Rate limit exceeded"}, status_code=429)
+                        bucket.append(now)
+                    return await call_next(request)
 
 
             @app.post("/v1/audio/transcriptions")

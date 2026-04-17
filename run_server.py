@@ -96,6 +96,19 @@ if __name__ == "__main__":
         default=0,
         help='Port for Prometheus /metrics endpoint. 0 = disabled (default). Requires prometheus_client.'
     )
+    parser.add_argument(
+        '--api_key',
+        type=str,
+        default=None,
+        help='Optional API key for authenticating REST API requests. '
+             'Clients must send "Authorization: Bearer <key>" header.'
+    )
+    parser.add_argument(
+        '--rate_limit_rpm',
+        type=int,
+        default=0,
+        help='Maximum REST API requests per minute per client IP. 0 = unlimited (default).'
+    )
     args = parser.parse_args()
 
     if args.backend == "tensorrt":
@@ -127,4 +140,6 @@ if __name__ == "__main__":
         batch_window_ms=args.batch_window_ms,
         raw_pcm_input=args.raw_pcm_input,
         metrics_port=args.metrics_port,
+        api_key=args.api_key,
+        rate_limit_rpm=args.rate_limit_rpm,
     )
