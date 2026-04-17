@@ -25,3 +25,4 @@ optimum-intel
 fastapi
 uvicorn
 python-multipart
+PyJWT[crypto]
