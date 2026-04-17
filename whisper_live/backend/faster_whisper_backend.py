@@ -36,6 +36,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         translation_queue=None,
         word_timestamps=False,
         hotwords=None,
+        diarization=None,
     ):
         """
         Initialize a ServeClient instance.
@@ -67,6 +68,7 @@ class ServeClientFasterWhisper(ServeClientBase):
             same_output_threshold,
             translation_queue,
             word_timestamps,
+            diarization,
         )
         self.cache_path = cache_path
         self.model_sizes = [

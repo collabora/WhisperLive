@@ -47,6 +47,8 @@ class Client:
         retry_delay=5,
         word_timestamps=False,
         hotwords=None,
+        enable_diarization=False,
+        max_speakers=10,
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -111,6 +113,8 @@ class Client:
         self._retry_count = 0
         self.word_timestamps = word_timestamps
         self.hotwords = hotwords
+        self.enable_diarization = enable_diarization
+        self.max_speakers = max_speakers
 
         self.audio_bytes = None
 
@@ -326,6 +330,8 @@ class Client:
                     "target_language": self.target_language,
                     "word_timestamps": self.word_timestamps,
                     "hotwords": self.hotwords,
+                    "enable_diarization": self.enable_diarization,
+                    "max_speakers": self.max_speakers,
                 }
             )
         )
@@ -849,6 +855,8 @@ class TranscriptionClient(TranscriptionTeeClient):
         display_segments=4,
         word_timestamps=False,
         hotwords=None,
+        enable_diarization=False,
+        max_speakers=10,
     ):
         self.client = Client(
             host,
@@ -873,6 +881,8 @@ class TranscriptionClient(TranscriptionTeeClient):
             display_segments=display_segments,
             word_timestamps=word_timestamps,
             hotwords=hotwords,
+            enable_diarization=enable_diarization,
+            max_speakers=max_speakers,
         )
 
         if save_output_recording and not output_recording_filename.endswith(".wav"):
