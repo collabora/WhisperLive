@@ -355,8 +355,26 @@ class WhisperModel:
                 all_language_probs = [(token[2:-2], prob) for (token, prob) in results]
                 filtered_language_probs = all_language_probs
                 if lang_filter:
-                    filtered_language_probs = [p for p in all_language_probs
-                                               if p[0] in lang_filter]
+                    supported_languages = set(_LANGUAGE_CODES)
+                    invalid_languages = sorted(
+                        language_code
+                        for language_code in set(lang_filter)
+                        if language_code not in supported_languages
+                    )
+                    if invalid_languages:
+                        raise ValueError(
+                            "lang_filter contains unsupported language codes: %s"
+                            % ", ".join(invalid_languages)
+                        )
+
+                    filtered_language_probs = [
+                        p for p in all_language_probs if p[0] in lang_filter
+                    ]
+                    if not filtered_language_probs:
+                        raise ValueError(
+                            "lang_filter removed all detected language candidates: %s"
+                            % ", ".join(lang_filter)
+                        )
                 # Get top language token and probability
                 language, language_probability = filtered_language_probs[0]
 
