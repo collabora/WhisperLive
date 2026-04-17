@@ -1,0 +1,4 @@
+whisper_env
+__pycache__
+*.srt
+*.wav
