@@ -39,6 +39,7 @@ class ClientManager:
         self.start_times = {}
         self.max_clients = max_clients
         self.max_connection_time = max_connection_time
+        self.lock = threading.Lock()
 
     def add_client(self, websocket, client):
         """
@@ -48,8 +49,9 @@ class ClientManager:
             websocket: The websocket associated with the client to add.
             client: The client object to be added and tracked.
         """
-        self.clients[websocket] = client
-        self.start_times[websocket] = time.time()
+        with self.lock:
+            self.clients[websocket] = client
+            self.start_times[websocket] = time.time()
 
     def get_client(self, websocket):
         """
@@ -61,9 +63,10 @@ class ClientManager:
         Returns:
             The client object if found, False otherwise.
         """
-        if websocket in self.clients:
-            return self.clients[websocket]
-        return False
+        with self.lock:
+            if websocket in self.clients:
+                return self.clients[websocket]
+            return False
 
     def remove_client(self, websocket):
         """
@@ -73,10 +76,11 @@ class ClientManager:
         Args:
             websocket: The websocket associated with the client to be removed.
         """
-        client = self.clients.pop(websocket, None)
+        with self.lock:
+            client = self.clients.pop(websocket, None)
+            self.start_times.pop(websocket, None)
         if client:
             client.cleanup()
-        self.start_times.pop(websocket, None)
 
     def get_wait_time(self):
         """
@@ -85,11 +89,12 @@ class ClientManager:
         Returns:
             The estimated wait time in minutes for new clients to connect. Returns 0 if there are available slots.
         """
-        wait_time = None
-        for start_time in self.start_times.values():
-            current_client_time_remaining = self.max_connection_time - (time.time() - start_time)
-            if wait_time is None or current_client_time_remaining < wait_time:
-                wait_time = current_client_time_remaining
+        with self.lock:
+            wait_time = None
+            for start_time in self.start_times.values():
+                current_client_time_remaining = self.max_connection_time - (time.time() - start_time)
+                if wait_time is None or current_client_time_remaining < wait_time:
+                    wait_time = current_client_time_remaining
         return wait_time / 60 if wait_time is not None else 0
 
     def is_server_full(self, websocket, options):
@@ -103,12 +108,18 @@ class ClientManager:
         Returns:
             True if the server is full, False otherwise.
         """
-        if len(self.clients) >= self.max_clients:
-            wait_time = self.get_wait_time()
-            response = {"uid": options["uid"], "status": "WAIT", "message": wait_time}
-            websocket.send(json.dumps(response))
-            return True
-        return False
+        with self.lock:
+            if len(self.clients) >= self.max_clients:
+                wait_time = None
+                for start_time in self.start_times.values():
+                    remaining = self.max_connection_time - (time.time() - start_time)
+                    if wait_time is None or remaining < wait_time:
+                        wait_time = remaining
+                wait_time_minutes = wait_time / 60 if wait_time is not None else 0
+                response = {"uid": options["uid"], "status": "WAIT", "message": wait_time_minutes}
+                websocket.send(json.dumps(response))
+                return True
+            return False
 
     def is_client_timeout(self, websocket):
         """
@@ -120,10 +131,12 @@ class ClientManager:
         Returns:
             True if the client's connection time has exceeded the maximum limit, False otherwise.
         """
-        elapsed_time = time.time() - self.start_times[websocket]
-        if elapsed_time >= self.max_connection_time:
-            self.clients[websocket].disconnect()
-            logging.warning(f"Client with uid '{self.clients[websocket].client_uid}' disconnected due to overtime.")
+        with self.lock:
+            elapsed_time = time.time() - self.start_times[websocket]
+            client = self.clients.get(websocket)
+        if elapsed_time >= self.max_connection_time and client:
+            client.disconnect()
+            logging.warning(f"Client with uid '{client.client_uid}' disconnected due to overtime.")
             return True
         return False
 
@@ -160,6 +173,7 @@ class TranscriptionServer:
         self.use_vad = True
         self.single_model = False
         self.batch_config = None
+        self.raw_pcm_input = False
 
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
@@ -177,7 +191,7 @@ class TranscriptionServer:
         
         if enable_translation:
             target_language = options.get("target_language", "fr")
-            translation_queue = queue.Queue()
+            translation_queue = queue.Queue(maxsize=ServeClientBase.MAX_TRANSLATION_QUEUE_SIZE)
             from whisper_live.backend.translation_backend import ServeClientTranslation
             translation_client = ServeClientTranslation(
                 client_uid=options["uid"],
@@ -316,6 +330,9 @@ class TranscriptionServer:
         frame_data = websocket.recv()
         if frame_data == b"END_OF_AUDIO":
             return False
+        if self.raw_pcm_input:
+            audio_np = np.frombuffer(frame_data, dtype=np.int16)
+            return audio_np.astype(np.float32) / 32768.0
         return np.frombuffer(frame_data, dtype=np.float32)
 
     def handle_new_connection(self, websocket, faster_whisper_custom_model_path,
@@ -431,7 +448,8 @@ class TranscriptionServer:
             cors_origins: Optional[str] = None,
             batch_enabled=False,
             batch_max_size=8,
-            batch_window_ms=50):
+            batch_window_ms=50,
+            raw_pcm_input=False):
         """
         Run the transcription server.
 
@@ -449,6 +467,7 @@ class TranscriptionServer:
                 to 50.
         """
         self.cache_path = cache_path
+        self.raw_pcm_input = raw_pcm_input
         self.client_manager = ClientManager(max_clients, max_connection_time)
         if faster_whisper_custom_model_path is not None and not os.path.exists(faster_whisper_custom_model_path):
             if "/" not in faster_whisper_custom_model_path:
