@@ -23,4 +23,4 @@ optimum
 optimum-intel
 
 # mlx (for Apple Silicon M1/M2/M3)
-mlx-whisper
+mlx-whisper; platform_system == "Darwin" and platform_machine == "arm64"
