@@ -349,7 +349,7 @@ class TestStreamTranscription(unittest.TestCase):
         ):
             if stream:
                 return server._stream_transcription(
-                    file, language, None, 0.0, None, None, None
+                    file, language, None, 0.0, None, None
                 )
             return {"text": "non-streamed"}
 
@@ -366,6 +366,7 @@ class TestStreamTranscription(unittest.TestCase):
 
         mock_info = MagicMock()
         mock_info.language = "en"
+        mock_info.language_probability = 0.98
         mock_info.duration = 1.0
 
         mock_model = MagicMock()
@@ -395,6 +396,9 @@ class TestStreamTranscription(unittest.TestCase):
         mock_seg.words = []
 
         mock_info = MagicMock()
+        mock_info.language = "en"
+        mock_info.language_probability = 0.95
+        mock_info.duration = 1.5
         mock_model = MagicMock()
         mock_model.transcribe.return_value = (iter([mock_seg]), mock_info)
         mock_model_cls.return_value = mock_model
@@ -426,6 +430,9 @@ class TestStreamTranscription(unittest.TestCase):
             segs.append(s)
 
         mock_info = MagicMock()
+        mock_info.language = "en"
+        mock_info.language_probability = 0.99
+        mock_info.duration = 3.0
         mock_model = MagicMock()
         mock_model.transcribe.return_value = (iter(segs), mock_info)
         mock_model_cls.return_value = mock_model
@@ -441,7 +448,7 @@ class TestStreamTranscription(unittest.TestCase):
             data={"stream": "true"},
         )
         body = resp.text
-        events = [line for line in body.split("\n") if line.startswith("data: ") and "[DONE]" not in line]
+        events = [line for line in body.split("\n") if line.startswith("data: ") and "[DONE]" not in line and '"type": "metadata"' not in line]
         self.assertEqual(len(events), 3)
         for i, event in enumerate(events):
             data = json.loads(event.removeprefix("data: "))

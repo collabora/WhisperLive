@@ -473,11 +473,8 @@ class TranscriptionServer:
                     yield f"data: {json.dumps(seg_dict)}\n\n"
 
                 yield "data: [DONE]\n\n"
-                wl_metrics.track_rest_request(endpoint="transcriptions_stream", status=200)
             except Exception as e:
                 yield f"data: {json.dumps({'error': str(e)})}\n\n"
-                wl_metrics.track_rest_request(endpoint="transcriptions_stream", status=500)
-                wl_metrics.track_error("rest_stream")
             finally:
                 if tmp_path and os.path.exists(tmp_path):
                     os.unlink(tmp_path)
