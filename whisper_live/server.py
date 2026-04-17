@@ -296,6 +296,7 @@ class TranscriptionServer:
                     word_timestamps=options.get("word_timestamps", False),
                     hotwords=options.get("hotwords"),
                     diarization=self._create_diarizer(options),
+                    smart_formatting=options.get("smart_formatting", False),
                 )
 
                 logging.info("Running faster_whisper backend.")

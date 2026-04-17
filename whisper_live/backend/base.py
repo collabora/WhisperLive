@@ -6,6 +6,7 @@ import queue
 import numpy as np
 
 from whisper_live import metrics as wl_metrics
+from whisper_live.formatting import format_transcript
 
 
 class ServeClientBase(object):
@@ -49,6 +50,7 @@ class ServeClientBase(object):
         translation_queue=None,
         word_timestamps=False,
         diarization=None,
+        smart_formatting=False,
     ):
         self.client_uid = client_uid
         self.websocket = websocket
@@ -58,6 +60,7 @@ class ServeClientBase(object):
         self.same_output_threshold = same_output_threshold
         self.word_timestamps = word_timestamps
         self.diarization = diarization
+        self.smart_formatting = smart_formatting
 
         self.frames = b""
         self.timestamp_offset = 0.0
@@ -148,7 +151,7 @@ class ServeClientBase(object):
         seg = {
             'start': "{:.3f}".format(start),
             'end': "{:.3f}".format(end),
-            'text': text,
+            'text': format_transcript(text) if self.smart_formatting else text,
             'completed': completed
         }
         if words is not None:
