@@ -718,6 +718,7 @@ class TranscriptionTeeClient:
                     # perform resampling
                     audio_array = librosa.resample(audio_array, orig_sr=self.microphoneSampleRate, target_sr=self.targetSampleRate)
 
+                audio_array = audio_array.astype(np.float32, copy=False)
                 self.multicast_packet(audio_array.tobytes())
 
                 # save frames if more than a minute
