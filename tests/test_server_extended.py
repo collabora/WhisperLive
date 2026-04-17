@@ -544,5 +544,158 @@ class TestRateLimiting(unittest.TestCase):
         self.assertIn("Rate limit", resp.json()["error"])
 
 
+class TestStreamTranscription(unittest.TestCase):
+    """Tests for the SSE streaming endpoint (stream=true)."""
+
+    def _make_app(self):
+        """Create a FastAPI app with the transcribe endpoint that has streaming support."""
+        from fastapi import FastAPI, UploadFile, Form
+        from fastapi.testclient import TestClient
+        from starlette.responses import StreamingResponse
+        import os
+        import tempfile
+        import shutil
+
+        app = FastAPI()
+        server = TranscriptionServer()
+
+        @app.post("/v1/audio/transcriptions")
+        async def transcribe(
+            file: UploadFile,
+            stream: bool = Form(default=False),
+            language: str = Form(default=None),
+            response_format: str = Form(default="json"),
+        ):
+            if stream:
+                return server._stream_transcription(
+                    file, language, None, 0.0, None, None, None
+                )
+            return {"text": "non-streamed"}
+
+        return app
+
+    @patch("whisper_live.server.WhisperModel")
+    def test_stream_returns_sse_content_type(self, mock_model_cls):
+        mock_seg = MagicMock()
+        mock_seg.id = 0
+        mock_seg.start = 0.0
+        mock_seg.end = 1.0
+        mock_seg.text = " hello "
+        mock_seg.words = []
+
+        mock_info = MagicMock()
+        mock_info.language = "en"
+        mock_info.duration = 1.0
+
+        mock_model = MagicMock()
+        mock_model.transcribe.return_value = (iter([mock_seg]), mock_info)
+        mock_model_cls.return_value = mock_model
+
+        import io
+        from fastapi.testclient import TestClient
+
+        app = self._make_app()
+        client = TestClient(app)
+        resp = client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("test.wav", io.BytesIO(b"\x00" * 100), "audio/wav")},
+            data={"stream": "true"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("text/event-stream", resp.headers.get("content-type", ""))
+
+    @patch("whisper_live.server.WhisperModel")
+    def test_stream_yields_segment_and_done(self, mock_model_cls):
+        mock_seg = MagicMock()
+        mock_seg.id = 0
+        mock_seg.start = 0.0
+        mock_seg.end = 1.5
+        mock_seg.text = " hello world "
+        mock_seg.words = []
+
+        mock_info = MagicMock()
+        mock_model = MagicMock()
+        mock_model.transcribe.return_value = (iter([mock_seg]), mock_info)
+        mock_model_cls.return_value = mock_model
+
+        import io
+        from fastapi.testclient import TestClient
+
+        app = self._make_app()
+        client = TestClient(app)
+        resp = client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("test.wav", io.BytesIO(b"\x00" * 100), "audio/wav")},
+            data={"stream": "true"},
+        )
+        body = resp.text
+        self.assertIn('"text": "hello world"', body)
+        self.assertIn("[DONE]", body)
+
+    @patch("whisper_live.server.WhisperModel")
+    def test_stream_multiple_segments(self, mock_model_cls):
+        segs = []
+        for i in range(3):
+            s = MagicMock()
+            s.id = i
+            s.start = float(i)
+            s.end = float(i + 1)
+            s.text = f" segment {i} "
+            s.words = []
+            segs.append(s)
+
+        mock_info = MagicMock()
+        mock_model = MagicMock()
+        mock_model.transcribe.return_value = (iter(segs), mock_info)
+        mock_model_cls.return_value = mock_model
+
+        import io
+        from fastapi.testclient import TestClient
+
+        app = self._make_app()
+        client = TestClient(app)
+        resp = client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("test.wav", io.BytesIO(b"\x00" * 100), "audio/wav")},
+            data={"stream": "true"},
+        )
+        body = resp.text
+        events = [line for line in body.split("\n") if line.startswith("data: ") and "[DONE]" not in line]
+        self.assertEqual(len(events), 3)
+        for i, event in enumerate(events):
+            data = json.loads(event.removeprefix("data: "))
+            self.assertEqual(data["text"], f"segment {i}")
+
+    @patch("whisper_live.server.WhisperModel", side_effect=RuntimeError("model error"))
+    def test_stream_error_yields_error_event(self, mock_model_cls):
+        import io
+        from fastapi.testclient import TestClient
+
+        app = self._make_app()
+        client = TestClient(app)
+        resp = client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("test.wav", io.BytesIO(b"\x00" * 100), "audio/wav")},
+            data={"stream": "true"},
+        )
+        body = resp.text
+        self.assertIn('"error"', body)
+        self.assertIn("model error", body)
+
+    def test_non_stream_still_works(self):
+        import io
+        from fastapi.testclient import TestClient
+
+        app = self._make_app()
+        client = TestClient(app)
+        resp = client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("test.wav", io.BytesIO(b"\x00" * 100), "audio/wav")},
+            data={"stream": "false"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["text"], "non-streamed")
+
+
 if __name__ == "__main__":
     unittest.main()
