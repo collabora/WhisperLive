@@ -253,5 +253,53 @@ class TestTeeClientEdgeCases(unittest.TestCase):
             TranscriptionTeeClient([])
 
 
+class TestClientReconnect(unittest.TestCase):
+    """Tests for reconnection logic."""
+
+    @patch("whisper_live.client.websocket.WebSocketApp")
+    @patch("whisper_live.client.pyaudio.PyAudio")
+    def test_reconnect_on_close(self, mock_pyaudio, mock_websocket):
+        mock_pyaudio.return_value.open.return_value = MagicMock()
+        client = Client(host="localhost", port=9090, lang="en", max_retries=2, retry_delay=0)
+        initial_socket = client.client_socket
+        client.on_close(MagicMock(), 1006, "abnormal closure")
+        self.assertEqual(client._retry_count, 1)
+        # A new websocket should have been created
+        self.assertIsNotNone(client.client_socket)
+        client.close_websocket()
+
+    @patch("whisper_live.client.websocket.WebSocketApp")
+    @patch("whisper_live.client.pyaudio.PyAudio")
+    def test_no_reconnect_on_server_error(self, mock_pyaudio, mock_websocket):
+        mock_pyaudio.return_value.open.return_value = MagicMock()
+        client = Client(host="localhost", port=9090, lang="en", max_retries=2, retry_delay=0)
+        client.server_error = True
+        client.on_close(MagicMock(), 1000, "normal")
+        self.assertEqual(client._retry_count, 0)
+        client.close_websocket()
+
+    @patch("whisper_live.client.websocket.WebSocketApp")
+    @patch("whisper_live.client.pyaudio.PyAudio")
+    def test_no_reconnect_when_max_retries_zero(self, mock_pyaudio, mock_websocket):
+        mock_pyaudio.return_value.open.return_value = MagicMock()
+        client = Client(host="localhost", port=9090, lang="en", max_retries=0, retry_delay=0)
+        client.on_close(MagicMock(), 1006, "abnormal closure")
+        self.assertEqual(client._retry_count, 0)
+        client.close_websocket()
+
+    @patch("whisper_live.client.websocket.WebSocketApp")
+    @patch("whisper_live.client.pyaudio.PyAudio")
+    def test_stops_after_max_retries(self, mock_pyaudio, mock_websocket):
+        mock_pyaudio.return_value.open.return_value = MagicMock()
+        client = Client(host="localhost", port=9090, lang="en", max_retries=2, retry_delay=0)
+        client.on_close(MagicMock(), 1006, "closed")
+        client.on_close(MagicMock(), 1006, "closed")
+        self.assertEqual(client._retry_count, 2)
+        # third close should NOT retry
+        client.on_close(MagicMock(), 1006, "closed")
+        self.assertEqual(client._retry_count, 2)
+        client.close_websocket()
+
+
 if __name__ == "__main__":
     unittest.main()
