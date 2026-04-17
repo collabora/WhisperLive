@@ -84,6 +84,12 @@ if __name__ == "__main__":
         default=50,
         help='Maximum time in ms to wait for batch to fill (default: 50).'
     )
+    parser.add_argument(
+        '--raw_pcm_input',
+        action='store_true',
+        help='Expect raw PCM int16 audio from clients instead of float32. '
+             'Audio will be normalized to float32 range [-1.0, 1.0].'
+    )
     args = parser.parse_args()
 
     if args.backend == "tensorrt":
@@ -113,4 +119,5 @@ if __name__ == "__main__":
         batch_enabled=args.batch_inference,
         batch_max_size=args.batch_max_size,
         batch_window_ms=args.batch_window_ms,
+        raw_pcm_input=args.raw_pcm_input,
     )
