@@ -100,6 +100,7 @@ class TestTrackError(unittest.TestCase):
         self.assertEqual(wl_metrics.ERRORS.labels(type="rest_transcription")._value.get(), before + 1)
 
 
+@_skip_no_prometheus
 class TestStartMetricsServer(unittest.TestCase):
     @patch("whisper_live.metrics.start_http_server")
     def test_starts_on_given_port(self, mock_start):
