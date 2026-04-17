@@ -788,6 +788,11 @@ class TranscriptionServer:
                 issuer=jwt_issuer,
             )
             logging.info("JWT validation enabled")
+
+        # Initialize transcript search index and usage tracker
+        from whisper_live.search import TranscriptIndex, UsageTracker
+        self._transcript_index = TranscriptIndex()
+        self._usage_tracker = UsageTracker()
         self.cache_path = cache_path
         self.raw_pcm_input = raw_pcm_input
         self.plugin_registry = plugin_registry
@@ -1449,6 +1454,91 @@ class TranscriptionServer:
                     if not new_key:
                         return JSONResponse({"error": "User not found"}, status_code=404)
                     return {"user_id": user_id, "api_key": new_key}
+
+            # --- Transcript Search & Tagging endpoints ---
+            from whisper_live.search import TranscriptMetadata
+
+            @app.get("/v1/search", tags=["Search"],
+                     summary="Search transcripts",
+                     description="Full-text search across stored transcriptions with filters.")
+            async def search_transcripts(
+                request: Request,
+                query: str = "",
+                language: Optional[str] = None,
+                model: Optional[str] = None,
+                tag_key: Optional[str] = None,
+                tag_value: Optional[str] = None,
+                limit: int = 50,
+                offset: int = 0,
+            ):
+                tags_filter = None
+                if tag_key and tag_value:
+                    tags_filter = {tag_key: tag_value}
+
+                user_id = None
+                user = getattr(request.state, "user", None)
+                if user and not user.role.can_admin():
+                    user_id = user.user_id  # Non-admins only see their own
+
+                results = self._transcript_index.search(
+                    query=query,
+                    user_id=user_id,
+                    tags=tags_filter,
+                    language=language,
+                    model=model,
+                    limit=limit,
+                    offset=offset,
+                )
+                return {
+                    "results": [r.to_dict() for r in results],
+                    "total": self._transcript_index.count(user_id),
+                }
+
+            @app.post("/v1/transcripts/{job_id}/tags", tags=["Search"],
+                      summary="Tag a transcript",
+                      description="Add or update tags on a stored transcript.")
+            async def tag_transcript(request: Request, job_id: str):
+                body = await request.json()
+                tags = body.get("tags", {})
+                if not isinstance(tags, dict):
+                    return JSONResponse({"error": "tags must be a JSON object"}, status_code=400)
+                if self._transcript_index.tag(job_id, tags):
+                    return {"status": "tagged", "job_id": job_id}
+                return JSONResponse({"error": "Job not found"}, status_code=404)
+
+            @app.delete("/v1/transcripts/{job_id}/tags", tags=["Search"],
+                        summary="Remove tags from a transcript")
+            async def untag_transcript(request: Request, job_id: str):
+                body = await request.json()
+                keys = body.get("keys", [])
+                if self._transcript_index.untag(job_id, keys):
+                    return {"status": "untagged", "job_id": job_id}
+                return JSONResponse({"error": "Job not found"}, status_code=404)
+
+            # --- Usage / Billing endpoints ---
+            @app.get("/v1/usage", tags=["Usage"],
+                     summary="Get usage statistics",
+                     description="Returns API usage for the current user (or all users for admins).")
+            async def get_usage(
+                request: Request,
+                start_time: Optional[float] = None,
+                end_time: Optional[float] = None,
+            ):
+                user = getattr(request.state, "user", None)
+
+                if user and user.role.can_admin():
+                    # Admin sees all usage
+                    all_usage = self._usage_tracker.get_all_usage(start_time, end_time)
+                    return {
+                        "usage": [u.to_dict() for u in all_usage],
+                        "total_users": len(all_usage),
+                    }
+                elif user:
+                    usage = self._usage_tracker.get_usage(user.user_id, start_time, end_time)
+                    return {"usage": usage.to_dict()}
+                else:
+                    # JWT or legacy key — return empty
+                    return {"usage": {}, "message": "Usage tracking requires user store authentication"}
 
             # Serve the web transcription UI from the web/ directory
             web_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
