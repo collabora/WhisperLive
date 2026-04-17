@@ -292,6 +292,7 @@ class TranscriptionServer:
                     cache_path=self.cache_path,
                     translation_queue=translation_queue,
                     hotwords=options.get("hotwords"),
+                    diarization=self._create_diarizer(options),
                 )
 
                 logging.info("Running faster_whisper backend.")
@@ -319,6 +320,25 @@ class TranscriptionServer:
             client.translation_thread = translation_thread
 
         self.client_manager.add_client(websocket, client)
+
+    def _create_diarizer(self, options):
+        """Create a SpeakerDiarizer if the client requested diarization.
+
+        Returns:
+            SpeakerDiarizer or None
+        """
+        if not options.get("enable_diarization", False):
+            return None
+        try:
+            from whisper_live.diarization import SpeakerDiarizer
+            return SpeakerDiarizer(
+                similarity_threshold=options.get("diarization_threshold", 0.55),
+                max_speakers=options.get("max_speakers", 10),
+                hf_token=options.get("hf_token"),
+            )
+        except ImportError:
+            logging.warning("pyannote.audio not installed; diarization disabled")
+            return None
 
     def get_audio_from_websocket(self, websocket):
         """

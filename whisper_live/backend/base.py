@@ -38,6 +38,7 @@ class ServeClientBase(object):
         clip_audio=False,
         same_output_threshold=10,
         translation_queue=None,
+        diarization=None,
     ):
         self.client_uid = client_uid
         self.websocket = websocket
@@ -45,6 +46,7 @@ class ServeClientBase(object):
         self.no_speech_thresh = no_speech_thresh
         self.clip_audio = clip_audio
         self.same_output_threshold = same_output_threshold
+        self.diarization = diarization
 
         self.frames = b""
         self.timestamp_offset = 0.0
@@ -116,7 +118,7 @@ class ServeClientBase(object):
     def handle_transcription_output(self, result, duration):
         raise NotImplementedError
     
-    def format_segment(self, start, end, text, completed=False):
+    def format_segment(self, start, end, text, completed=False, speaker=None):
         """
         Formats a transcription segment with precise start and end times alongside the transcribed text.
 
@@ -124,18 +126,22 @@ class ServeClientBase(object):
             start (float): The start time of the transcription segment in seconds.
             end (float): The end time of the transcription segment in seconds.
             text (str): The transcribed text corresponding to the segment.
+            speaker (str, optional): Speaker label from diarization.
 
         Returns:
             dict: A dictionary representing the formatted transcription segment, including
                 'start' and 'end' times as strings with three decimal places and the 'text'
                 of the transcription.
         """
-        return {
+        seg = {
             'start': "{:.3f}".format(start),
             'end': "{:.3f}".format(end),
             'text': text,
-            'completed': completed
+            'completed': completed,
         }
+        if speaker is not None:
+            seg['speaker'] = speaker
+        return seg
 
     def add_frames(self, frame_np):
         """
@@ -292,6 +298,29 @@ class ServeClientBase(object):
     def get_segment_end(self, segment):
         return getattr(segment, "end", getattr(segment, "end_ts", 0))
 
+    def _identify_speaker(self, segment):
+        """Run diarization on a segment's audio slice if diarization is enabled.
+
+        Returns:
+            str or None: Speaker label, or None if diarization is disabled or audio unavailable.
+        """
+        if self.diarization is None or self.frames_np is None:
+            return None
+        try:
+            seg_start = self.get_segment_start(segment)
+            seg_end = self.get_segment_end(segment)
+            start_sample = int(seg_start * self.RATE)
+            end_sample = int(seg_end * self.RATE)
+            # Extract audio relative to the current buffer
+            samples_offset = max(0, int((self.timestamp_offset - self.frames_offset) * self.RATE))
+            audio_slice = self.frames_np[samples_offset + start_sample:samples_offset + end_sample]
+            if len(audio_slice) < self.RATE * 0.3:
+                return None
+            return self.diarization.identify_speaker(audio_slice, self.RATE)
+        except Exception as e:
+            logging.error(f"Diarization error: {e}")
+            return None
+
     def update_segments(self, segments, duration):
         """
         Processes the segments from Whisper and updates the transcript.
@@ -321,7 +350,8 @@ class ServeClientBase(object):
                     continue
                 if self.get_segment_no_speech_prob(s) > self.no_speech_thresh:
                     continue
-                completed_segment = self.format_segment(start, end, text_, completed=True)
+                speaker = self._identify_speaker(s)
+                completed_segment = self.format_segment(start, end, text_, completed=True, speaker=speaker)
                 self.transcript.append(completed_segment)
 
                 if self.translation_queue:
