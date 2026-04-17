@@ -1,4 +1,3 @@
-import os
 import textwrap
 import scipy
 import numpy as np
@@ -8,7 +7,7 @@ from pathlib import Path
 
 def clear_screen():
     """Clears the console screen."""
-    os.system("cls" if os.name == "nt" else "clear")
+    print("\033[H\033[2J", end="", flush=True)
 
 
 def print_transcript(text, translated=False, timestamps=False):
