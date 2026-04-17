@@ -84,6 +84,31 @@ if __name__ == "__main__":
         default=50,
         help='Maximum time in ms to wait for batch to fill (default: 50).'
     )
+    parser.add_argument(
+        '--raw_pcm_input',
+        action='store_true',
+        help='Expect raw PCM int16 audio from clients instead of float32. '
+             'Audio will be normalized to float32 range [-1.0, 1.0].'
+    )
+    parser.add_argument(
+        '--api_key',
+        type=str,
+        default=None,
+        help='Optional API key for authenticating REST API requests. '
+             'Clients must send "Authorization: Bearer <key>" header.'
+    )
+    parser.add_argument(
+        '--rate_limit_rpm',
+        type=int,
+        default=0,
+        help='Maximum REST API requests per minute per client IP. 0 = unlimited (default).'
+    )
+    parser.add_argument(
+        '--metrics_port',
+        type=int,
+        default=0,
+        help='Port for Prometheus /metrics endpoint. 0 = disabled (default). Requires prometheus_client.'
+    )
     args = parser.parse_args()
 
     if args.backend == "tensorrt":
@@ -113,4 +138,8 @@ if __name__ == "__main__":
         batch_enabled=args.batch_inference,
         batch_max_size=args.batch_max_size,
         batch_window_ms=args.batch_window_ms,
+        raw_pcm_input=args.raw_pcm_input,
+        api_key=args.api_key,
+        rate_limit_rpm=args.rate_limit_rpm,
+        metrics_port=args.metrics_port,
     )
