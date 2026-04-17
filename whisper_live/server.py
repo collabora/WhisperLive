@@ -288,7 +288,8 @@ class TranscriptionServer:
                     clip_audio=options.get("clip_audio", False),
                     same_output_threshold=options.get("same_output_threshold", 10),
                     cache_path=self.cache_path,
-                    translation_queue=translation_queue
+                    translation_queue=translation_queue,
+                    hotwords=options.get("hotwords"),
                 )
 
                 logging.info("Running faster_whisper backend.")
@@ -533,7 +534,8 @@ class TranscriptionServer:
                 include: Optional[List[str]] = Form(default=None),
                 known_speaker_names: Optional[List[str]] = Form(default=None),
                 known_speaker_references: Optional[List[str]] = Form(default=None),
-                stream: bool = Form(default=False)
+                stream: bool = Form(default=False),
+                hotwords: Optional[str] = Form(default=None),
             ):
                 if stream:
                     return JSONResponse({"error": "Streaming not supported in this backend."}, status_code=400)
@@ -564,7 +566,8 @@ class TranscriptionServer:
                         initial_prompt=prompt,
                         temperature=temperature,
                         vad_filter=False,
-                        word_timestamps=(timestamp_granularities and "word" in timestamp_granularities)
+                        word_timestamps=(timestamp_granularities and "word" in timestamp_granularities),
+                        hotwords=hotwords,
                     )
 
                     text = " ".join([s.text.strip() for s in segments])

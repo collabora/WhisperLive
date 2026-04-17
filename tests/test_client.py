@@ -55,6 +55,7 @@ class TestClientCallbacks(BaseTestCase):
             "same_output_threshold": 10,
             "enable_translation": False,
             "target_language": "fr",
+            "hotwords": None,
         })
         self.client.on_open(self.mock_ws_app)
         self.mock_ws_app.send.assert_called_with(expected_message)
