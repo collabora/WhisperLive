@@ -921,6 +921,60 @@ class TranscriptionServer:
                     wl_metrics.track_error("rest_transcription")
                     return JSONResponse({"error": str(e)}, status_code=500)
 
+            @app.post("/v1/audio/intelligence")
+            async def intelligence_endpoint(
+                file: UploadFile,
+                model: str = Form(default="whisper-1"),
+                language: Optional[str] = Form(default=None),
+                prompt: Optional[str] = Form(default=None),
+                temperature: float = Form(default=0.0),
+                sentiment: bool = Form(default=True),
+                topics: bool = Form(default=True),
+                entities: bool = Form(default=True),
+                summary: bool = Form(default=True),
+                summary_sentences: int = Form(default=3),
+                topic_count: int = Form(default=5),
+            ):
+                from whisper_live.audio_intelligence import analyze_transcript
+                try:
+                    suffix = os.path.splitext(file.filename)[1] or ".wav"
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                        shutil.copyfileobj(file.file, tmp)
+                        tmp_path = tmp.name
+
+                    device = "cuda" if torch.cuda.is_available() else "cpu"
+                    compute_type = "float16" if device == "cuda" else "int8"
+                    model_name = faster_whisper_custom_model_path or "small"
+                    transcriber = WhisperModel(model_name, device=device, compute_type=compute_type)
+                    segments, info = transcriber.transcribe(
+                        tmp_path,
+                        language=language,
+                        initial_prompt=prompt,
+                        temperature=temperature,
+                        vad_filter=False,
+                    )
+                    text = " ".join([s.text.strip() for s in segments])
+                    os.unlink(tmp_path)
+
+                    analysis = analyze_transcript(
+                        text,
+                        sentiment=sentiment,
+                        topics=topics,
+                        entities=entities,
+                        summary=summary,
+                        summary_sentences=summary_sentences,
+                        topic_count=topic_count,
+                    )
+                    analysis["text"] = text
+                    analysis["language"] = info.language
+                    analysis["duration"] = info.duration
+                    wl_metrics.track_rest_request(endpoint="intelligence", status=200)
+                    return analysis
+                except Exception as e:
+                    wl_metrics.track_rest_request(endpoint="intelligence", status=500)
+                    wl_metrics.track_error("intelligence")
+                    return JSONResponse({"error": str(e)}, status_code=500)
+
             threading.Thread(
                 target=uvicorn.run,
                 args=(app,),
