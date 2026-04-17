@@ -1029,6 +1029,8 @@ class TranscriptionServer:
                 callback_url: Optional[str] = Form(default=None),
                 multichannel: bool = Form(default=False),
                 channel_labels: Optional[str] = Form(default=None),
+                detect_utterances: bool = Form(default=False),
+                detect_paragraphs: bool = Form(default=False),
             ):
                 if stream:
                     return self._stream_transcription(
@@ -1185,6 +1187,24 @@ class TranscriptionServer:
                             if timestamp_granularities and "word" in timestamp_granularities:
                                 seg_dict["words"] = [{"word": w.word, "start": w.start, "end": w.end, "probability": w.probability} for w in seg.words]
                             verbose["segments"].append(seg_dict)
+
+                        # Utterance and paragraph detection
+                        if detect_utterances or detect_paragraphs:
+                            from whisper_live.utterance import (
+                                detect_utterances_from_segments,
+                                ParagraphSegmenter,
+                            )
+                            seg_dicts = [
+                                {"text": s.text.strip(), "start": s.start, "end": s.end}
+                                for s in segments
+                            ]
+                            utts = detect_utterances_from_segments(seg_dicts)
+                            if detect_utterances:
+                                verbose["utterances"] = [u.to_dict() for u in utts]
+                            if detect_paragraphs:
+                                paras = ParagraphSegmenter().segment(utts)
+                                verbose["paragraphs"] = [p.to_dict() for p in paras]
+
                         wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
                         return verbose
                     elif response_format in ["srt", "vtt"]:
