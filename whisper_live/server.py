@@ -178,6 +178,7 @@ class TranscriptionServer:
         self.single_model = False
         self.batch_config = None
         self.raw_pcm_input = False
+        self.plugin_registry = None
 
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
@@ -302,6 +303,9 @@ class TranscriptionServer:
                 )
 
                 logging.info("Running faster_whisper backend.")
+
+                if self.plugin_registry:
+                    client.plugin_registry = self.plugin_registry
 
                 # Start batch inference worker on first client (after model is loaded)
                 if (self.batch_config is not None
@@ -672,7 +676,8 @@ class TranscriptionServer:
             raw_pcm_input=False,
             api_key: Optional[str] = None,
             rate_limit_rpm: int = 0,
-            metrics_port: int = 0):
+            metrics_port: int = 0,
+            plugin_registry=None):
         """
         Run the transcription server.
 
@@ -691,6 +696,7 @@ class TranscriptionServer:
         """
         self.cache_path = cache_path
         self.raw_pcm_input = raw_pcm_input
+        self.plugin_registry = plugin_registry
 
         if max_clients < 1:
             raise ValueError(f"max_clients must be >= 1, got {max_clients}")
@@ -797,6 +803,14 @@ class TranscriptionServer:
                     "clients": client_count,
                     "max_clients": self.client_manager.max_clients if self.client_manager else 0,
                 }
+
+            @app.get("/v1/plugins", tags=["System"],
+                     summary="List plugins",
+                     description="Returns the list of registered post-processing plugins.")
+            async def list_plugins():
+                if self.plugin_registry:
+                    return {"plugins": self.plugin_registry.list_plugins()}
+                return {"plugins": []}
 
             @app.post("/v1/audio/transcriptions", tags=["Transcription"],
                       summary="Transcribe audio file",

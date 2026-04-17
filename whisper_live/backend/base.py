@@ -9,6 +9,7 @@ from whisper_live import metrics as wl_metrics
 from whisper_live.formatting import format_transcript
 from whisper_live.pii_redaction import redact_pii
 from whisper_live.profanity_filter import filter_profanity
+from whisper_live.plugins import PluginRegistry
 
 
 class ServeClientBase(object):
@@ -66,6 +67,7 @@ class ServeClientBase(object):
         self.smart_formatting = smart_formatting
         self.pii_redaction = pii_redaction
         self.profanity_filter = None
+        self.plugin_registry = None
 
         self.frames = b""
         self.timestamp_offset = 0.0
@@ -168,6 +170,8 @@ class ServeClientBase(object):
             seg['words'] = words
         if speaker is not None:
             seg['speaker'] = speaker
+        if self.plugin_registry:
+            seg = self.plugin_registry.apply(seg)
         return seg
 
     def add_frames(self, frame_np):
