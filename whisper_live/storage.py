@@ -88,6 +88,13 @@ class S3Storage:
         endpoint_url = os.environ.get("AWS_ENDPOINT_URL")
         if endpoint_url:
             kwargs["endpoint_url"] = endpoint_url
+            # For MinIO with self-signed certs, disable SSL verification
+            if endpoint_url.startswith("https://") and os.environ.get("PYTHONHTTPSVERIFY") == "0":
+                import botocore
+                kwargs["verify"] = False
+                # Suppress InsecureRequestWarning for self-signed certs
+                import urllib3
+                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         self._s3 = boto3.client("s3", **kwargs)
         logger.info(f"S3 storage initialized: s3://{bucket}/{prefix}"
                     + (f" (endpoint: {endpoint_url})" if endpoint_url else ""))

@@ -2,13 +2,17 @@
 
 Run the full WhisperLive production stack on your local hardware — no cloud costs.
 
+Uses a custom MinIO image built from source on Alpine with self-signed TLS certs
+and virtual-host-style bucket access (adapted from
+[GrokImageCompression/grok](https://github.com/GrokImageCompression/grok) network testing).
+
 ## Stack
 
 | Service | Port | Purpose |
 |---------|------|---------|
 | WhisperLive | (behind Traefik) | GPU transcription server |
 | Traefik | 80 (HTTP), 8080 (dashboard) | Reverse proxy / load balancer |
-| MinIO | 9000 (API), 9001 (console) | S3-compatible object storage |
+| MinIO | 9000 (S3 API, TLS), 9001 (console) | S3-compatible object storage (built from source) |
 | Prometheus | 9091 | Metrics collection |
 | Grafana | 3000 | Dashboards |
 
@@ -89,4 +93,52 @@ Traefik will automatically load-balance across instances with sticky sessions fo
 
 ```bash
 docker compose -f docker-compose.local.yml down -v  # -v removes volumes
+```
+
+## MinIO Details
+
+The local stack includes a custom MinIO image (`deploy/minio/Dockerfile`) built from source
+on Alpine Linux with:
+
+- **Self-signed TLS certificates** — generated at build time for HTTPS on port 9000
+- **Virtual-host-style access** — `entrypoint.sh` configures `/etc/hosts` for S3 path-style
+  and virtual-host-style bucket resolution
+- **mc CLI included** — MinIO client baked into the image for bucket management
+
+### Building MinIO Standalone
+
+```bash
+cd deploy/minio
+docker build -t minio-alpine .
+docker volume create minio-data
+docker run -d --rm --cap-add=NET_ADMIN -v minio-data:/data \
+  --name minio-container -p 9000:9000 -p 9001:9001 minio-alpine
+```
+
+### MinIO Client (mc)
+
+```bash
+# Install mc
+curl -O https://dl.min.io/client/mc/release/linux-amd64/mc
+chmod +x mc && sudo mv mc /usr/local/bin/
+
+# Set alias
+mc alias set local https://localhost:9000 minioadmin minioadmin --insecure
+
+# Create bucket
+mc mb local/whisperlive --insecure
+
+# List contents
+mc ls local/whisperlive --insecure
+```
+
+### AWS CLI with MinIO
+
+```bash
+export AWS_ACCESS_KEY_ID="minioadmin"
+export AWS_SECRET_ACCESS_KEY="minioadmin"
+export AWS_ENDPOINT_URL="https://localhost:9000"
+
+# Use --no-verify-ssl for self-signed certs
+aws s3 ls s3://whisperlive/ --no-verify-ssl
 ```
