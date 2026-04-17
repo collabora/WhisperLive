@@ -1,6 +1,7 @@
 import json
 import time
 import threading
+import collections
 import unittest
 from unittest import mock
 from unittest.mock import MagicMock, patch
@@ -412,6 +413,91 @@ class TestRESTAPIParamWarnings(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         ignored = resp.json()["ignored"]
         self.assertGreaterEqual(len(ignored), 2)
+
+
+class TestAPIKeyAuth(unittest.TestCase):
+    """Test optional API key authentication middleware."""
+
+    @classmethod
+    def setUpClass(cls):
+        from fastapi import FastAPI, Request
+        from fastapi.testclient import TestClient
+        from fastapi.responses import JSONResponse as JSONR
+
+        app = FastAPI()
+
+        @app.middleware("http")
+        async def _check_api_key(request: Request, call_next):
+            auth = request.headers.get("Authorization", "")
+            if auth != "Bearer test-secret":
+                return JSONR({"error": "Invalid or missing API key"}, status_code=401)
+            return await call_next(request)
+
+        @app.get("/ping")
+        async def ping():
+            return {"status": "ok"}
+
+        cls.test_client = TestClient(app)
+
+    def test_missing_key_returns_401(self):
+        resp = self.test_client.get("/ping")
+        self.assertEqual(resp.status_code, 401)
+
+    def test_wrong_key_returns_401(self):
+        resp = self.test_client.get("/ping", headers={"Authorization": "Bearer wrong"})
+        self.assertEqual(resp.status_code, 401)
+
+    def test_correct_key_returns_200(self):
+        resp = self.test_client.get("/ping", headers={"Authorization": "Bearer test-secret"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "ok")
+
+
+class TestRateLimiting(unittest.TestCase):
+    """Test per-IP rate limiting middleware."""
+
+    def _make_app(self, rpm_limit=3):
+        from fastapi import FastAPI, Request
+        from fastapi.testclient import TestClient
+        from fastapi.responses import JSONResponse as JSONR
+
+        _rate_lock = threading.Lock()
+        _rate_buckets: dict = {}
+
+        app = FastAPI()
+
+        @app.middleware("http")
+        async def _rate_limit(request: Request, call_next):
+            client_ip = request.client.host if request.client else "unknown"
+            now = time.time()
+            with _rate_lock:
+                bucket = _rate_buckets.setdefault(client_ip, collections.deque())
+                while bucket and bucket[0] < now - 60:
+                    bucket.popleft()
+                if len(bucket) >= rpm_limit:
+                    return JSONR({"error": "Rate limit exceeded"}, status_code=429)
+                bucket.append(now)
+            return await call_next(request)
+
+        @app.get("/ping")
+        async def ping():
+            return {"status": "ok"}
+
+        return TestClient(app)
+
+    def test_within_limit_succeeds(self):
+        client = self._make_app(rpm_limit=3)
+        for _ in range(3):
+            resp = client.get("/ping")
+            self.assertEqual(resp.status_code, 200)
+
+    def test_exceeding_limit_returns_429(self):
+        client = self._make_app(rpm_limit=3)
+        for _ in range(3):
+            client.get("/ping")
+        resp = client.get("/ping")
+        self.assertEqual(resp.status_code, 429)
+        self.assertIn("Rate limit", resp.json()["error"])
 
 
 if __name__ == "__main__":
