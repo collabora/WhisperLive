@@ -735,7 +735,20 @@ class TranscriptionServer:
 
         # New OpenAI-compatible REST API (toggleable via enable_rest boolean)
         if enable_rest:
-            app = FastAPI(title="WhisperLive OpenAI-Compatible API")
+            app = FastAPI(
+                title="WhisperLive OpenAI-Compatible API",
+                description=(
+                    "Real-time and batch speech-to-text transcription API. "
+                    "Compatible with the OpenAI Audio API format. "
+                    "Supports streaming (SSE), webhooks, multi-channel audio, "
+                    "speaker diarization, PII redaction, profanity filtering, "
+                    "and audio intelligence analysis."
+                ),
+                version="0.9.0",
+                docs_url="/docs",
+                redoc_url="/redoc",
+                openapi_url="/openapi.json",
+            )
             origins = [o.strip() for o in cors_origins.split(',')] if cors_origins else []
             app.add_middleware(
                 CORSMiddleware,
@@ -774,7 +787,22 @@ class TranscriptionServer:
                     return await call_next(request)
 
 
-            @app.post("/v1/audio/transcriptions")
+            @app.get("/health", tags=["System"],
+                     summary="Health check",
+                     description="Returns server health status and connected client count.")
+            async def health_check():
+                client_count = len(self.client_manager.clients) if self.client_manager else 0
+                return {
+                    "status": "ok",
+                    "clients": client_count,
+                    "max_clients": self.client_manager.max_clients if self.client_manager else 0,
+                }
+
+            @app.post("/v1/audio/transcriptions", tags=["Transcription"],
+                      summary="Transcribe audio file",
+                      description="Transcribe an audio file. Supports JSON, text, SRT, VTT, "
+                                  "verbose_json response formats. Optional SSE streaming, "
+                                  "webhook callbacks, and multi-channel mode.")
             async def transcribe(
                 file: UploadFile,
                 model: str = Form(default="whisper-1"),
@@ -962,7 +990,10 @@ class TranscriptionServer:
                     wl_metrics.track_error("rest_transcription")
                     return JSONResponse({"error": str(e)}, status_code=500)
 
-            @app.post("/v1/audio/intelligence")
+            @app.post("/v1/audio/intelligence", tags=["Intelligence"],
+                      summary="Analyze transcript",
+                      description="Transcribe audio and perform NLP analysis: "
+                                  "sentiment, topic detection, entity extraction, and summarization.")
             async def intelligence_endpoint(
                 file: UploadFile,
                 model: str = Form(default="whisper-1"),
