@@ -39,6 +39,7 @@ class ServeClientBase(object):
         same_output_threshold=10,
         translation_queue=None,
         diarization=None,
+        word_timestamps=False,
     ):
         self.client_uid = client_uid
         self.websocket = websocket
@@ -47,6 +48,7 @@ class ServeClientBase(object):
         self.clip_audio = clip_audio
         self.same_output_threshold = same_output_threshold
         self.diarization = diarization
+        self.word_timestamps = word_timestamps
 
         self.frames = b""
         self.timestamp_offset = 0.0
@@ -118,7 +120,7 @@ class ServeClientBase(object):
     def handle_transcription_output(self, result, duration):
         raise NotImplementedError
     
-    def format_segment(self, start, end, text, completed=False, speaker=None):
+    def format_segment(self, start, end, text, completed=False, speaker=None, words=None):
         """
         Formats a transcription segment with precise start and end times alongside the transcribed text.
 
@@ -127,6 +129,7 @@ class ServeClientBase(object):
             end (float): The end time of the transcription segment in seconds.
             text (str): The transcribed text corresponding to the segment.
             speaker (str, optional): Speaker label from diarization.
+            words (list, optional): Word-level timestamps and probabilities.
 
         Returns:
             dict: A dictionary representing the formatted transcription segment, including
@@ -141,6 +144,8 @@ class ServeClientBase(object):
         }
         if speaker is not None:
             seg['speaker'] = speaker
+        if words is not None:
+            seg['words'] = words
         return seg
 
     def add_frames(self, frame_np):
@@ -311,7 +316,6 @@ class ServeClientBase(object):
             seg_end = self.get_segment_end(segment)
             start_sample = int(seg_start * self.RATE)
             end_sample = int(seg_end * self.RATE)
-            # Extract audio relative to the current buffer
             samples_offset = max(0, int((self.timestamp_offset - self.frames_offset) * self.RATE))
             audio_slice = self.frames_np[samples_offset + start_sample:samples_offset + end_sample]
             if len(audio_slice) < self.RATE * 0.3:
@@ -320,6 +324,23 @@ class ServeClientBase(object):
         except Exception as e:
             logging.error(f"Diarization error: {e}")
             return None
+
+    def _extract_words(self, segment, time_offset):
+        """Extracts word-level timestamps from a segment if word_timestamps is enabled."""
+        if not self.word_timestamps:
+            return None
+        words = getattr(segment, "words", None)
+        if not words:
+            return None
+        return [
+            {
+                "word": w.word,
+                "start": "{:.3f}".format(time_offset + w.start),
+                "end": "{:.3f}".format(time_offset + w.end),
+                "probability": round(w.probability, 4),
+            }
+            for w in words
+        ]
 
     def update_segments(self, segments, duration):
         """
@@ -351,7 +372,8 @@ class ServeClientBase(object):
                 if self.get_segment_no_speech_prob(s) > self.no_speech_thresh:
                     continue
                 speaker = self._identify_speaker(s)
-                completed_segment = self.format_segment(start, end, text_, completed=True, speaker=speaker)
+                words = self._extract_words(s, self.timestamp_offset)
+                completed_segment = self.format_segment(start, end, text_, completed=True, speaker=speaker, words=words)
                 self.transcript.append(completed_segment)
 
                 if self.translation_queue:
@@ -364,12 +386,14 @@ class ServeClientBase(object):
         # Process the last segment if its no_speech_prob is acceptable.
         if self.get_segment_no_speech_prob(segments[-1]) <= self.no_speech_thresh:
             self.current_out += segments[-1].text
+            words = self._extract_words(segments[-1], self.timestamp_offset)
             with self.lock:
                 last_segment = self.format_segment(
                     self.timestamp_offset + self.get_segment_start(segments[-1]),
                     self.timestamp_offset + min(duration, self.get_segment_end(segments[-1])),
                     self.current_out,
-                    completed=False
+                    completed=False,
+                    words=words
                 )
 
         # Handle repeated output logic.
