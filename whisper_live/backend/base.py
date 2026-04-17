@@ -7,6 +7,7 @@ import numpy as np
 
 from whisper_live import metrics as wl_metrics
 from whisper_live.formatting import format_transcript
+from whisper_live.pii_redaction import redact_pii
 
 
 class ServeClientBase(object):
@@ -51,6 +52,7 @@ class ServeClientBase(object):
         word_timestamps=False,
         diarization=None,
         smart_formatting=False,
+        pii_redaction=None,
     ):
         self.client_uid = client_uid
         self.websocket = websocket
@@ -61,6 +63,7 @@ class ServeClientBase(object):
         self.word_timestamps = word_timestamps
         self.diarization = diarization
         self.smart_formatting = smart_formatting
+        self.pii_redaction = pii_redaction
 
         self.frames = b""
         self.timestamp_offset = 0.0
@@ -148,10 +151,13 @@ class ServeClientBase(object):
                 'start' and 'end' times as strings with three decimal places and the 'text'
                 of the transcription.
         """
+        formatted_text = format_transcript(text) if self.smart_formatting else text
+        if self.pii_redaction:
+            formatted_text = redact_pii(formatted_text, pii_types=self.pii_redaction)
         seg = {
             'start': "{:.3f}".format(start),
             'end': "{:.3f}".format(end),
-            'text': format_transcript(text) if self.smart_formatting else text,
+            'text': formatted_text,
             'completed': completed
         }
         if words is not None:

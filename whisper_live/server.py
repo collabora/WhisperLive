@@ -297,6 +297,7 @@ class TranscriptionServer:
                     hotwords=options.get("hotwords"),
                     diarization=self._create_diarizer(options),
                     smart_formatting=options.get("smart_formatting", False),
+                    pii_redaction=self._parse_pii_option(options),
                 )
 
                 logging.info("Running faster_whisper backend.")
@@ -343,6 +344,24 @@ class TranscriptionServer:
         except ImportError:
             logging.warning("pyannote.audio not installed; diarization disabled")
             return None
+
+    def _parse_pii_option(self, options):
+        """Parse PII redaction option from client handshake.
+
+        Returns:
+            set of PII type strings, or None if disabled.
+        """
+        pii = options.get("pii_redaction")
+        if not pii:
+            return None
+        if pii is True or pii == "all":
+            from whisper_live.pii_redaction import ALL_PII_TYPES
+            return ALL_PII_TYPES
+        if isinstance(pii, list):
+            return set(pii)
+        if isinstance(pii, str):
+            return {t.strip() for t in pii.split(",") if t.strip()}
+        return None
 
     def get_audio_from_websocket(self, websocket):
         """
