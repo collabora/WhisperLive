@@ -1,0 +1,14 @@
+region                   = "us-east-1"
+project_name             = "whisperlive"
+gpu_instance_type        = "g4dn.xlarge"
+desired_count            = 2
+max_clients_per_instance = 4
+max_connection_time      = 600
+data_retention_days      = 30
+
+# Set your API key (or pass via CLI: -var="api_key=...")
+# api_key = "your-api-key-here"
+
+# Optional: custom domain and TLS
+# domain_name     = "api.example.com"
+# certificate_arn = "arn:aws:acm:us-east-1:123456789:certificate/abc-123"
