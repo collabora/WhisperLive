@@ -1,0 +1,178 @@
+# WhisperLive Local Staging Stack
+#
+# Runs the full production-like stack on local hardware:
+# - WhisperLive GPU server (uses your 4090s)
+# - MinIO (S3-compatible object storage)
+# - Traefik (reverse proxy / load balancer with WebSocket support)
+# - Prometheus + Grafana (optional observability)
+#
+# Prerequisites:
+#   - Docker with NVIDIA Container Toolkit (nvidia-docker)
+#   - docker compose v2
+#
+# Usage:
+#   docker compose -f deploy/docker-compose.local.yml up -d
+#   # Web UI:       http://localhost
+#   # REST API:     http://localhost/api/
+#   # WebSocket:    ws://localhost/ws/
+#   # MinIO:        http://localhost:9001 (admin / minioadmin)
+#   # Prometheus:   http://localhost:9091
+#   # Grafana:      http://localhost:3000 (admin / admin)
+#   # API Docs:     http://localhost/api/docs
+
+services:
+
+  # ── WhisperLive GPU Server ──────────────────────────────────────────────
+  whisperlive:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.gpu
+    command:
+      - python
+      - run_server.py
+      - --enable_rest
+      - --backend
+      - faster_whisper
+      - --max_clients
+      - "8"
+      - --max_connection_time
+      - "600"
+      - --rest_port
+      - "8000"
+      - --metrics_port
+      - "9090"
+      - --json_logs
+      - --storage_backend
+      - s3
+      - --storage_bucket
+      - whisperlive
+      - --data_retention_days
+      - "30"
+      - --api_key
+      - ${API_KEY:-test-api-key}
+      - --rate_limit_rpm
+      - "120"
+    environment:
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_ENDPOINT_URL=https://minio:9000
+      - AWS_DEFAULT_REGION=us-east-1
+      # Ensure boto3 uses path-style for MinIO
+      - AWS_S3_ADDRESSING_STYLE=path
+      # Accept self-signed certs from MinIO
+      - PYTHONHTTPSVERIFY=0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      # REST API routes
+      - "traefik.http.routers.api.rule=PathPrefix(`/api`) || PathPrefix(`/health`) || PathPrefix(`/docs`) || PathPrefix(`/redoc`) || PathPrefix(`/openapi.json`) || PathPrefix(`/v1`)"
+      - "traefik.http.routers.api.entrypoints=web"
+      - "traefik.http.services.api.loadbalancer.server.port=8000"
+      # Strip /api prefix
+      - "traefik.http.middlewares.strip-api.stripprefix.prefixes=/api"
+      - "traefik.http.routers.api.middlewares=strip-api"
+      # WebSocket routes
+      - "traefik.http.routers.ws.rule=PathPrefix(`/ws`)"
+      - "traefik.http.routers.ws.entrypoints=web"
+      - "traefik.http.services.ws.loadbalancer.server.port=9090"
+      - "traefik.http.services.ws.loadbalancer.sticky.cookie=true"
+
+  # ── MinIO (S3-compatible storage, built from source) ──────────────────────
+  minio:
+    build:
+      context: ./minio
+      dockerfile: Dockerfile
+    command: ["minio", "server", "/data", "--address", ":9000", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_DOMAIN: minio.example.com
+      MINIO_BUCKETS: whisperlive
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - minio-data:/data
+      - minio-certs:/root/.minio/certs
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Create the default bucket on first run
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local https://minio:9000 minioadmin minioadmin --insecure;
+      mc mb --ignore-existing local/whisperlive --insecure;
+      mc anonymous set none local/whisperlive --insecure;
+      echo 'Bucket ready';
+      "
+
+  # ── Traefik (reverse proxy / load balancer) ──────────────────────────────
+  traefik:
+    image: traefik:v3.0
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"  # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+
+  # ── Prometheus (metrics) ─────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9091:9090"
+    restart: unless-stopped
+
+  # ── Grafana (dashboards) ─────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  minio-data:
+  minio-certs:
+  prometheus-data:
+  grafana-data:
