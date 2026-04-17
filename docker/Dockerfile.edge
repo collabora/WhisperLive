@@ -1,0 +1,63 @@
+# Edge-optimized Dockerfile for ARM64 (Jetson Nano, Jetson Orin, RPi 4/5)
+#
+# Builds a minimal WhisperLive server image with:
+# - ARM64 base image
+# - CPU-only PyTorch (ARM)
+# - int8 quantized Whisper model for low memory
+# - Minimal dependencies
+#
+# Build:
+#   docker build -f docker/Dockerfile.edge -t whisperlive-edge .
+#
+# Run:
+#   docker run -p 9090:9090 -p 8000:8000 whisperlive-edge \
+#     --model tiny --enable_rest --noise_reduction near_field
+
+FROM python:3.11-slim-bookworm
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG TARGETARCH=arm64
+
+# Install minimal system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        portaudio19-dev \
+        libsndfile1 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir -U "pip>=24"
+
+WORKDIR /app
+
+# Install PyTorch CPU-only (smaller footprint for edge)
+RUN pip install --no-cache-dir \
+    torch --index-url https://download.pytorch.org/whl/cpu
+
+# Install server requirements
+COPY requirements/server.txt /app/
+RUN pip install --no-cache-dir -r server.txt && rm server.txt
+
+# Install optional edge-friendly dependencies
+RUN pip install --no-cache-dir \
+    noisereduce \
+    soundfile \
+    prometheus_client
+
+# Copy application code
+COPY whisper_live /app/whisper_live
+COPY run_server.py /app
+
+# Pre-download the tiny model for fastest startup
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')" || true
+
+# Expose WebSocket and REST ports
+EXPOSE 9090 8000
+
+# Use tiny model by default for edge, enable REST, use int8 quantization
+ENTRYPOINT ["python", "run_server.py", \
+    "--backend", "faster_whisper", \
+    "--faster_whisper_custom_model_path", "tiny"]
+
+# Default args (can be overridden)
+CMD ["--enable_rest", "--max_clients", "2", "--max_connection_time", "300"]
