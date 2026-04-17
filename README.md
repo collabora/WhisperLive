@@ -349,6 +349,9 @@ Refer to [`ios-client`](https://github.com/collabora/WhisperLive/tree/main/Audio
 We are available to help you with both Open Source and proprietary AI projects. You can reach us via the Collabora website or [vineet.suryan@collabora.com](mailto:vineet.suryan@collabora.com) and [marcus.edel@collabora.com](mailto:marcus.edel@collabora.com).
 
 
+## Scaling & Deployment
+For multi-GPU deployment, load balancing, Kubernetes, and Prometheus monitoring, see the [Scaling Guide](docs/SCALING.md).
+
 ## Citations
 ```bibtex
 @article{Whisper
