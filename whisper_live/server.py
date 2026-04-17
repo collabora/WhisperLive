@@ -290,7 +290,8 @@ class TranscriptionServer:
                     clip_audio=options.get("clip_audio", False),
                     same_output_threshold=options.get("same_output_threshold", 10),
                     cache_path=self.cache_path,
-                    translation_queue=translation_queue
+                    translation_queue=translation_queue,
+                    word_timestamps=options.get("word_timestamps", False),
                 )
 
                 logging.info("Running faster_whisper backend.")

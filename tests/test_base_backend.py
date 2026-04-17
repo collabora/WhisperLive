@@ -410,5 +410,110 @@ class TestGetSegmentHelpers(unittest.TestCase):
         self.assertAlmostEqual(self.client.get_segment_start(seg), 2.0)
 
 
+class TestWordTimestamps(unittest.TestCase):
+    """Tests for word-level timestamp extraction."""
+
+    def _make_client(self, word_timestamps=False):
+        ws = MagicMock()
+        return ConcreteServeClient(
+            client_uid="wt-uid", websocket=ws, word_timestamps=word_timestamps
+        )
+
+    def _make_word(self, word, start, end, prob):
+        w = MagicMock()
+        w.word = word
+        w.start = start
+        w.end = end
+        w.probability = prob
+        return w
+
+    def _make_segment(self, text, start, end, no_speech_prob=0.0, words=None):
+        seg = MagicMock()
+        seg.text = text
+        seg.start = start
+        seg.end = end
+        seg.no_speech_prob = no_speech_prob
+        seg.words = words
+        return seg
+
+    def test_word_timestamps_disabled_by_default(self):
+        client = self._make_client()
+        self.assertFalse(client.word_timestamps)
+
+    def test_word_timestamps_enabled(self):
+        client = self._make_client(word_timestamps=True)
+        self.assertTrue(client.word_timestamps)
+
+    def test_extract_words_when_disabled(self):
+        client = self._make_client(word_timestamps=False)
+        seg = self._make_segment("hello", 0.0, 1.0, words=[self._make_word("hello", 0.0, 0.5, 0.99)])
+        result = client._extract_words(seg, 0.0)
+        self.assertIsNone(result)
+
+    def test_extract_words_when_enabled(self):
+        client = self._make_client(word_timestamps=True)
+        words = [
+            self._make_word("hello", 0.0, 0.3, 0.95),
+            self._make_word("world", 0.4, 0.8, 0.88),
+        ]
+        seg = self._make_segment("hello world", 0.0, 1.0, words=words)
+        result = client._extract_words(seg, 10.0)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["word"], "hello")
+        self.assertEqual(result[0]["start"], "10.000")
+        self.assertEqual(result[0]["end"], "10.300")
+        self.assertEqual(result[0]["probability"], 0.95)
+        self.assertEqual(result[1]["word"], "world")
+        self.assertEqual(result[1]["start"], "10.400")
+
+    def test_extract_words_no_words_on_segment(self):
+        client = self._make_client(word_timestamps=True)
+        seg = self._make_segment("hello", 0.0, 1.0, words=None)
+        result = client._extract_words(seg, 0.0)
+        self.assertIsNone(result)
+
+    def test_format_segment_without_words(self):
+        client = self._make_client()
+        seg = client.format_segment(0.0, 1.0, "hello")
+        self.assertNotIn("words", seg)
+
+    def test_format_segment_with_words(self):
+        client = self._make_client(word_timestamps=True)
+        words = [{"word": "hello", "start": "0.000", "end": "0.500", "probability": 0.95}]
+        seg = client.format_segment(0.0, 1.0, "hello", words=words)
+        self.assertIn("words", seg)
+        self.assertEqual(len(seg["words"]), 1)
+        self.assertEqual(seg["words"][0]["word"], "hello")
+
+    def test_update_segments_includes_words(self):
+        client = self._make_client(word_timestamps=True)
+        words1 = [self._make_word("hello", 0.0, 0.5, 0.9)]
+        words2 = [self._make_word("world", 0.6, 1.0, 0.85)]
+        segments = [
+            self._make_segment(" hello", 0.0, 0.5, words=words1),
+            self._make_segment(" world", 0.6, 1.0, words=words2),
+        ]
+        last = client.update_segments(segments, 2.0)
+        # First segment should be completed (in transcript) with words
+        self.assertTrue(len(client.transcript) > 0)
+        self.assertIn("words", client.transcript[-1])
+        # Last segment should be in-progress with words
+        self.assertIsNotNone(last)
+        self.assertIn("words", last)
+
+    def test_update_segments_no_words_when_disabled(self):
+        client = self._make_client(word_timestamps=False)
+        words1 = [self._make_word("hello", 0.0, 0.5, 0.9)]
+        words2 = [self._make_word("world", 0.6, 1.0, 0.85)]
+        segments = [
+            self._make_segment(" hello", 0.0, 0.5, words=words1),
+            self._make_segment(" world", 0.6, 1.0, words=words2),
+        ]
+        last = client.update_segments(segments, 2.0)
+        self.assertTrue(len(client.transcript) > 0)
+        self.assertNotIn("words", client.transcript[-1])
+        self.assertNotIn("words", last)
+
+
 if __name__ == "__main__":
     unittest.main()
