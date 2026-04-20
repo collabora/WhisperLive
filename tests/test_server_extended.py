@@ -1,5 +1,6 @@
 import json
 import time
+import threading
 import unittest
 from unittest import mock
 from unittest.mock import MagicMock, patch
@@ -33,6 +34,70 @@ class TestClientManagerAddRemove(unittest.TestCase):
     def test_remove_nonexistent_client_no_error(self):
         ws = MagicMock()
         self.cm.remove_client(ws)  # should not raise
+
+
+class TestClientManagerThreadSafety(unittest.TestCase):
+    def test_concurrent_add_remove(self):
+        cm = ClientManager(max_clients=100, max_connection_time=600)
+        errors = []
+
+        def add_clients(start_idx):
+            try:
+                for i in range(50):
+                    ws = MagicMock(name=f"ws-{start_idx}-{i}")
+                    client = MagicMock(name=f"client-{start_idx}-{i}")
+                    cm.add_client(ws, client)
+            except Exception as e:
+                errors.append(e)
+
+        def remove_clients():
+            try:
+                for _ in range(25):
+                    with cm.lock:
+                        if cm.clients:
+                            ws = next(iter(cm.clients))
+                        else:
+                            continue
+                    cm.remove_client(ws)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [
+            threading.Thread(target=add_clients, args=(0,)),
+            threading.Thread(target=add_clients, args=(1,)),
+            threading.Thread(target=remove_clients),
+            threading.Thread(target=remove_clients),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual(errors, [])
+
+    def test_concurrent_get_client(self):
+        cm = ClientManager(max_clients=100, max_connection_time=600)
+        ws = MagicMock()
+        client = MagicMock()
+        cm.add_client(ws, client)
+        errors = []
+        results = []
+
+        def get_many():
+            try:
+                for _ in range(100):
+                    results.append(cm.get_client(ws))
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=get_many) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual(errors, [])
+        self.assertTrue(all(r is client for r in results))
 
 
 class TestClientManagerServerFull(unittest.TestCase):
@@ -150,6 +215,31 @@ class TestTranscriptionServerInit(unittest.TestCase):
                 whisper_tensorrt_path="/nonexistent/path",
             )
 
+    def test_run_max_clients_zero_raises(self):
+        server = TranscriptionServer()
+        with self.assertRaises(ValueError):
+            server.run(host="localhost", port=9090, max_clients=0)
+
+    def test_run_max_clients_negative_raises(self):
+        server = TranscriptionServer()
+        with self.assertRaises(ValueError):
+            server.run(host="localhost", port=9090, max_clients=-1)
+
+    def test_run_max_connection_time_zero_raises(self):
+        server = TranscriptionServer()
+        with self.assertRaises(ValueError):
+            server.run(host="localhost", port=9090, max_connection_time=0)
+
+    def test_run_batch_max_size_zero_raises(self):
+        server = TranscriptionServer()
+        with self.assertRaises(ValueError):
+            server.run(host="localhost", port=9090, batch_enabled=True, batch_max_size=0)
+
+    def test_run_batch_window_ms_negative_raises(self):
+        server = TranscriptionServer()
+        with self.assertRaises(ValueError):
+            server.run(host="localhost", port=9090, batch_enabled=True, batch_window_ms=-1)
+
 
 class TestTranscriptionServerGetAudio(unittest.TestCase):
     def setUp(self):
@@ -165,6 +255,28 @@ class TestTranscriptionServerGetAudio(unittest.TestCase):
         import numpy as np
         ws = MagicMock()
         audio = np.array([0.1, 0.2, 0.3], dtype=np.float32)
+        ws.recv.return_value = audio.tobytes()
+        result = self.server.get_audio_from_websocket(ws)
+        np.testing.assert_array_almost_equal(result, audio)
+
+    def test_raw_pcm_input_normalizes_int16(self):
+        import numpy as np
+        self.server.raw_pcm_input = True
+        ws = MagicMock()
+        pcm = np.array([0, 16384, -16384, 32767], dtype=np.int16)
+        ws.recv.return_value = pcm.tobytes()
+        result = self.server.get_audio_from_websocket(ws)
+        expected = pcm.astype(np.float32) / 32768.0
+        np.testing.assert_array_almost_equal(result, expected)
+        self.assertTrue(result.dtype == np.float32)
+        self.assertTrue(np.all(result >= -1.0))
+        self.assertTrue(np.all(result <= 1.0))
+
+    def test_raw_pcm_input_off_reads_float32(self):
+        import numpy as np
+        self.server.raw_pcm_input = False
+        ws = MagicMock()
+        audio = np.array([0.5, -0.5], dtype=np.float32)
         ws.recv.return_value = audio.tobytes()
         result = self.server.get_audio_from_websocket(ws)
         np.testing.assert_array_almost_equal(result, audio)
