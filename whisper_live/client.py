@@ -263,6 +263,9 @@ class Client:
         if "translated_segments" in message.keys():
             self.process_segments(message["translated_segments"], translated=True)
 
+        if message.get("message") == "TRANSCRIPT_RESET":
+            print("[INFO]: Server confirmed transcript reset.")
+
     def on_error(self, ws, error):
         print(f"[ERROR] WebSocket Error: {error}")
         self.server_error = True
@@ -360,6 +363,26 @@ class Client:
 
         if self.enable_translation:
             utils.create_srt_file(self.translated_transcript, self.translation_srt_file_path)
+
+    def reset_transcript(self):
+        """
+        Reset the local transcript and notify the server to reset its state.
+
+        Clears the local transcript, translated transcript, last segment pointers,
+        and sends a RESET_TRANSCRIPT control frame to the server so that both
+        sides are in sync.
+        """
+        self.transcript = []
+        self.translated_transcript = []
+        self.last_segment = None
+        self.last_received_segment = None
+        print("[INFO]: Sending RESET_TRANSCRIPT to server...")
+        try:
+            self.client_socket.send(
+                json.dumps({"action": "RESET_TRANSCRIPT", "uid": self.uid})
+            )
+        except Exception as e:
+            print(f"[ERROR]: Failed to send RESET_TRANSCRIPT: {e}")
 
     def wait_before_disconnect(self):
         """Waits a bit before disconnecting in order to process pending responses."""
