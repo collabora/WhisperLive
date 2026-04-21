@@ -1,5 +1,6 @@
 import json
 import time
+import threading
 import unittest
 from unittest import mock
 from unittest.mock import MagicMock, patch
@@ -33,6 +34,70 @@ class TestClientManagerAddRemove(unittest.TestCase):
     def test_remove_nonexistent_client_no_error(self):
         ws = MagicMock()
         self.cm.remove_client(ws)  # should not raise
+
+
+class TestClientManagerThreadSafety(unittest.TestCase):
+    def test_concurrent_add_remove(self):
+        cm = ClientManager(max_clients=100, max_connection_time=600)
+        errors = []
+
+        def add_clients(start_idx):
+            try:
+                for i in range(50):
+                    ws = MagicMock(name=f"ws-{start_idx}-{i}")
+                    client = MagicMock(name=f"client-{start_idx}-{i}")
+                    cm.add_client(ws, client)
+            except Exception as e:
+                errors.append(e)
+
+        def remove_clients():
+            try:
+                for _ in range(25):
+                    with cm.lock:
+                        if cm.clients:
+                            ws = next(iter(cm.clients))
+                        else:
+                            continue
+                    cm.remove_client(ws)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [
+            threading.Thread(target=add_clients, args=(0,)),
+            threading.Thread(target=add_clients, args=(1,)),
+            threading.Thread(target=remove_clients),
+            threading.Thread(target=remove_clients),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual(errors, [])
+
+    def test_concurrent_get_client(self):
+        cm = ClientManager(max_clients=100, max_connection_time=600)
+        ws = MagicMock()
+        client = MagicMock()
+        cm.add_client(ws, client)
+        errors = []
+        results = []
+
+        def get_many():
+            try:
+                for _ in range(100):
+                    results.append(cm.get_client(ws))
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=get_many) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual(errors, [])
+        self.assertTrue(all(r is client for r in results))
 
 
 class TestClientManagerServerFull(unittest.TestCase):
