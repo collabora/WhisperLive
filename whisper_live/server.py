@@ -191,7 +191,7 @@ class TranscriptionServer:
         
         if enable_translation:
             target_language = options.get("target_language", "fr")
-            translation_queue = queue.Queue()
+            translation_queue = queue.Queue(maxsize=ServeClientBase.MAX_TRANSLATION_QUEUE_SIZE)
             from whisper_live.backend.translation_backend import ServeClientTranslation
             translation_client = ServeClientTranslation(
                 client_uid=options["uid"],
