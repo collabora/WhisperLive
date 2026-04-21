@@ -11,6 +11,7 @@ import websocket
 import uuid
 import time
 import av
+from typing import Callable, Literal, Optional
 import whisper_live.utils as utils
 
 
@@ -857,3 +858,215 @@ class TranscriptionClient(TranscriptionTeeClient):
             output_recording_filename=output_recording_filename,
             mute_audio_playback=mute_audio_playback
         )
+
+
+PcmFormat = Literal["float32", "int16"]
+
+
+class _HookedClient(Client):
+    """Client subclass that exposes lifecycle callbacks not available on the base class."""
+
+    def __init__(self, *args, on_session_started=None, on_error_hook=None, on_close_hook=None, **kwargs):
+        self._on_session_started = on_session_started
+        self._on_error_hook = on_error_hook
+        self._on_close_hook = on_close_hook
+        super().__init__(*args, **kwargs)
+
+    def on_message(self, ws, message):
+        data = json.loads(message)
+        if data.get("message") == "SERVER_READY" and self._on_session_started:
+            self._on_session_started()
+        super().on_message(ws, message)
+
+    def on_error(self, ws, error):
+        if self._on_error_hook:
+            self._on_error_hook(error)
+        super().on_error(ws, error)
+
+    def on_close(self, ws, close_status_code, close_msg):
+        if self._on_close_hook:
+            self._on_close_hook()
+        super().on_close(ws, close_status_code, close_msg)
+
+
+class StreamingTranscriptionClient:
+    """Feed raw PCM audio in chunks; receive partial and committed transcripts via callbacks.
+
+    Args:
+        host: WhisperLive server hostname.
+        port: WhisperLive server port.
+        lang: Language code (e.g. ``"en"``). ``None`` enables auto-detection.
+        model: Whisper model size (``"tiny"``, ``"base"``, ``"small"``, ``"medium"``, ``"large"``).
+        use_vad: Enable server-side voice activity detection.
+        use_wss: Use ``wss://`` instead of ``ws://``.
+        send_last_n_segments: How many recent segments the server echoes per update.
+        no_speech_thresh: Segments with no-speech probability above this are discarded.
+        clip_audio: Drop audio with no valid segments.
+        same_output_threshold: Repeated identical outputs before a segment is committed.
+        enable_translation: Enable post-transcription translation.
+        target_language: Target language for translation (e.g. ``"fr"``).
+        ready_timeout: Seconds to wait for ``SERVER_READY`` before raising ``TimeoutError``.
+        on_session_started: Called once when the server is ready to receive audio.
+        on_partial_transcript: Called on each in-progress segment update with ``(text, segments)``.
+        on_committed_transcript: Called for each finalized segment with ``(text, segments)``.
+        on_translation: Called for each translated segment with ``(text, segments)``.
+        on_error: Called on WebSocket errors with the exception.
+        on_close: Called when the connection closes.
+
+    Example::
+
+        client = StreamingTranscriptionClient(
+            "localhost", 9090,
+            lang="en",
+            on_partial_transcript=lambda text, _: print(f"… {text}", end="\\r"),
+            on_committed_transcript=lambda text, _: print(f"✓ {text}"),
+        )
+        with client:
+            for chunk in my_audio_source:
+                client.send(chunk, pcm_format="int16")
+    """
+
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        *,
+        lang: Optional[str] = None,
+        model: str = "small",
+        use_vad: bool = True,
+        use_wss: bool = False,
+        send_last_n_segments: int = 10,
+        no_speech_thresh: float = 0.45,
+        clip_audio: bool = False,
+        same_output_threshold: int = 10,
+        enable_translation: bool = False,
+        target_language: str = "fr",
+        ready_timeout: float = 30.0,
+        on_session_started: Optional[Callable[[], None]] = None,
+        on_partial_transcript: Optional[Callable[[str, list], None]] = None,
+        on_committed_transcript: Optional[Callable[[str, list], None]] = None,
+        on_translation: Optional[Callable[[str, list], None]] = None,
+        on_error: Optional[Callable[[Exception], None]] = None,
+        on_close: Optional[Callable[[], None]] = None,
+    ):
+        self._on_partial_transcript = on_partial_transcript
+        self._on_committed_transcript = on_committed_transcript
+        self._ready_timeout = ready_timeout
+        self._closed = False
+        self._last_committed_count = 0
+
+        self._client = _HookedClient(
+            host=host,
+            port=port,
+            lang=lang,
+            model=model,
+            use_vad=use_vad,
+            use_wss=use_wss,
+            log_transcription=False,
+            send_last_n_segments=send_last_n_segments,
+            no_speech_thresh=no_speech_thresh,
+            clip_audio=clip_audio,
+            same_output_threshold=same_output_threshold,
+            enable_translation=enable_translation,
+            target_language=target_language,
+            transcription_callback=self._dispatch_transcript,
+            translation_callback=on_translation,
+            on_session_started=on_session_started,
+            on_error_hook=on_error,
+            on_close_hook=on_close,
+        )
+
+    def _dispatch_transcript(self, text: str, segments: list) -> None:
+        new_committed = self._client.transcript[self._last_committed_count:]
+        for seg in new_committed:
+            if self._on_committed_transcript:
+                self._on_committed_transcript(seg["text"].strip(), [seg])
+        self._last_committed_count = len(self._client.transcript)
+
+        last = segments[-1] if segments else None
+        if last and not last.get("completed", False) and self._on_partial_transcript:
+            self._on_partial_transcript(last["text"].strip(), [last])
+
+    def connect(self) -> "StreamingTranscriptionClient":
+        """Block until the server is ready. Returns self for use as a context manager."""
+        deadline = time.time() + self._ready_timeout
+        while not self._client.recording:
+            if self._client.server_error:
+                raise RuntimeError(getattr(self._client, "error_message", "Server reported an error."))
+            if self._client.waiting:
+                raise RuntimeError("Server is full.")
+            if time.time() > deadline:
+                raise TimeoutError("Timed out waiting for server ready.")
+            time.sleep(0.05)
+        return self
+
+    def send(self, audio_bytes: bytes, pcm_format: PcmFormat = "float32") -> None:
+        """Send one PCM chunk. Any chunk size is fine; must be mono 16 kHz.
+
+        Args:
+            audio_bytes: Raw PCM payload.
+            pcm_format: ``"float32"`` passes through; ``"int16"`` is normalized to float32.
+        """
+        if self._closed:
+            raise RuntimeError("Client is already closed.")
+        if not audio_bytes:
+            return
+        if pcm_format == "float32":
+            payload = audio_bytes
+        elif pcm_format == "int16":
+            samples = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+            payload = samples.tobytes()
+        else:
+            raise ValueError(f"Unsupported pcm_format: {pcm_format!r}")
+        self._client.send_packet_to_server(payload)
+
+    def send_array(self, samples: np.ndarray) -> None:
+        """Send a numpy array (any numeric dtype, mono, 16 kHz).
+
+        Args:
+            samples: 1-D numpy array of audio samples.
+        """
+        if samples.ndim != 1:
+            raise ValueError("Expected mono (1-D) array.")
+        if np.issubdtype(samples.dtype, np.integer):
+            info = np.iinfo(samples.dtype)
+            samples = samples.astype(np.float32) / max(abs(info.min), info.max)
+        elif samples.dtype != np.float32:
+            samples = samples.astype(np.float32)
+        self._client.send_packet_to_server(samples.tobytes())
+
+    @property
+    def transcript(self) -> list:
+        """All committed segments received so far."""
+        return self._client.transcript
+
+    @property
+    def last_partial(self) -> Optional[dict]:
+        """The most recent in-progress segment, or ``None`` if none pending."""
+        return self._client.last_segment
+    
+    @property
+    def last_segment(self) -> Optional[dict]:
+        """The most recent in-progress segment, or ``None`` if none pending."""
+        return self._client.last_segment
+
+    def close(self, drain_seconds: float = 2.0) -> None:
+        """Signal end-of-stream, wait briefly for final transcripts, then close.
+
+        Args:
+            drain_seconds: Seconds to wait for the server to flush remaining audio.
+        """
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self._client.send_packet_to_server(Client.END_OF_AUDIO.encode("utf-8"))
+            time.sleep(drain_seconds)
+        finally:
+            self._client.close_websocket()
+
+    def __enter__(self) -> "StreamingTranscriptionClient":
+        return self.connect()
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()

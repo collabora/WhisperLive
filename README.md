@@ -17,6 +17,7 @@ input from microphone and pre-recorded audio files.
 - [Getting Started](#getting-started)
 - [Running the Server](#running-the-server)
 - [Running the Client](#running-the-client)
+- [Streaming Client (Manual Audio Chunking)](#streaming-client-manual-audio-chunking)
 - [Browser Extensions](#browser-extensions)
 - [Whisper Live Server in Docker](#whisper-live-server-in-docker)
 - [Future Work](#future-work)
@@ -185,6 +186,63 @@ client(rtsp_url="rtsp://admin:admin@192.168.0.1/rtsp")
 ```python
 client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/bbc_1xtra.isml/bbc_1xtra-audio%3d96000.norewind.m3u8")
 ```
+
+## Streaming Client (manual audio streaming from any source)
+
+`StreamingTranscriptionClient` lets you push raw PCM audio bytes from any source — a live microphone capture loop, a network stream, an audio pipeline — and receive transcripts via callbacks as speech is detected. Unlike `TranscriptionClient`, it does not manage audio capture internally; you control when and how audio is fed.
+
+A runnable example that reads from an audio file and stream the chunks is at [`examples/manual_audio_chunking.py`](examples/manual_audio_chunking.py):
+
+```bash
+python examples/manual_audio_chunking.py --file assets/jfk.flac
+```
+
+Example usage:
+
+```python
+from whisper_live.client import StreamingTranscriptionClient
+
+client = StreamingTranscriptionClient(
+    "localhost", 9090,
+    lang="en",
+    model="small",
+    on_session_started=lambda: print("Server ready"),
+    on_partial_transcript=lambda text, segs: print(f"… {text}", end="\r"),
+    on_committed_transcript=lambda text, segs: print(f"✓ {text}"),
+    on_error=lambda e: print(f"Error: {e}"),
+    on_close=lambda: print("Closed"),
+)
+
+with client:
+    for chunk in my_audio_source:          # any cadence, any chunk size
+        client.send(chunk, pcm_format="int16")
+```
+
+Audio must be **mono, 16 kHz PCM**. Two formats are accepted:
+
+| `pcm_format` | Description |
+|---|---|
+| `"int16"` (default for raw microphone data) | 16-bit signed integers, normalized internally |
+| `"float32"` | 32-bit floats in `[-1, 1]`, passed through directly |
+
+NumPy arrays can be sent with `send_array()`:
+
+```python
+import numpy as np
+samples = np.frombuffer(raw_bytes, dtype=np.int16)
+client.send_array(samples)
+```
+
+**Callbacks**
+
+| Callback | Signature | When fired |
+|---|---|---|
+| `on_session_started` | `() -> None` | Server handshake complete, ready to receive audio |
+| `on_partial_transcript` | `(text, segments) -> None` | In-progress segment updated |
+| `on_committed_transcript` | `(text, segments) -> None` | Segment finalized |
+| `on_translation` | `(text, segments) -> None` | Translated segment ready (requires `enable_translation=True`) |
+| `on_error` | `(error) -> None` | WebSocket error |
+| `on_close` | `() -> None` | Connection closed |
 
 ## Browser Extensions
 - Run the server with your desired backend as shown [here](https://github.com/collabora/WhisperLive?tab=readme-ov-file#running-the-server).
