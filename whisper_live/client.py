@@ -11,6 +11,7 @@ import websocket
 import uuid
 import time
 import av
+import librosa
 import whisper_live.utils as utils
 
 
@@ -388,24 +389,15 @@ class TranscriptionTeeClient:
         self.chunk = 4096
         self.format = pyaudio.paInt16
         self.channels = 1
-        self.rate = 16000
+        self.targetSampleRate = 16000
+        self.microphoneSampleRate = self.targetSampleRate
         self.record_seconds = 60000
         self.save_output_recording = save_output_recording
         self.output_recording_filename = output_recording_filename
         self.mute_audio_playback = mute_audio_playback
         self.frames = b""
         self.p = pyaudio.PyAudio()
-        try:
-            self.stream = self.p.open(
-                format=self.format,
-                channels=self.channels,
-                rate=self.rate,
-                input=True,
-                frames_per_buffer=self.chunk,
-            )
-        except OSError as error:
-            print(f"[WARN]: Unable to access microphone. {error}")
-            self.stream = None
+        self.stream = None
 
     def __call__(self, audio=None, rtsp_url=None, hls_url=None, save_file=None):
         """
@@ -440,6 +432,52 @@ class TranscriptionTeeClient:
             self.process_rtsp_stream(rtsp_url)
         else:
             self.record()
+            
+    def _open_microphone(self):
+        self.microphoneSampleRate = self.targetSampleRate
+        
+        def open_stream(self):
+            self.stream = self.p.open(
+                format=self.format,
+                channels=self.channels,
+                rate=self.microphoneSampleRate,
+                input=True,
+                frames_per_buffer=self.chunk,
+            )
+            
+        try:
+            open_stream(self)
+        except OSError as error:
+            INVALID_SAMPLE_RATE_ERRNO = -9997
+            
+            if error.errno != INVALID_SAMPLE_RATE_ERRNO:
+                print(f"[WARN]: Unable to access microphone. {error}")
+                self.stream = None
+                return
+            
+            # Enable resampling and try again
+            print(f"[WARN]: Input device does not support the required sample rate: {self.targetSampleRate}, enabling software resampling")
+            
+            try:
+                self.microphoneSampleRate = int(self.p.get_default_input_device_info()["defaultSampleRate"])
+                open_stream(self)
+            except OSError as error2:
+                print(f"[WARN]: Unable to access microphone. {error2}")
+                self.stream = None
+                
+    def _close_microphone(self):
+        # It's no different than closing any kind of audio stream
+        self._close_audio_stream()
+    
+    def _close_audio_stream(self):
+        """Closes the audio stream and terminates the PyAudio instance."""
+        try:
+            if self.stream != None:
+                self.stream.stop_stream()
+                self.stream.close()
+                self.stream = None
+        except Exception as e:
+            print(f"Can't close audio stream: {e}")
 
     def close_all_clients(self):
         """Closes all client websockets."""
@@ -585,7 +623,7 @@ class TranscriptionTeeClient:
         output_container = None
         if save_file:
             output_container = av.open(save_file, mode="w")
-            output_audio_stream = output_container.add_stream(codec_name="pcm_s16le", rate=self.rate)
+            output_audio_stream = output_container.add_stream(codec_name="pcm_s16le", rate=self.microphoneSampleRate)
 
         try:
             for packet in container.demux(audio_stream):
@@ -654,24 +692,37 @@ class TranscriptionTeeClient:
         The recording process can be interrupted by sending a KeyboardInterrupt (e.g., pressing Ctrl+C). After recording,
         the method combines all the saved audio chunks into the specified `out_file`.
         """
+        
+        self._open_microphone()
+        if self.stream is None:
+            logging.error("Failed to open microphone stream; aborting recording.")
+            self.close_all_clients()
+            self.write_all_clients_srt()
+            return
+        
         n_audio_file = 0
         if self.save_output_recording:
             if os.path.exists("chunks"):
                 shutil.rmtree("chunks")
             os.makedirs("chunks")
         try:
-            for _ in range(0, int(self.rate / self.chunk * self.record_seconds)):
+            for _ in range(0, int(self.targetSampleRate / self.chunk * self.record_seconds)):
                 if not any(client.recording for client in self.clients):
                     break
-                data = self.stream.read(self.chunk, exception_on_overflow=False)
+                data = self.stream.read(self.chunk * self.microphoneSampleRate // self.targetSampleRate, exception_on_overflow=False)
                 self.frames += data
 
                 audio_array = self.bytes_to_float_array(data)
+                
+                if self.microphoneSampleRate != self.targetSampleRate:
+                    # perform resampling
+                    audio_array = librosa.resample(audio_array, orig_sr=self.microphoneSampleRate, target_sr=self.targetSampleRate)
 
+                audio_array = audio_array.astype(np.float32, copy=False)
                 self.multicast_packet(audio_array.tobytes())
 
                 # save frames if more than a minute
-                if len(self.frames) > 60 * self.rate:
+                if len(self.frames) > 60 * self.microphoneSampleRate:
                     if self.save_output_recording:
                         self.save_chunk(n_audio_file)
                         n_audio_file += 1
@@ -680,6 +731,8 @@ class TranscriptionTeeClient:
 
         except KeyboardInterrupt:
             self.finalize_recording(n_audio_file)
+        finally:
+            self._close_microphone()
 
     def write_audio_frames_to_file(self, frames, file_name):
         """
@@ -697,7 +750,7 @@ class TranscriptionTeeClient:
             wavfile: wave.Wave_write
             wavfile.setnchannels(self.channels)
             wavfile.setsampwidth(2)
-            wavfile.setframerate(self.rate)
+            wavfile.setframerate(self.microphoneSampleRate)
             wavfile.writeframes(frames)
 
     def write_output_recording(self, n_audio_file):
@@ -723,7 +776,7 @@ class TranscriptionTeeClient:
             wavfile: wave.Wave_write
             wavfile.setnchannels(self.channels)
             wavfile.setsampwidth(2)
-            wavfile.setframerate(self.rate)
+            wavfile.setframerate(self.microphoneSampleRate)
             for in_file in input_files:
                 with wave.open(in_file, "rb") as wav_in:
                     while True:
