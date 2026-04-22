@@ -1,0 +1,50 @@
+# Jetson-specific Dockerfile using NVIDIA L4T base image
+#
+# For Jetson Nano, Xavier NX, Orin with CUDA support.
+#
+# Build:
+#   docker build -f docker/Dockerfile.jetson -t whisperlive-jetson .
+#
+# Run:
+#   docker run --runtime nvidia -p 9090:9090 -p 8000:8000 whisperlive-jetson
+
+FROM nvcr.io/nvidia/l4t-pytorch:r35.2.1-pth2.0-py3
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        portaudio19-dev \
+        libsndfile1 \
+        python3-pip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --no-cache-dir -U "pip>=24"
+
+WORKDIR /app
+
+# Install server requirements (PyTorch already in base image)
+COPY requirements/server.txt /app/
+RUN pip3 install --no-cache-dir -r server.txt && rm server.txt
+
+# Install optional dependencies
+RUN pip3 install --no-cache-dir \
+    noisereduce \
+    soundfile \
+    prometheus_client
+
+COPY whisper_live /app/whisper_live
+COPY run_server.py /app
+
+# Pre-download small model (Jetson has more RAM than RPi)
+RUN python3 -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cuda', compute_type='float16')" || true
+
+EXPOSE 9090 8000
+
+ENTRYPOINT ["python3", "run_server.py", \
+    "--backend", "faster_whisper", \
+    "--faster_whisper_custom_model_path", "small"]
+
+CMD ["--enable_rest", "--max_clients", "2"]
