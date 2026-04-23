@@ -1,6 +1,7 @@
 import os
 import time
 import threading
+import collections
 import queue
 import json
 import functools
@@ -8,14 +9,17 @@ import logging
 import shutil
 import tempfile
 from typing import Optional, List
-from fastapi import FastAPI, UploadFile, Form
+from fastapi import FastAPI, UploadFile, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.responses import PlainTextResponse, JSONResponse
 import uvicorn
 from faster_whisper import WhisperModel
 import torch
 
 from enum import Enum
+
+from whisper_live import metrics as wl_metrics
 from typing import List, Optional
 import numpy as np
 from websockets.sync.server import serve
@@ -191,7 +195,7 @@ class TranscriptionServer:
         
         if enable_translation:
             target_language = options.get("target_language", "fr")
-            translation_queue = queue.Queue()
+            translation_queue = queue.Queue(maxsize=ServeClientBase.MAX_TRANSLATION_QUEUE_SIZE)
             from whisper_live.backend.translation_backend import ServeClientTranslation
             translation_client = ServeClientTranslation(
                 client_uid=options["uid"],
@@ -288,7 +292,10 @@ class TranscriptionServer:
                     clip_audio=options.get("clip_audio", False),
                     same_output_threshold=options.get("same_output_threshold", 10),
                     cache_path=self.cache_path,
-                    translation_queue=translation_queue
+                    translation_queue=translation_queue,
+                    word_timestamps=options.get("word_timestamps", False),
+                    hotwords=options.get("hotwords"),
+                    diarization=self._create_diarizer(options),
                 )
 
                 logging.info("Running faster_whisper backend.")
@@ -317,6 +324,25 @@ class TranscriptionServer:
 
         self.client_manager.add_client(websocket, client)
 
+    def _create_diarizer(self, options):
+        """Create a SpeakerDiarizer if the client requested diarization.
+
+        Returns:
+            SpeakerDiarizer or None
+        """
+        if not options.get("enable_diarization", False):
+            return None
+        try:
+            from whisper_live.diarization import SpeakerDiarizer
+            return SpeakerDiarizer(
+                similarity_threshold=options.get("diarization_threshold", 0.55),
+                max_speakers=options.get("max_speakers", 10),
+                hf_token=options.get("hf_token"),
+            )
+        except ImportError:
+            logging.warning("pyannote.audio not installed; diarization disabled")
+            return None
+
     def get_audio_from_websocket(self, websocket):
         """
         Receives audio buffer from websocket and creates a numpy array out of it.
@@ -344,6 +370,7 @@ class TranscriptionServer:
 
             self.use_vad = options.get('use_vad')
             if self.client_manager.is_server_full(websocket, options):
+                wl_metrics.track_connection_rejected(reason="full")
                 websocket.close()
                 return False  # Indicates that the connection should not continue
 
@@ -351,6 +378,7 @@ class TranscriptionServer:
                 self.vad_detector = VoiceActivityDetector(frame_rate=self.RATE)
             self.initialize_client(websocket, options, faster_whisper_custom_model_path,
                                    whisper_tensorrt_path, trt_multilingual, trt_py_session=trt_py_session)
+            wl_metrics.track_connection_opened()
             return True
         except json.JSONDecodeError:
             logging.error("Failed to decode JSON from client")
@@ -429,6 +457,7 @@ class TranscriptionServer:
             if self.client_manager.get_client(websocket):
                 self.cleanup(websocket)
                 websocket.close()
+            wl_metrics.track_connection_closed()
             del websocket
 
     def run(self,
@@ -449,7 +478,10 @@ class TranscriptionServer:
             batch_enabled=False,
             batch_max_size=8,
             batch_window_ms=50,
-            raw_pcm_input=False):
+            raw_pcm_input=False,
+            api_key: Optional[str] = None,
+            rate_limit_rpm: int = 0,
+            metrics_port: int = 0):
         """
         Run the transcription server.
 
@@ -468,6 +500,16 @@ class TranscriptionServer:
         """
         self.cache_path = cache_path
         self.raw_pcm_input = raw_pcm_input
+
+        if max_clients < 1:
+            raise ValueError(f"max_clients must be >= 1, got {max_clients}")
+        if max_connection_time <= 0:
+            raise ValueError(f"max_connection_time must be > 0, got {max_connection_time}")
+        if batch_enabled and batch_max_size < 1:
+            raise ValueError(f"batch_max_size must be >= 1, got {batch_max_size}")
+        if batch_enabled and batch_window_ms < 0:
+            raise ValueError(f"batch_window_ms must be >= 0, got {batch_window_ms}")
+
         self.client_manager = ClientManager(max_clients, max_connection_time)
         if faster_whisper_custom_model_path is not None and not os.path.exists(faster_whisper_custom_model_path):
             if "/" not in faster_whisper_custom_model_path:
@@ -496,6 +538,10 @@ class TranscriptionServer:
         if not BackendType.is_valid(backend):
             raise ValueError(f"{backend} is not a valid backend type. Choose backend from {BackendType.valid_types()}")
 
+        # Start Prometheus metrics endpoint if port is specified
+        if metrics_port > 0:
+            wl_metrics.start_metrics_server(metrics_port)
+
         # New OpenAI-compatible REST API (toggleable via enable_rest boolean)
         if enable_rest:
             app = FastAPI(title="WhisperLive OpenAI-Compatible API")
@@ -507,6 +553,34 @@ class TranscriptionServer:
                 allow_methods=["*"],  # Allows all methods (GET, POST, etc.)
                 allow_headers=["*"],  # Allows all headers
             )
+
+            # Optional API key authentication
+            if api_key:
+                @app.middleware("http")
+                async def _check_api_key(request: Request, call_next):
+                    auth = request.headers.get("Authorization", "")
+                    if auth != f"Bearer {api_key}":
+                        return JSONResponse({"error": "Invalid or missing API key"}, status_code=401)
+                    return await call_next(request)
+
+            # Optional rate limiting (requests per minute per client IP)
+            if rate_limit_rpm > 0:
+                _rate_lock = threading.Lock()
+                _rate_buckets: dict = {}  # ip -> deque of timestamps
+
+                @app.middleware("http")
+                async def _rate_limit(request: Request, call_next):
+                    client_ip = request.client.host if request.client else "unknown"
+                    now = time.time()
+                    with _rate_lock:
+                        bucket = _rate_buckets.setdefault(client_ip, collections.deque())
+                        # Discard entries older than 60s
+                        while bucket and bucket[0] < now - 60:
+                            bucket.popleft()
+                        if len(bucket) >= rate_limit_rpm:
+                            return JSONResponse({"error": "Rate limit exceeded"}, status_code=429)
+                        bucket.append(now)
+                    return await call_next(request)
 
 
             @app.post("/v1/audio/transcriptions")
@@ -523,15 +597,28 @@ class TranscriptionServer:
                 include: Optional[List[str]] = Form(default=None),
                 known_speaker_names: Optional[List[str]] = Form(default=None),
                 known_speaker_references: Optional[List[str]] = Form(default=None),
-                stream: bool = Form(default=False)
+                stream: bool = Form(default=False),
+                hotwords: Optional[str] = Form(default=None),
             ):
                 if stream:
+                    wl_metrics.track_rest_request(endpoint="transcriptions", status=400)
                     return JSONResponse({"error": "Streaming not supported in this backend."}, status_code=400)
-                if chunking_strategy or known_speaker_names or known_speaker_references:
-                    logging.warning("Diarization/chunking params ignored; not supported.")
+
+                ignored_params = []
+                if chunking_strategy:
+                    ignored_params.append(f"chunking_strategy='{chunking_strategy}'")
+                if known_speaker_names:
+                    ignored_params.append("known_speaker_names")
+                if known_speaker_references:
+                    ignored_params.append("known_speaker_references")
+                if include:
+                    ignored_params.append(f"include={include}")
+                if ignored_params:
+                    logging.warning(f"Unsupported OpenAI params ignored: {', '.join(ignored_params)}")
 
                 supported_formats = ["json", "text", "srt", "verbose_json", "vtt"]
                 if response_format not in supported_formats:
+                    wl_metrics.track_rest_request(endpoint="transcriptions", status=400)
                     return JSONResponse({"error": f"Unsupported response_format. Supported: {supported_formats}"}, status_code=400)
 
                 if model != "whisper-1":
@@ -554,15 +641,18 @@ class TranscriptionServer:
                         initial_prompt=prompt,
                         temperature=temperature,
                         vad_filter=False,
-                        word_timestamps=(timestamp_granularities and "word" in timestamp_granularities)
+                        word_timestamps=(timestamp_granularities and "word" in timestamp_granularities),
+                        hotwords=hotwords,
                     )
 
                     text = " ".join([s.text.strip() for s in segments])
                     os.unlink(tmp_path)
 
                     if response_format == "text":
+                        wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
                         return PlainTextResponse(text)
                     elif response_format == "json":
+                        wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
                         return {"text": text}
                     elif response_format == "verbose_json":
                         verbose = {
@@ -588,6 +678,7 @@ class TranscriptionServer:
                             if timestamp_granularities and "word" in timestamp_granularities:
                                 seg_dict["words"] = [{"word": w.word, "start": w.start, "end": w.end, "probability": w.probability} for w in seg.words]
                             verbose["segments"].append(seg_dict)
+                        wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
                         return verbose
                     elif response_format in ["srt", "vtt"]:
                         output = []
@@ -598,8 +689,11 @@ class TranscriptionServer:
                                 output.append(f"{i}\n{start.replace('.', ',')} --> {end.replace('.', ',')}\n{seg.text.strip()}\n")
                             else:  # vtt
                                 output.append(f"{start} --> {end}\n{seg.text.strip()}\n")
+                        wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
                         return PlainTextResponse("\n".join(output))
                 except Exception as e:
+                    wl_metrics.track_rest_request(endpoint="transcriptions", status=500)
+                    wl_metrics.track_error("rest_transcription")
                     return JSONResponse({"error": str(e)}, status_code=500)
 
             threading.Thread(
@@ -611,6 +705,22 @@ class TranscriptionServer:
             logging.info(f"✅ OpenAI-Compatible API started on http://0.0.0.0:{rest_port}")
 
         # Original WebSocket server (always supported)
+        extra_ws_kwargs = {}
+        if api_key:
+            def _ws_auth(path, request_headers):
+                auth = request_headers.get("Authorization", "")
+                token_param = None
+                # Check query string for token parameter
+                if "?" in path:
+                    from urllib.parse import urlparse, parse_qs
+                    parsed = urlparse(path)
+                    token_param = parse_qs(parsed.query).get("token", [None])[0]
+                if auth == f"Bearer {api_key}" or token_param == api_key:
+                    return None  # Allow connection
+                wl_metrics.track_connection_rejected(reason="auth")
+                return (401, [("Content-Type", "text/plain")], b"Unauthorized\n")
+            extra_ws_kwargs["process_request"] = _ws_auth
+
         with serve(
             functools.partial(
                 self.recv_audio,
@@ -621,7 +731,8 @@ class TranscriptionServer:
                 trt_py_session=trt_py_session,
             ),
             host,
-            port
+            port,
+            **extra_ws_kwargs,
         ) as server:
             server.serve_forever()
 
