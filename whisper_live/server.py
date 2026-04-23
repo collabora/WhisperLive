@@ -1,6 +1,7 @@
 import os
 import time
 import threading
+import collections
 import queue
 import json
 import functools
@@ -8,8 +9,9 @@ import logging
 import shutil
 import tempfile
 from typing import Optional, List
-from fastapi import FastAPI, UploadFile, Form
+from fastapi import FastAPI, UploadFile, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.responses import PlainTextResponse, JSONResponse
 import uvicorn
 from faster_whisper import WhisperModel
@@ -191,7 +193,7 @@ class TranscriptionServer:
         
         if enable_translation:
             target_language = options.get("target_language", "fr")
-            translation_queue = queue.Queue()
+            translation_queue = queue.Queue(maxsize=ServeClientBase.MAX_TRANSLATION_QUEUE_SIZE)
             from whisper_live.backend.translation_backend import ServeClientTranslation
             translation_client = ServeClientTranslation(
                 client_uid=options["uid"],
@@ -288,7 +290,9 @@ class TranscriptionServer:
                     clip_audio=options.get("clip_audio", False),
                     same_output_threshold=options.get("same_output_threshold", 10),
                     cache_path=self.cache_path,
-                    translation_queue=translation_queue
+                    translation_queue=translation_queue,
+                    word_timestamps=options.get("word_timestamps", False),
+                    hotwords=options.get("hotwords"),
                 )
 
                 logging.info("Running faster_whisper backend.")
@@ -449,7 +453,9 @@ class TranscriptionServer:
             batch_enabled=False,
             batch_max_size=8,
             batch_window_ms=50,
-            raw_pcm_input=False):
+            raw_pcm_input=False,
+            api_key: Optional[str] = None,
+            rate_limit_rpm: int = 0):
         """
         Run the transcription server.
 
@@ -468,6 +474,16 @@ class TranscriptionServer:
         """
         self.cache_path = cache_path
         self.raw_pcm_input = raw_pcm_input
+
+        if max_clients < 1:
+            raise ValueError(f"max_clients must be >= 1, got {max_clients}")
+        if max_connection_time <= 0:
+            raise ValueError(f"max_connection_time must be > 0, got {max_connection_time}")
+        if batch_enabled and batch_max_size < 1:
+            raise ValueError(f"batch_max_size must be >= 1, got {batch_max_size}")
+        if batch_enabled and batch_window_ms < 0:
+            raise ValueError(f"batch_window_ms must be >= 0, got {batch_window_ms}")
+
         self.client_manager = ClientManager(max_clients, max_connection_time)
         if faster_whisper_custom_model_path is not None and not os.path.exists(faster_whisper_custom_model_path):
             if "/" not in faster_whisper_custom_model_path:
@@ -508,6 +524,34 @@ class TranscriptionServer:
                 allow_headers=["*"],  # Allows all headers
             )
 
+            # Optional API key authentication
+            if api_key:
+                @app.middleware("http")
+                async def _check_api_key(request: Request, call_next):
+                    auth = request.headers.get("Authorization", "")
+                    if auth != f"Bearer {api_key}":
+                        return JSONResponse({"error": "Invalid or missing API key"}, status_code=401)
+                    return await call_next(request)
+
+            # Optional rate limiting (requests per minute per client IP)
+            if rate_limit_rpm > 0:
+                _rate_lock = threading.Lock()
+                _rate_buckets: dict = {}  # ip -> deque of timestamps
+
+                @app.middleware("http")
+                async def _rate_limit(request: Request, call_next):
+                    client_ip = request.client.host if request.client else "unknown"
+                    now = time.time()
+                    with _rate_lock:
+                        bucket = _rate_buckets.setdefault(client_ip, collections.deque())
+                        # Discard entries older than 60s
+                        while bucket and bucket[0] < now - 60:
+                            bucket.popleft()
+                        if len(bucket) >= rate_limit_rpm:
+                            return JSONResponse({"error": "Rate limit exceeded"}, status_code=429)
+                        bucket.append(now)
+                    return await call_next(request)
+
 
             @app.post("/v1/audio/transcriptions")
             async def transcribe(
@@ -523,12 +567,23 @@ class TranscriptionServer:
                 include: Optional[List[str]] = Form(default=None),
                 known_speaker_names: Optional[List[str]] = Form(default=None),
                 known_speaker_references: Optional[List[str]] = Form(default=None),
-                stream: bool = Form(default=False)
+                stream: bool = Form(default=False),
+                hotwords: Optional[str] = Form(default=None),
             ):
                 if stream:
                     return JSONResponse({"error": "Streaming not supported in this backend."}, status_code=400)
-                if chunking_strategy or known_speaker_names or known_speaker_references:
-                    logging.warning("Diarization/chunking params ignored; not supported.")
+
+                ignored_params = []
+                if chunking_strategy:
+                    ignored_params.append(f"chunking_strategy='{chunking_strategy}'")
+                if known_speaker_names:
+                    ignored_params.append("known_speaker_names")
+                if known_speaker_references:
+                    ignored_params.append("known_speaker_references")
+                if include:
+                    ignored_params.append(f"include={include}")
+                if ignored_params:
+                    logging.warning(f"Unsupported OpenAI params ignored: {', '.join(ignored_params)}")
 
                 supported_formats = ["json", "text", "srt", "verbose_json", "vtt"]
                 if response_format not in supported_formats:
@@ -554,7 +609,8 @@ class TranscriptionServer:
                         initial_prompt=prompt,
                         temperature=temperature,
                         vad_filter=False,
-                        word_timestamps=(timestamp_granularities and "word" in timestamp_granularities)
+                        word_timestamps=(timestamp_granularities and "word" in timestamp_granularities),
+                        hotwords=hotwords,
                     )
 
                     text = " ".join([s.text.strip() for s in segments])
