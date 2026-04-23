@@ -215,6 +215,31 @@ class TestTranscriptionServerInit(unittest.TestCase):
                 whisper_tensorrt_path="/nonexistent/path",
             )
 
+    def test_run_max_clients_zero_raises(self):
+        server = TranscriptionServer()
+        with self.assertRaises(ValueError):
+            server.run(host="localhost", port=9090, max_clients=0)
+
+    def test_run_max_clients_negative_raises(self):
+        server = TranscriptionServer()
+        with self.assertRaises(ValueError):
+            server.run(host="localhost", port=9090, max_clients=-1)
+
+    def test_run_max_connection_time_zero_raises(self):
+        server = TranscriptionServer()
+        with self.assertRaises(ValueError):
+            server.run(host="localhost", port=9090, max_connection_time=0)
+
+    def test_run_batch_max_size_zero_raises(self):
+        server = TranscriptionServer()
+        with self.assertRaises(ValueError):
+            server.run(host="localhost", port=9090, batch_enabled=True, batch_max_size=0)
+
+    def test_run_batch_window_ms_negative_raises(self):
+        server = TranscriptionServer()
+        with self.assertRaises(ValueError):
+            server.run(host="localhost", port=9090, batch_enabled=True, batch_window_ms=-1)
+
 
 class TestTranscriptionServerGetAudio(unittest.TestCase):
     def setUp(self):
