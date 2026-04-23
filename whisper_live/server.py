@@ -1,6 +1,7 @@
 import os
 import time
 import threading
+import collections
 import queue
 import json
 import functools
@@ -8,14 +9,17 @@ import logging
 import shutil
 import tempfile
 from typing import Optional, List
-from fastapi import FastAPI, UploadFile, Form
+from fastapi import FastAPI, UploadFile, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import PlainTextResponse, JSONResponse
+from fastapi.responses import JSONResponse
+from starlette.responses import PlainTextResponse, JSONResponse, StreamingResponse
 import uvicorn
 from faster_whisper import WhisperModel
 import torch
 
 from enum import Enum
+
+from whisper_live import metrics as wl_metrics
 from typing import List, Optional
 import numpy as np
 from websockets.sync.server import serve
@@ -174,6 +178,8 @@ class TranscriptionServer:
         self.single_model = False
         self.batch_config = None
         self.raw_pcm_input = False
+        self.plugin_registry = None
+        self._model_cache = None
 
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
@@ -191,7 +197,7 @@ class TranscriptionServer:
         
         if enable_translation:
             target_language = options.get("target_language", "fr")
-            translation_queue = queue.Queue()
+            translation_queue = queue.Queue(maxsize=ServeClientBase.MAX_TRANSLATION_QUEUE_SIZE)
             from whisper_live.backend.translation_backend import ServeClientTranslation
             translation_client = ServeClientTranslation(
                 client_uid=options["uid"],
@@ -288,10 +294,19 @@ class TranscriptionServer:
                     clip_audio=options.get("clip_audio", False),
                     same_output_threshold=options.get("same_output_threshold", 10),
                     cache_path=self.cache_path,
-                    translation_queue=translation_queue
+                    translation_queue=translation_queue,
+                    word_timestamps=options.get("word_timestamps", False),
+                    hotwords=options.get("hotwords"),
+                    diarization=self._create_diarizer(options),
+                    smart_formatting=options.get("smart_formatting", False),
+                    pii_redaction=self._parse_pii_option(options),
+                    profanity_filter=self._parse_profanity_option(options),
                 )
 
                 logging.info("Running faster_whisper backend.")
+
+                if self.plugin_registry:
+                    client.plugin_registry = self.plugin_registry
 
                 # Start batch inference worker on first client (after model is loaded)
                 if (self.batch_config is not None
@@ -316,6 +331,69 @@ class TranscriptionServer:
             client.translation_thread = translation_thread
 
         self.client_manager.add_client(websocket, client)
+
+    def _create_diarizer(self, options):
+        """Create a SpeakerDiarizer if the client requested diarization.
+
+        Returns:
+            SpeakerDiarizer or None
+        """
+        if not options.get("enable_diarization", False):
+            return None
+        try:
+            from whisper_live.diarization import SpeakerDiarizer
+            return SpeakerDiarizer(
+                similarity_threshold=options.get("diarization_threshold", 0.55),
+                max_speakers=options.get("max_speakers", 10),
+                hf_token=options.get("hf_token"),
+            )
+        except ImportError:
+            logging.warning("pyannote.audio not installed; diarization disabled")
+            return None
+
+    def _parse_pii_option(self, options):
+        """Parse PII redaction option from client handshake.
+
+        Returns:
+            set of PII type strings, or None if disabled.
+        """
+        pii = options.get("pii_redaction")
+        if not pii:
+            return None
+        if pii is True or pii == "all":
+            from whisper_live.pii_redaction import ALL_PII_TYPES
+            return ALL_PII_TYPES
+        if isinstance(pii, list):
+            return set(pii)
+        if isinstance(pii, str):
+            return {t.strip() for t in pii.split(",") if t.strip()}
+        return None
+
+    def _parse_profanity_option(self, options):
+        """Parse profanity filter option from client handshake.
+
+        Returns:
+            dict of kwargs for filter_profanity(), or None if disabled.
+        """
+        pf = options.get("profanity_filter")
+        if not pf:
+            return None
+        if pf is True:
+            return {"mode": "partial"}
+        if isinstance(pf, str):
+            if pf in ("partial", "full", "remove"):
+                return {"mode": pf}
+            return {"mode": "partial"}
+        if isinstance(pf, dict):
+            result = {"mode": pf.get("mode", "partial")}
+            if "mask_char" in pf:
+                result["mask_char"] = pf["mask_char"]
+            if "extra_words" in pf:
+                result["extra_words"] = set(pf["extra_words"])
+            if "custom_words" in pf:
+                result["custom_words"] = set(pf["custom_words"])
+            return result
+        return None
 
     def get_audio_from_websocket(self, websocket):
         """
@@ -344,6 +422,7 @@ class TranscriptionServer:
 
             self.use_vad = options.get('use_vad')
             if self.client_manager.is_server_full(websocket, options):
+                wl_metrics.track_connection_rejected(reason="full")
                 websocket.close()
                 return False  # Indicates that the connection should not continue
 
@@ -351,6 +430,7 @@ class TranscriptionServer:
                 self.vad_detector = VoiceActivityDetector(frame_rate=self.RATE)
             self.initialize_client(websocket, options, faster_whisper_custom_model_path,
                                    whisper_tensorrt_path, trt_multilingual, trt_py_session=trt_py_session)
+            wl_metrics.track_connection_opened()
             return True
         except json.JSONDecodeError:
             logging.error("Failed to decode JSON from client")
@@ -429,7 +509,152 @@ class TranscriptionServer:
             if self.client_manager.get_client(websocket):
                 self.cleanup(websocket)
                 websocket.close()
+            wl_metrics.track_connection_closed()
             del websocket
+
+    def _stream_transcription(self, file, language, prompt, temperature,
+                              timestamp_granularities, hotwords,
+                              faster_whisper_custom_model_path):
+        """Return a StreamingResponse that yields SSE events per segment."""
+
+        async def _sse_generator():
+            tmp_path = None
+            try:
+                suffix = os.path.splitext(file.filename)[1] or ".wav"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    shutil.copyfileobj(file.file, tmp)
+                    tmp_path = tmp.name
+
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                compute_type = "float16" if device == "cuda" else "int8"
+                model_name = faster_whisper_custom_model_path or "small"
+                transcriber = WhisperModel(model_name, device=device, compute_type=compute_type)
+                segments, info = transcriber.transcribe(
+                    tmp_path,
+                    language=language,
+                    initial_prompt=prompt,
+                    temperature=temperature,
+                    vad_filter=False,
+                    word_timestamps=(timestamp_granularities and "word" in timestamp_granularities),
+                    hotwords=hotwords,
+                )
+
+                # Emit metadata event with detected language info
+                meta = {
+                    "type": "metadata",
+                    "language": info.language,
+                    "language_probability": info.language_probability,
+                    "duration": info.duration,
+                }
+                yield f"data: {json.dumps(meta)}\n\n"
+
+                for seg in segments:
+                    seg_dict = {
+                        "id": seg.id,
+                        "start": seg.start,
+                        "end": seg.end,
+                        "text": seg.text.strip(),
+                    }
+                    if timestamp_granularities and "word" in timestamp_granularities:
+                        seg_dict["words"] = [
+                            {"word": w.word, "start": w.start, "end": w.end, "probability": w.probability}
+                            for w in seg.words
+                        ]
+                    yield f"data: {json.dumps(seg_dict)}\n\n"
+
+                yield "data: [DONE]\n\n"
+                wl_metrics.track_rest_request(endpoint="transcriptions_stream", status=200)
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                wl_metrics.track_rest_request(endpoint="transcriptions_stream", status=500)
+                wl_metrics.track_error("rest_stream")
+            finally:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+
+        return StreamingResponse(_sse_generator(), media_type="text/event-stream")
+
+    def _multichannel_transcribe(self, file, language, prompt, temperature,
+                                  timestamp_granularities, hotwords,
+                                  faster_whisper_custom_model_path,
+                                  channel_labels_str):
+        """Transcribe each audio channel independently and return merged results."""
+        from whisper_live.multichannel import detect_channels_from_wav, split_channels, merge_channel_segments
+        import soundfile as sf
+
+        tmp_path = None
+        try:
+            suffix = os.path.splitext(file.filename)[1] or ".wav"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                shutil.copyfileobj(file.file, tmp)
+                tmp_path = tmp.name
+
+            # Read audio with soundfile for proper channel handling
+            audio_data, sample_rate = sf.read(tmp_path, dtype="float32")
+            if audio_data.ndim == 1:
+                num_channels = 1
+                channel_arrays = [audio_data]
+            else:
+                num_channels = audio_data.shape[1]
+                channel_arrays = [audio_data[:, ch] for ch in range(num_channels)]
+
+            labels = None
+            if channel_labels_str:
+                labels = [l.strip() for l in channel_labels_str.split(",")]
+
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            compute_type = "float16" if device == "cuda" else "int8"
+            model_name = faster_whisper_custom_model_path or "small"
+            transcriber = WhisperModel(model_name, device=device, compute_type=compute_type)
+
+            all_channel_segments = []
+            for ch_idx, ch_audio in enumerate(channel_arrays):
+                # Write each channel to a temp mono file
+                ch_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+                sf.write(ch_tmp.name, ch_audio, sample_rate)
+                ch_tmp.close()
+
+                segments, info = transcriber.transcribe(
+                    ch_tmp.name,
+                    language=language,
+                    initial_prompt=prompt,
+                    temperature=temperature,
+                    vad_filter=False,
+                    word_timestamps=(timestamp_granularities and "word" in timestamp_granularities),
+                    hotwords=hotwords,
+                )
+
+                ch_segs = []
+                for seg in segments:
+                    seg_dict = {
+                        "start": seg.start,
+                        "end": seg.end,
+                        "text": seg.text.strip(),
+                    }
+                    if timestamp_granularities and "word" in timestamp_granularities:
+                        seg_dict["words"] = [
+                            {"word": w.word, "start": w.start, "end": w.end, "probability": w.probability}
+                            for w in seg.words
+                        ]
+                    ch_segs.append(seg_dict)
+
+                all_channel_segments.append(ch_segs)
+                os.unlink(ch_tmp.name)
+
+            merged = merge_channel_segments(all_channel_segments, labels)
+            wl_metrics.track_rest_request(endpoint="transcriptions_multichannel", status=200)
+            return {
+                "channels": num_channels,
+                "segments": merged,
+                "text": " ".join(seg["text"] for seg in merged),
+            }
+        except Exception as e:
+            wl_metrics.track_rest_request(endpoint="transcriptions_multichannel", status=500)
+            wl_metrics.track_error("multichannel")
+            return JSONResponse({"error": str(e)}, status_code=500)
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
     def run(self,
             host,
@@ -449,7 +674,11 @@ class TranscriptionServer:
             batch_enabled=False,
             batch_max_size=8,
             batch_window_ms=50,
-            raw_pcm_input=False):
+            raw_pcm_input=False,
+            api_key: Optional[str] = None,
+            rate_limit_rpm: int = 0,
+            metrics_port: int = 0,
+            plugin_registry=None):
         """
         Run the transcription server.
 
@@ -468,6 +697,17 @@ class TranscriptionServer:
         """
         self.cache_path = cache_path
         self.raw_pcm_input = raw_pcm_input
+        self.plugin_registry = plugin_registry
+
+        if max_clients < 1:
+            raise ValueError(f"max_clients must be >= 1, got {max_clients}")
+        if max_connection_time <= 0:
+            raise ValueError(f"max_connection_time must be > 0, got {max_connection_time}")
+        if batch_enabled and batch_max_size < 1:
+            raise ValueError(f"batch_max_size must be >= 1, got {batch_max_size}")
+        if batch_enabled and batch_window_ms < 0:
+            raise ValueError(f"batch_window_ms must be >= 0, got {batch_window_ms}")
+
         self.client_manager = ClientManager(max_clients, max_connection_time)
         if faster_whisper_custom_model_path is not None and not os.path.exists(faster_whisper_custom_model_path):
             if "/" not in faster_whisper_custom_model_path:
@@ -496,9 +736,33 @@ class TranscriptionServer:
         if not BackendType.is_valid(backend):
             raise ValueError(f"{backend} is not a valid backend type. Choose backend from {BackendType.valid_types()}")
 
+        # Start Prometheus metrics endpoint if port is specified
+        if metrics_port > 0:
+            wl_metrics.start_metrics_server(metrics_port)
+
+        # Initialize model cache for REST API hot-swap
+        from whisper_live.model_cache import ModelCache
+        self._model_cache = ModelCache(
+            max_models=3,
+            default_model=faster_whisper_custom_model_path or "small",
+        )
+
         # New OpenAI-compatible REST API (toggleable via enable_rest boolean)
         if enable_rest:
-            app = FastAPI(title="WhisperLive OpenAI-Compatible API")
+            app = FastAPI(
+                title="WhisperLive OpenAI-Compatible API",
+                description=(
+                    "Real-time and batch speech-to-text transcription API. "
+                    "Compatible with the OpenAI Audio API format. "
+                    "Supports streaming (SSE), webhooks, multi-channel audio, "
+                    "speaker diarization, PII redaction, profanity filtering, "
+                    "and audio intelligence analysis."
+                ),
+                version="0.9.0",
+                docs_url="/docs",
+                redoc_url="/redoc",
+                openapi_url="/openapi.json",
+            )
             origins = [o.strip() for o in cors_origins.split(',')] if cors_origins else []
             app.add_middleware(
                 CORSMiddleware,
@@ -508,8 +772,67 @@ class TranscriptionServer:
                 allow_headers=["*"],  # Allows all headers
             )
 
+            # Optional API key authentication
+            if api_key:
+                @app.middleware("http")
+                async def _check_api_key(request: Request, call_next):
+                    auth = request.headers.get("Authorization", "")
+                    if auth != f"Bearer {api_key}":
+                        return JSONResponse({"error": "Invalid or missing API key"}, status_code=401)
+                    return await call_next(request)
 
-            @app.post("/v1/audio/transcriptions")
+            # Optional rate limiting (requests per minute per client IP)
+            if rate_limit_rpm > 0:
+                _rate_lock = threading.Lock()
+                _rate_buckets: dict = {}  # ip -> deque of timestamps
+
+                @app.middleware("http")
+                async def _rate_limit(request: Request, call_next):
+                    client_ip = request.client.host if request.client else "unknown"
+                    now = time.time()
+                    with _rate_lock:
+                        bucket = _rate_buckets.setdefault(client_ip, collections.deque())
+                        # Discard entries older than 60s
+                        while bucket and bucket[0] < now - 60:
+                            bucket.popleft()
+                        if len(bucket) >= rate_limit_rpm:
+                            return JSONResponse({"error": "Rate limit exceeded"}, status_code=429)
+                        bucket.append(now)
+                    return await call_next(request)
+
+
+            @app.get("/health", tags=["System"],
+                     summary="Health check",
+                     description="Returns server health status and connected client count.")
+            async def health_check():
+                client_count = len(self.client_manager.clients) if self.client_manager else 0
+                return {
+                    "status": "ok",
+                    "clients": client_count,
+                    "max_clients": self.client_manager.max_clients if self.client_manager else 0,
+                }
+
+            @app.get("/v1/plugins", tags=["System"],
+                     summary="List plugins",
+                     description="Returns the list of registered post-processing plugins.")
+            async def list_plugins():
+                if self.plugin_registry:
+                    return {"plugins": self.plugin_registry.list_plugins()}
+                return {"plugins": []}
+
+            @app.get("/v1/models", tags=["System"],
+                     summary="List loaded models",
+                     description="Returns currently cached models available for hot-swap.")
+            async def list_models():
+                if self._model_cache:
+                    return {"models": self._model_cache.list_loaded()}
+                return {"models": []}
+
+            @app.post("/v1/audio/transcriptions", tags=["Transcription"],
+                      summary="Transcribe audio file",
+                      description="Transcribe an audio file. Supports JSON, text, SRT, VTT, "
+                                  "verbose_json response formats. Optional SSE streaming, "
+                                  "webhook callbacks, and multi-channel mode.")
             async def transcribe(
                 file: UploadFile,
                 model: str = Form(default="whisper-1"),
@@ -523,20 +846,108 @@ class TranscriptionServer:
                 include: Optional[List[str]] = Form(default=None),
                 known_speaker_names: Optional[List[str]] = Form(default=None),
                 known_speaker_references: Optional[List[str]] = Form(default=None),
-                stream: bool = Form(default=False)
+                stream: bool = Form(default=False),
+                hotwords: Optional[str] = Form(default=None),
+                callback_url: Optional[str] = Form(default=None),
+                multichannel: bool = Form(default=False),
+                channel_labels: Optional[str] = Form(default=None),
             ):
                 if stream:
-                    return JSONResponse({"error": "Streaming not supported in this backend."}, status_code=400)
-                if chunking_strategy or known_speaker_names or known_speaker_references:
-                    logging.warning("Diarization/chunking params ignored; not supported.")
+                    return self._stream_transcription(
+                        file, language, prompt, temperature,
+                        timestamp_granularities, hotwords,
+                        faster_whisper_custom_model_path,
+                    )
+
+                if callback_url:
+                    import uuid as _uuid
+                    import urllib.request
+                    job_id = str(_uuid.uuid4())
+                    suffix = os.path.splitext(file.filename)[1] or ".wav"
+                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                    shutil.copyfileobj(file.file, tmp)
+                    tmp_path = tmp.name
+                    tmp.close()
+
+                    def _run_async_job():
+                        try:
+                            device = "cuda" if torch.cuda.is_available() else "cpu"
+                            compute_type = "float16" if device == "cuda" else "int8"
+                            model_name = faster_whisper_custom_model_path or "small"
+                            transcriber = WhisperModel(model_name, device=device, compute_type=compute_type)
+                            segments, info = transcriber.transcribe(
+                                tmp_path,
+                                language=language,
+                                initial_prompt=prompt,
+                                temperature=temperature,
+                                vad_filter=False,
+                                word_timestamps=(timestamp_granularities and "word" in timestamp_granularities),
+                                hotwords=hotwords,
+                            )
+                            text = " ".join([s.text.strip() for s in segments])
+                            payload = json.dumps({"job_id": job_id, "text": text}).encode()
+                            req = urllib.request.Request(
+                                callback_url,
+                                data=payload,
+                                headers={"Content-Type": "application/json"},
+                                method="POST",
+                            )
+                            urllib.request.urlopen(req, timeout=30)
+                            wl_metrics.track_rest_request(endpoint="transcriptions_async", status=200)
+                        except Exception as e:
+                            logging.error(f"Async job {job_id} failed: {e}")
+                            wl_metrics.track_error("async_job")
+                            try:
+                                err_payload = json.dumps({"job_id": job_id, "error": str(e)}).encode()
+                                req = urllib.request.Request(
+                                    callback_url,
+                                    data=err_payload,
+                                    headers={"Content-Type": "application/json"},
+                                    method="POST",
+                                )
+                                urllib.request.urlopen(req, timeout=30)
+                            except Exception:
+                                logging.error(f"Failed to send error callback for job {job_id}")
+                        finally:
+                            if os.path.exists(tmp_path):
+                                os.unlink(tmp_path)
+
+                    threading.Thread(target=_run_async_job, daemon=True).start()
+                    return JSONResponse({"job_id": job_id, "status": "processing"}, status_code=202)
+
+                if multichannel:
+                    return self._multichannel_transcribe(
+                        file, language, prompt, temperature,
+                        timestamp_granularities, hotwords,
+                        faster_whisper_custom_model_path,
+                        channel_labels,
+                    )
+
+                ignored_params = []
+                if chunking_strategy:
+                    ignored_params.append(f"chunking_strategy='{chunking_strategy}'")
+                if known_speaker_names:
+                    ignored_params.append("known_speaker_names")
+                if known_speaker_references:
+                    ignored_params.append("known_speaker_references")
+                if include:
+                    ignored_params.append(f"include={include}")
+                if ignored_params:
+                    logging.warning(f"Unsupported OpenAI params ignored: {', '.join(ignored_params)}")
 
                 supported_formats = ["json", "text", "srt", "verbose_json", "vtt"]
                 if response_format not in supported_formats:
+                    wl_metrics.track_rest_request(endpoint="transcriptions", status=400)
                     return JSONResponse({"error": f"Unsupported response_format. Supported: {supported_formats}"}, status_code=400)
 
                 if model != "whisper-1":
-                    logging.warning(f"Model '{model}' requested; using 'small' as fallback.")
-                model_name = faster_whisper_custom_model_path or "small"
+                    logging.info(f"Model '{model}' requested via REST API.")
+                # Use model cache for hot-swap: accept model names like
+                # "whisper-1", "small", "medium", "large-v3", etc.
+                _model_map = {"whisper-1": "small"}
+                resolved_model = _model_map.get(model, model)
+                if faster_whisper_custom_model_path:
+                    resolved_model = faster_whisper_custom_model_path
 
                 try:
                     suffix = os.path.splitext(file.filename)[1] or ".wav"
@@ -547,27 +958,35 @@ class TranscriptionServer:
                     device = "cuda" if torch.cuda.is_available() else "cpu"
                     compute_type = "float16" if device == "cuda" else "int8"
 
-                    transcriber = WhisperModel(model_name, device=device, compute_type=compute_type)
+                    transcriber = self._model_cache.get(resolved_model, device=device, compute_type=compute_type)
                     segments, info = transcriber.transcribe(
                         tmp_path,
                         language=language,
                         initial_prompt=prompt,
                         temperature=temperature,
                         vad_filter=False,
-                        word_timestamps=(timestamp_granularities and "word" in timestamp_granularities)
+                        word_timestamps=(timestamp_granularities and "word" in timestamp_granularities),
+                        hotwords=hotwords,
                     )
 
                     text = " ".join([s.text.strip() for s in segments])
                     os.unlink(tmp_path)
 
                     if response_format == "text":
+                        wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
                         return PlainTextResponse(text)
                     elif response_format == "json":
-                        return {"text": text}
+                        wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
+                        return {
+                            "text": text,
+                            "language": info.language,
+                            "language_probability": info.language_probability,
+                        }
                     elif response_format == "verbose_json":
                         verbose = {
                             "task": "transcribe",
                             "language": info.language,
+                            "language_probability": info.language_probability,
                             "duration": info.duration,
                             "text": text,
                             "segments": []
@@ -588,6 +1007,7 @@ class TranscriptionServer:
                             if timestamp_granularities and "word" in timestamp_granularities:
                                 seg_dict["words"] = [{"word": w.word, "start": w.start, "end": w.end, "probability": w.probability} for w in seg.words]
                             verbose["segments"].append(seg_dict)
+                        wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
                         return verbose
                     elif response_format in ["srt", "vtt"]:
                         output = []
@@ -598,8 +1018,69 @@ class TranscriptionServer:
                                 output.append(f"{i}\n{start.replace('.', ',')} --> {end.replace('.', ',')}\n{seg.text.strip()}\n")
                             else:  # vtt
                                 output.append(f"{start} --> {end}\n{seg.text.strip()}\n")
+                        wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
                         return PlainTextResponse("\n".join(output))
                 except Exception as e:
+                    wl_metrics.track_rest_request(endpoint="transcriptions", status=500)
+                    wl_metrics.track_error("rest_transcription")
+                    return JSONResponse({"error": str(e)}, status_code=500)
+
+            @app.post("/v1/audio/intelligence", tags=["Intelligence"],
+                      summary="Analyze transcript",
+                      description="Transcribe audio and perform NLP analysis: "
+                                  "sentiment, topic detection, entity extraction, and summarization.")
+            async def intelligence_endpoint(
+                file: UploadFile,
+                model: str = Form(default="whisper-1"),
+                language: Optional[str] = Form(default=None),
+                prompt: Optional[str] = Form(default=None),
+                temperature: float = Form(default=0.0),
+                sentiment: bool = Form(default=True),
+                topics: bool = Form(default=True),
+                entities: bool = Form(default=True),
+                summary: bool = Form(default=True),
+                summary_sentences: int = Form(default=3),
+                topic_count: int = Form(default=5),
+            ):
+                from whisper_live.audio_intelligence import analyze_transcript
+                try:
+                    suffix = os.path.splitext(file.filename)[1] or ".wav"
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                        shutil.copyfileobj(file.file, tmp)
+                        tmp_path = tmp.name
+
+                    device = "cuda" if torch.cuda.is_available() else "cpu"
+                    compute_type = "float16" if device == "cuda" else "int8"
+                    model_name = faster_whisper_custom_model_path or "small"
+                    transcriber = WhisperModel(model_name, device=device, compute_type=compute_type)
+                    segments, info = transcriber.transcribe(
+                        tmp_path,
+                        language=language,
+                        initial_prompt=prompt,
+                        temperature=temperature,
+                        vad_filter=False,
+                    )
+                    text = " ".join([s.text.strip() for s in segments])
+                    os.unlink(tmp_path)
+
+                    analysis = analyze_transcript(
+                        text,
+                        sentiment=sentiment,
+                        topics=topics,
+                        entities=entities,
+                        summary=summary,
+                        summary_sentences=summary_sentences,
+                        topic_count=topic_count,
+                    )
+                    analysis["text"] = text
+                    analysis["language"] = info.language
+                    analysis["language_probability"] = info.language_probability
+                    analysis["duration"] = info.duration
+                    wl_metrics.track_rest_request(endpoint="intelligence", status=200)
+                    return analysis
+                except Exception as e:
+                    wl_metrics.track_rest_request(endpoint="intelligence", status=500)
+                    wl_metrics.track_error("intelligence")
                     return JSONResponse({"error": str(e)}, status_code=500)
 
             threading.Thread(
@@ -611,6 +1092,22 @@ class TranscriptionServer:
             logging.info(f"✅ OpenAI-Compatible API started on http://0.0.0.0:{rest_port}")
 
         # Original WebSocket server (always supported)
+        extra_ws_kwargs = {}
+        if api_key:
+            def _ws_auth(path, request_headers):
+                auth = request_headers.get("Authorization", "")
+                token_param = None
+                # Check query string for token parameter
+                if "?" in path:
+                    from urllib.parse import urlparse, parse_qs
+                    parsed = urlparse(path)
+                    token_param = parse_qs(parsed.query).get("token", [None])[0]
+                if auth == f"Bearer {api_key}" or token_param == api_key:
+                    return None  # Allow connection
+                wl_metrics.track_connection_rejected(reason="auth")
+                return (401, [("Content-Type", "text/plain")], b"Unauthorized\n")
+            extra_ws_kwargs["process_request"] = _ws_auth
+
         with serve(
             functools.partial(
                 self.recv_audio,
@@ -621,7 +1118,8 @@ class TranscriptionServer:
                 trt_py_session=trt_py_session,
             ),
             host,
-            port
+            port,
+            **extra_ws_kwargs,
         ) as server:
             server.serve_forever()
 
