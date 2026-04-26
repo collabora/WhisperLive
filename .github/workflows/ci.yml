@@ -74,8 +74,31 @@ jobs:
           # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
+  venv-install-smoke-test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.12'
+
+      - name: Build package artifacts
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
+          python -m build --sdist --wheel
+
+      - name: Verify install in a clean virtualenv
+        run: |
+          python -m venv smoke-test-venv
+          source smoke-test-venv/bin/activate
+          pip install --no-deps dist/*.whl
+          python -c "import whisper_live"
+
   build-and-push-docker-cpu:
-    needs: [run-tests, check-code-format]
+    needs: [run-tests, check-code-format, venv-install-smoke-test]
     runs-on: ubuntu-22.04
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     steps:
