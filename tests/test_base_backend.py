@@ -266,6 +266,33 @@ class TestCleanup(unittest.TestCase):
         self.assertTrue(client.exit)
 
 
+class TestTrimTranscript(unittest.TestCase):
+    def setUp(self):
+        self.ws = MagicMock()
+        self.client = ConcreteServeClient(client_uid="test", websocket=self.ws)
+
+    def test_transcript_trimmed_when_over_max(self):
+        self.client.transcript = [
+            {"start": f"{i}.000", "end": f"{i+1}.000", "text": f"seg{i}", "completed": True}
+            for i in range(self.client.MAX_TRANSCRIPT_LENGTH + 100)
+        ]
+        self.client._trim_transcript()
+        self.assertEqual(len(self.client.transcript), self.client.MAX_TRANSCRIPT_LENGTH)
+        self.assertEqual(self.client.transcript[0]["text"], "seg100")
+
+    def test_transcript_not_trimmed_when_under_max(self):
+        self.client.transcript = [
+            {"start": "0.000", "end": "1.000", "text": "a", "completed": True}
+        ]
+        self.client._trim_transcript()
+        self.assertEqual(len(self.client.transcript), 1)
+
+    def test_text_list_trimmed(self):
+        self.client.text = ["word"] * (self.client.MAX_TRANSCRIPT_LENGTH + 50)
+        self.client._trim_transcript()
+        self.assertEqual(len(self.client.text), self.client.MAX_TRANSCRIPT_LENGTH)
+
+
 class TestUpdateSegments(unittest.TestCase):
     """Tests for the core update_segments() logic."""
 
