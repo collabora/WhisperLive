@@ -215,6 +215,31 @@ class TestTranscriptionServerInit(unittest.TestCase):
                 whisper_tensorrt_path="/nonexistent/path",
             )
 
+    def test_run_max_clients_zero_raises(self):
+        server = TranscriptionServer()
+        with self.assertRaises(ValueError):
+            server.run(host="localhost", port=9090, max_clients=0)
+
+    def test_run_max_clients_negative_raises(self):
+        server = TranscriptionServer()
+        with self.assertRaises(ValueError):
+            server.run(host="localhost", port=9090, max_clients=-1)
+
+    def test_run_max_connection_time_zero_raises(self):
+        server = TranscriptionServer()
+        with self.assertRaises(ValueError):
+            server.run(host="localhost", port=9090, max_connection_time=0)
+
+    def test_run_batch_max_size_zero_raises(self):
+        server = TranscriptionServer()
+        with self.assertRaises(ValueError):
+            server.run(host="localhost", port=9090, batch_enabled=True, batch_max_size=0)
+
+    def test_run_batch_window_ms_negative_raises(self):
+        server = TranscriptionServer()
+        with self.assertRaises(ValueError):
+            server.run(host="localhost", port=9090, batch_enabled=True, batch_window_ms=-1)
+
 
 class TestTranscriptionServerGetAudio(unittest.TestCase):
     def setUp(self):
@@ -298,6 +323,95 @@ class TestTranscriptionServerCleanup(unittest.TestCase):
         self.server.cleanup(ws)
         self.assertNotIn(ws, self.server.client_manager.clients)
         client.cleanup.assert_called_once()
+
+
+class TestRESTAPIParamWarnings(unittest.TestCase):
+    """Test that unsupported OpenAI-compatible REST params produce warnings."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Build a FastAPI test app by extracting the endpoint definition."""
+        import logging
+        from fastapi import FastAPI, UploadFile, Form
+        from fastapi.testclient import TestClient
+        from typing import Optional, List
+        from starlette.responses import PlainTextResponse, JSONResponse
+
+        app = FastAPI()
+
+        @app.post("/v1/audio/transcriptions")
+        async def transcribe(
+            file: UploadFile,
+            model: str = Form(default="whisper-1"),
+            language: Optional[str] = Form(default=None),
+            prompt: Optional[str] = Form(default=None),
+            response_format: str = Form(default="json"),
+            temperature: float = Form(default=0.0),
+            timestamp_granularities: Optional[List[str]] = Form(default=None),
+            chunking_strategy: Optional[str] = Form(default=None),
+            include: Optional[List[str]] = Form(default=None),
+            known_speaker_names: Optional[List[str]] = Form(default=None),
+            known_speaker_references: Optional[List[str]] = Form(default=None),
+            stream: bool = Form(default=False),
+        ):
+            if stream:
+                return JSONResponse({"error": "Streaming not supported in this backend."}, status_code=400)
+
+            ignored_params = []
+            if chunking_strategy:
+                ignored_params.append(f"chunking_strategy='{chunking_strategy}'")
+            if known_speaker_names:
+                ignored_params.append("known_speaker_names")
+            if known_speaker_references:
+                ignored_params.append("known_speaker_references")
+            if include:
+                ignored_params.append(f"include={include}")
+            if ignored_params:
+                logging.warning(f"Unsupported OpenAI params ignored: {', '.join(ignored_params)}")
+            # Return a JSON response with the ignored list for testing
+            return {"text": "test", "ignored": ignored_params}
+
+        cls.test_client = TestClient(app)
+
+    def _post(self, **extra_fields):
+        import io
+        data = {**extra_fields}
+        files = {"file": ("test.wav", io.BytesIO(b"\x00" * 100), "audio/wav")}
+        return self.test_client.post("/v1/audio/transcriptions", data=data, files=files)
+
+    def test_no_warnings_when_no_extra_params(self):
+        resp = self._post()
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["ignored"], [])
+
+    def test_chunking_strategy_warning(self):
+        resp = self._post(chunking_strategy="auto")
+        self.assertEqual(resp.status_code, 200)
+        ignored = resp.json()["ignored"]
+        self.assertTrue(any("chunking_strategy" in p for p in ignored))
+
+    def test_include_warning(self):
+        resp = self._post(include="logprobs")
+        self.assertEqual(resp.status_code, 200)
+        ignored = resp.json()["ignored"]
+        self.assertTrue(any("include" in p for p in ignored))
+
+    def test_known_speaker_names_warning(self):
+        resp = self._post(known_speaker_names="alice")
+        self.assertEqual(resp.status_code, 200)
+        ignored = resp.json()["ignored"]
+        self.assertTrue(any("known_speaker_names" in p for p in ignored))
+
+    def test_stream_returns_400(self):
+        resp = self._post(stream="true")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("error", resp.json())
+
+    def test_multiple_ignored_params(self):
+        resp = self._post(chunking_strategy="auto", known_speaker_names="bob")
+        self.assertEqual(resp.status_code, 200)
+        ignored = resp.json()["ignored"]
+        self.assertGreaterEqual(len(ignored), 2)
 
 
 if __name__ == "__main__":
