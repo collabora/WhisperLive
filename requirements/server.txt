@@ -1,6 +1,6 @@
 faster-whisper==1.2.0
 websockets
-onnxruntime==1.17.0
+onnxruntime>=1.20.0,<2
 numba
 kaldialign
 soundfile
