@@ -4,7 +4,7 @@ import unittest
 from io import StringIO
 from unittest.mock import patch
 
-from whisper_live.utils import format_time, create_srt_file, print_transcript
+from whisper_live.utils import format_time, create_srt_file, print_transcript, clear_screen
 
 
 class TestFormatTime(unittest.TestCase):
@@ -97,6 +97,12 @@ class TestCreateSrtFile(unittest.TestCase):
 
 
 class TestPrintTranscript(unittest.TestCase):
+    @patch("sys.stdout", new_callable=StringIO)
+    def test_clear_screen_uses_ansi(self, mock_stdout):
+        clear_screen()
+        output = mock_stdout.getvalue()
+        self.assertIn("\033[H\033[2J", output)
+
     @patch("sys.stdout", new_callable=StringIO)
     def test_print_plain_text(self, mock_stdout):
         text = ["Hello", " world"]
