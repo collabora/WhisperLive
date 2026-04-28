@@ -43,21 +43,20 @@ class TestClientWebSocketCommunication(BaseTestCase):
 
 class TestClientCallbacks(BaseTestCase):
     def test_on_open(self):
-        expected_message = json.dumps({
-            "uid": self.client.uid,
-            "language": self.client.language,
-            "task": self.client.task,
-            "model": self.client.model,
-            "use_vad": True,
-            "send_last_n_segments": 10,
-            "no_speech_thresh": 0.45,
-            "clip_audio": False,
-            "same_output_threshold": 10,
-            "enable_translation": False,
-            "target_language": "fr",
-        })
         self.client.on_open(self.mock_ws_app)
-        self.mock_ws_app.send.assert_called_with(expected_message)
+        self.mock_ws_app.send.assert_called_once()
+        sent_message = json.loads(self.mock_ws_app.send.call_args[0][0])
+        self.assertEqual(sent_message["uid"], self.client.uid)
+        self.assertEqual(sent_message["language"], self.client.language)
+        self.assertEqual(sent_message["task"], self.client.task)
+        self.assertEqual(sent_message["model"], self.client.model)
+        self.assertTrue(sent_message["use_vad"])
+        self.assertEqual(sent_message["send_last_n_segments"], 10)
+        self.assertAlmostEqual(sent_message["no_speech_thresh"], 0.45)
+        self.assertFalse(sent_message["clip_audio"])
+        self.assertEqual(sent_message["same_output_threshold"], 10)
+        self.assertFalse(sent_message["enable_translation"])
+        self.assertEqual(sent_message["target_language"], "fr")
 
     def test_on_message(self):
         message = json.dumps(
