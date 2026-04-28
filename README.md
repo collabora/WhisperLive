@@ -17,9 +17,29 @@ input from microphone and pre-recorded audio files.
 - [Getting Started](#getting-started)
 - [Running the Server](#running-the-server)
 - [Running the Client](#running-the-client)
+- [Advanced Features](#advanced-features)
+  - [Word-Level Timestamps](#word-level-timestamps)
+  - [Custom Vocabulary / Hotwords](#custom-vocabulary--hotwords)
+  - [Speaker Diarization](#speaker-diarization)
+  - [Known Speaker Matching](#known-speaker-matching)
+  - [Authentication](#authentication)
+  - [Rate Limiting](#rate-limiting)
+  - [Auto-Reconnect](#auto-reconnect)
+  - [Batch Inference](#batch-inference)
+  - [Raw PCM Input](#raw-pcm-input)
+  - [Profanity Filter](#profanity-filter)
+  - [Language Detection Confidence](#language-detection-confidence)
+  - [Audio Noise Reduction](#audio-noise-reduction)
+  - [Model Hot-Swap](#model-hot-swap)
+  - [Plugin Architecture](#plugin-architecture)
+  - [Multi-Model Ensemble](#multi-model-ensemble)
+  - [Live Translation Relay](#live-translation-relay)
+- [Client SDKs](#client-sdks)
 - [Browser Extensions](#browser-extensions)
+- [Edge & Embedded Deployment](#edge--embedded-deployment)
+- [Fine-Tuning Custom Models](#fine-tuning-custom-models)
 - [Whisper Live Server in Docker](#whisper-live-server-in-docker)
-- [Future Work](#future-work)
+- [Scaling & Deployment](#scaling--deployment)
 - [Blog Posts](#blog-posts)
 - [Contact](#contact)
 - [Citations](#citations)
@@ -187,6 +207,245 @@ client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/b
 ```
 
 ## Browser Extensions
+
+### Advanced Features
+
+#### Word-Level Timestamps
+Enable per-word timing and confidence scores in transcription segments:
+```python
+client = TranscriptionClient(
+  "localhost", 9090,
+  word_timestamps=True,
+)
+```
+When enabled, each segment in the WebSocket response includes a `words` array:
+```json
+{
+  "segments": [{
+    "start": "0.000", "end": "2.500", "text": "Hello world",
+    "words": [
+      {"word": "Hello", "start": "0.000", "end": "0.800", "probability": 0.95},
+      {"word": " world", "start": "0.900", "end": "2.500", "probability": 0.88}
+    ]
+  }]
+}
+```
+
+#### Custom Vocabulary / Hotwords
+Boost recognition of specific terms (product names, acronyms, domain jargon):
+```python
+client = TranscriptionClient(
+  "localhost", 9090,
+  hotwords="WhisperLive,TensorRT,OpenVINO",
+)
+```
+The `hotwords` parameter is a comma-separated string passed directly to faster-whisper's keyword boosting. Also available in the REST API via the `hotwords` form field.
+
+#### Speaker Diarization
+Real-time speaker identification using pyannote.audio embeddings (optional dependency):
+```bash
+pip install pyannote.audio
+```
+```python
+client = TranscriptionClient(
+  "localhost", 9090,
+  enable_diarization=True,
+  max_speakers=4,
+)
+```
+When enabled, completed segments include a `speaker` field:
+```json
+{"start": "0.000", "end": "2.500", "text": "Hello", "speaker": "SPEAKER_00", "completed": true}
+```
+Diarization uses online cosine-similarity clustering of speaker embeddings. If `pyannote.audio` is not installed, the server logs a warning and continues without diarization.
+
+#### Authentication
+Protect both REST API and WebSocket connections with a shared API key:
+```bash
+python3 run_server.py --port 9090 --backend faster_whisper --api_key "my-secret-key"
+```
+- **REST API**: Requires `Authorization: Bearer my-secret-key` header
+- **WebSocket**: Requires either `Authorization: Bearer my-secret-key` header or `?token=my-secret-key` query parameter
+
+Unauthenticated connections receive HTTP 401 before any GPU resources are allocated.
+
+#### Rate Limiting
+Limit REST API requests per client IP (sliding 60-second window):
+```bash
+python3 run_server.py --port 9090 --backend faster_whisper --enable_rest --rate_limit_rpm 60
+```
+Clients exceeding the limit receive HTTP 429.
+
+#### Auto-Reconnect
+Automatically reconnect when the WebSocket connection drops unexpectedly:
+```python
+client = TranscriptionClient(
+  "localhost", 9090,
+  max_retries=5,    # Retry up to 5 times
+  retry_delay=3,    # Wait 3 seconds between retries
+)
+```
+Reconnection does not trigger if the server explicitly rejected the connection (server error).
+
+#### Batch Inference
+Batch multiple client sessions into single GPU calls for higher throughput:
+```bash
+python3 run_server.py --port 9090 --backend faster_whisper \
+  --batch_inference --batch_max_size 8 --batch_window_ms 50
+```
+
+#### Raw PCM Input
+Accept raw PCM int16 audio from clients (useful for embedded devices):
+```bash
+python3 run_server.py --port 9090 --backend faster_whisper --raw_pcm_input
+```
+Audio is automatically normalized to float32 range [-1.0, 1.0].
+
+#### Profanity Filter
+Mask, censor, or remove profane words from transcription output:
+```python
+client = TranscriptionClient(
+  "localhost", 9090,
+  profanity_filter="partial",  # "partial", "full", or "remove"
+)
+```
+Modes:
+- **partial**: Keep first/last character, mask the middle (e.g., `d**n`)
+- **full**: Replace entire word with asterisks (e.g., `****`)
+- **remove**: Strip profane words from output entirely
+
+Custom word lists and extra words are supported via dict config:
+```python
+profanity_filter={"mode": "partial", "extra_words": ["customword"]}
+```
+
+#### Language Detection Confidence
+Every REST API transcription response includes detected language and confidence score:
+```json
+{
+  "text": "Bonjour le monde",
+  "language": "fr",
+  "language_probability": 0.97
+}
+```
+SSE streaming responses also include a `metadata` event with language info at the start of the stream.
+
+#### Audio Noise Reduction
+Reduce background noise before transcription using the `noisereduce` library:
+```bash
+python3 run_server.py --port 9090 --backend faster_whisper --noise_reduction near_field
+```
+Modes:
+- **near_field**: Stationary noise reduction (office, studio)
+- **far_field**: Non-stationary noise reduction (street, wind)
+
+Applied as preprocessing on WebSocket audio frames before they reach the model.
+
+#### Model Hot-Swap
+Switch Whisper models per-request without restarting the server. An LRU cache keeps recently-used models warm:
+```python
+# Client requests a specific model size
+client = TranscriptionClient("localhost", 9090, model="large-v3")
+```
+REST API:
+```bash
+curl -F "file=@audio.wav" -F "model=large-v3" http://localhost:8000/v1/transcriptions
+```
+List loaded models:
+```bash
+curl http://localhost:8000/v1/models
+```
+
+#### Plugin Architecture
+Add custom post-processing to the transcription pipeline:
+```python
+from whisper_live.plugins import PluginRegistry
+
+registry = PluginRegistry()
+
+@registry.register("uppercase", priority=10)
+def uppercase_plugin(segment):
+    segment["text"] = segment["text"].upper()
+    return segment
+
+# Pass to server
+python3 run_server.py --port 9090 --backend faster_whisper
+```
+Plugins run in priority order after transcription. Enable/disable at runtime. Failed plugins are skipped gracefully.
+
+#### Multi-Model Ensemble
+Run multiple Whisper models in parallel and merge their outputs for higher accuracy:
+```python
+from whisper_live.ensemble import EnsembleTranscriber, create_faster_whisper_model_fn
+
+ens = EnsembleTranscriber(strategy="confidence")  # "longest", "confidence", or "voting"
+ens.add_model("tiny", create_faster_whisper_model_fn("tiny"))
+ens.add_model("base", create_faster_whisper_model_fn("base"))
+ens.add_model("small", create_faster_whisper_model_fn("small"))
+
+result = ens.transcribe(audio_array)
+print(result.text)
+```
+Strategies:
+- **confidence**: Pick the model with highest average segment confidence
+- **longest**: Pick the model producing the most text
+- **voting**: Character-level majority voting across all models
+
+#### Live Translation Relay
+Pub/sub system for multilingual meeting translation. Broadcast transcriptions to subscribers who receive translated output in their preferred language:
+```python
+from whisper_live.translation_relay import TranslationRelay
+
+relay = TranslationRelay()
+relay.create_channel("meeting-1", source_language="en")
+relay.subscribe("meeting-1", subscriber_id="user-fr", target_language="fr")
+relay.publish("meeting-1", text="Hello everyone", language="en")
+```
+Supports pluggable translator functions, queue or callback delivery, and thread-safe broadcasting.
+
+#### Known Speaker Matching
+Enroll known speakers with audio clips for named speaker identification:
+```python
+client = TranscriptionClient(
+  "localhost", 9090,
+  enable_diarization=True,
+  known_speaker_refs={
+    "Alice": "audio/alice_sample.wav",
+    "Bob": "audio/bob_sample.wav",
+  },
+)
+```
+Enrolled speaker embeddings are matched against live audio using cosine similarity. Segments are labeled with known speaker names instead of generic `SPEAKER_00` labels.
+
+## Client SDKs
+Official client libraries for multiple languages:
+
+### JavaScript / TypeScript
+```bash
+npm install whisperlive  # (from sdks/javascript/)
+```
+```typescript
+import { WhisperLiveClient } from 'whisperlive';
+const client = new WhisperLiveClient('http://localhost:8000');
+const result = await client.transcribe(audioFile);
+```
+
+### Go
+```go
+import "github.com/collabora/WhisperLive/sdks/go"
+client := whisperlive.NewClient("http://localhost:8000")
+result, _ := client.Transcribe(audioData, nil)
+```
+
+### Python
+```python
+from whisper_live.client import TranscriptionClient
+client = TranscriptionClient("localhost", 9090)
+```
+
+See [sdks/README.md](sdks/README.md) for full SDK documentation and API reference.
+
+## Browser Extensions
 - Run the server with your desired backend as shown [here](https://github.com/collabora/WhisperLive?tab=readme-ov-file#running-the-server).
 - Transcribe audio directly from your browser using our Chrome or Firefox extensions. Refer to [Audio-Transcription-Chrome](https://github.com/collabora/whisper-live/tree/main/Audio-Transcription-Chrome#readme) and https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md
 
@@ -195,6 +454,45 @@ client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/b
 Use WhisperLive on iOS with our native iOS client.  
 Refer to [`ios-client`](https://github.com/collabora/WhisperLive/tree/main/Audio-Transcription-iOS) and [`ios-client/README.md`](https://github.com/collabora/WhisperLive/blob/main/Audio-Transcription-iOS/README.md) for setup and usage instructions.
 
+
+## Edge & Embedded Deployment
+Run WhisperLive on Raspberry Pi, NVIDIA Jetson, and other ARM64 devices:
+
+```bash
+# Raspberry Pi / generic ARM64
+docker build -f docker/Dockerfile.edge -t whisperlive-edge .
+docker run -p 9090:9090 -p 8000:8000 whisperlive-edge
+
+# NVIDIA Jetson (with CUDA)
+docker build -f docker/Dockerfile.jetson -t whisperlive-jetson .
+docker run --runtime nvidia -p 9090:9090 -p 8000:8000 whisperlive-jetson
+```
+
+See [docs/EDGE_DEPLOYMENT.md](docs/EDGE_DEPLOYMENT.md) for the full guide including model selection, Docker Compose, and performance tips.
+
+## Fine-Tuning Custom Models
+Fine-tune Whisper on your domain-specific data (medical, legal, accented speech) and deploy with WhisperLive — a key **open-source differentiator** that commercial APIs don't offer:
+
+```bash
+# Prepare dataset from CSV manifest
+python scripts/prepare_finetune_data.py --manifest data/manifest.csv --output data/processed
+
+# Fine-tune
+python scripts/finetune_whisper.py --base_model openai/whisper-small --dataset_path data/processed --epochs 3
+
+# Convert to CTranslate2 and deploy
+python scripts/finetune_whisper.py --convert_only --model_path models/custom --output_dir models/custom-ct2
+python run_server.py --faster_whisper_custom_model_path models/custom-ct2 --enable_rest
+```
+
+See [docs/FINE_TUNING.md](docs/FINE_TUNING.md) for the complete guide.
+
+## OpenAPI Documentation
+When running with `--enable_rest`, WhisperLive auto-generates interactive API documentation:
+- **Swagger UI**: `http://localhost:8000/docs`
+- **ReDoc**: `http://localhost:8000/redoc`
+- **OpenAPI JSON**: `http://localhost:8000/openapi.json`
+- **Health Check**: `http://localhost:8000/health`
 
 ## Whisper Live Server in Docker
 - GPU
@@ -232,9 +530,6 @@ Refer to [`ios-client`](https://github.com/collabora/WhisperLive/tree/main/Audio
   docker run -it -p 9090:9090 ghcr.io/collabora/whisperlive-cpu:latest
   ```
 
-## Future Work
-- [x] Add translation to other languages on top of transcription.
-
 ## Blog Posts
 - [Transforming speech technology with WhisperLive](https://www.collabora.com/news-and-blog/blog/2024/05/28/transforming-speech-technology-with-whisperlive/)
 - [WhisperFusion: Ultra-low latency conversations with an AI chatbot](https://www.collabora.com/news-and-blog/news-and-events/whisperfusion-ultra-low-latency-conversations-with-an-ai-chatbot.html) powered by WhisperLive
@@ -244,6 +539,9 @@ Refer to [`ios-client`](https://github.com/collabora/WhisperLive/tree/main/Audio
 
 We are available to help you with both Open Source and proprietary AI projects. You can reach us via the Collabora website or [vineet.suryan@collabora.com](mailto:vineet.suryan@collabora.com) and [marcus.edel@collabora.com](mailto:marcus.edel@collabora.com).
 
+
+## Scaling & Deployment
+For multi-GPU deployment, load balancing, Kubernetes, and Prometheus monitoring, see the [Scaling Guide](docs/SCALING.md).
 
 ## Citations
 ```bibtex
