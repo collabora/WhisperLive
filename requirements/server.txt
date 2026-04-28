@@ -25,3 +25,6 @@ optimum-intel
 fastapi
 uvicorn
 python-multipart
+PyJWT[crypto]
+boto3
+prometheus_client

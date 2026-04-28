@@ -1,0 +1,78 @@
+{
+  "family": "whisperlive-gpu",
+  "requiresCompatibilities": ["EC2"],
+  "networkMode": "awsvpc",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/whisperlive-task-role",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "whisperlive",
+      "image": "ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/whisperlive-gpu:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 9090,
+          "protocol": "tcp",
+          "name": "websocket"
+        },
+        {
+          "containerPort": 8000,
+          "protocol": "tcp",
+          "name": "rest-api"
+        }
+      ],
+      "environment": [
+        {"name": "WHISPER_MAX_UPLOAD_BYTES", "value": "524288000"}
+      ],
+      "secrets": [
+        {
+          "name": "WHISPERLIVE_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:whisperlive/api-key"
+        }
+      ],
+      "command": [
+        "python", "run_server.py",
+        "--enable_rest",
+        "--backend", "faster_whisper",
+        "--max_clients", "4",
+        "--max_connection_time", "600",
+        "--rest_port", "8000",
+        "--metrics_port", "9090",
+        "--json_logs",
+        "--storage_backend", "s3",
+        "--storage_bucket", "whisperlive-data",
+        "--data_retention_days", "30"
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 15
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/whisperlive",
+          "awslogs-region": "REGION",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "resourceRequirements": [
+        {
+          "type": "GPU",
+          "value": "1"
+        }
+      ],
+      "stopTimeout": 30,
+      "memory": 8192,
+      "cpu": 2048
+    }
+  ],
+  "placementConstraints": [
+    {
+      "type": "memberOf",
+      "expression": "attribute:ecs.instance-type =~ g4dn.* OR attribute:ecs.instance-type =~ g5.*"
+    }
+  ]
+}
