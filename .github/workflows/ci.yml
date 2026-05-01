@@ -42,6 +42,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements/server.txt --extra-index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements/client.txt
+
+      - name: Verify package installs in a fresh venv
+        run: |
+          python -m venv /tmp/whisperlive-venv
+          /tmp/whisperlive-venv/bin/python -m pip install --upgrade pip
+          /tmp/whisperlive-venv/bin/pip install .
       
       - name: Run tests
         run: |
