@@ -468,6 +468,16 @@ class TranscriptionServer:
         """
         self.cache_path = cache_path
         self.raw_pcm_input = raw_pcm_input
+
+        if max_clients < 1:
+            raise ValueError(f"max_clients must be >= 1, got {max_clients}")
+        if max_connection_time <= 0:
+            raise ValueError(f"max_connection_time must be > 0, got {max_connection_time}")
+        if batch_enabled and batch_max_size < 1:
+            raise ValueError(f"batch_max_size must be >= 1, got {batch_max_size}")
+        if batch_enabled and batch_window_ms < 0:
+            raise ValueError(f"batch_window_ms must be >= 0, got {batch_window_ms}")
+
         self.client_manager = ClientManager(max_clients, max_connection_time)
         if faster_whisper_custom_model_path is not None and not os.path.exists(faster_whisper_custom_model_path):
             if "/" not in faster_whisper_custom_model_path:
