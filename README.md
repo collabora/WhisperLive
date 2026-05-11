@@ -21,9 +21,6 @@ input from microphone and pre-recorded audio files.
   - [Word-Level Timestamps](#word-level-timestamps)
   - [Custom Vocabulary / Hotwords](#custom-vocabulary--hotwords)
   - [Speaker Diarization](#speaker-diarization)
-  - [Authentication](#authentication)
-  - [Rate Limiting](#rate-limiting)
-  - [Auto-Reconnect](#auto-reconnect)
   - [Batch Inference](#batch-inference)
   - [Raw PCM Input](#raw-pcm-input)
 - [Browser Extensions](#browser-extensions)
@@ -245,34 +242,6 @@ When enabled, completed segments include a `speaker` field:
 {"start": "0.000", "end": "2.500", "text": "Hello", "speaker": "SPEAKER_00", "completed": true}
 ```
 Diarization uses online cosine-similarity clustering of speaker embeddings. If `pyannote.audio` is not installed, the server logs a warning and continues without diarization.
-
-#### Authentication
-Protect both REST API and WebSocket connections with a shared API key:
-```bash
-python3 run_server.py --port 9090 --backend faster_whisper --api_key "my-secret-key"
-```
-- **REST API**: Requires `Authorization: Bearer my-secret-key` header
-- **WebSocket**: Requires either `Authorization: Bearer my-secret-key` header or `?token=my-secret-key` query parameter
-
-Unauthenticated connections receive HTTP 401 before any GPU resources are allocated.
-
-#### Rate Limiting
-Limit REST API requests per client IP (sliding 60-second window):
-```bash
-python3 run_server.py --port 9090 --backend faster_whisper --enable_rest --rate_limit_rpm 60
-```
-Clients exceeding the limit receive HTTP 429.
-
-#### Auto-Reconnect
-Automatically reconnect when the WebSocket connection drops unexpectedly:
-```python
-client = TranscriptionClient(
-  "localhost", 9090,
-  max_retries=5,    # Retry up to 5 times
-  retry_delay=3,    # Wait 3 seconds between retries
-)
-```
-Reconnection does not trigger if the server explicitly rejected the connection (server error).
 
 #### Batch Inference
 Batch multiple client sessions into single GPU calls for higher throughput:
