@@ -63,6 +63,13 @@ class ServeClientBase(object):
         self.end_time_for_same_output = None
         self.translation_queue = translation_queue
 
+        # Optional post-processing callable for segments.
+        # If set, called with a segment dict and must return a segment dict.
+        # Allows external projects to plug in custom post-processing
+        # (e.g. PII redaction, formatting, diarization) without modifying
+        # WhisperLive's core code.
+        self.segment_post_processor = None
+
         # threading
         self.lock = threading.Lock()
 
@@ -254,9 +261,23 @@ class ServeClientBase(object):
         This method formats the transcription segments into a JSON object and attempts to send
         this object to the client. If an error occurs during the send operation, it logs the error.
 
+        If a ``segment_post_processor`` callable is set, each segment is passed through it
+        before sending. The callable receives a segment dict and must return a segment dict.
+
         Returns:
             segments (list): A list of transcription segments to be sent to the client.
         """
+        if self.segment_post_processor is not None:
+            processed = []
+            for seg in segments:
+                try:
+                    result = self.segment_post_processor(seg)
+                    processed.append(result if result is not None else seg)
+                except Exception as e:
+                    logging.error(f"[ERROR]: segment_post_processor failed: {e}")
+                    processed.append(seg)
+            segments = processed
+
         try:
             self.websocket.send(
                 json.dumps({
