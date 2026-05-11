@@ -176,6 +176,7 @@ class TranscriptionServer:
         self.single_model = False
         self.batch_config = None
         self.raw_pcm_input = False
+        self.segment_post_processor = None
 
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
@@ -315,6 +316,10 @@ class TranscriptionServer:
 
         if client is None:
             raise ValueError(f"Backend type {self.backend.value} not recognised or not handled.")
+
+        # Attach segment post-processor if configured
+        if self.segment_post_processor is not None:
+            client.segment_post_processor = self.segment_post_processor
 
         if translation_client:
             client.translation_client = translation_client
@@ -477,7 +482,8 @@ class TranscriptionServer:
             batch_max_size=8,
             batch_window_ms=50,
             raw_pcm_input=False,
-            metrics_port: int = 0):
+            metrics_port: int = 0,
+            segment_post_processor=None):
         """
         Run the transcription server.
 
@@ -493,6 +499,11 @@ class TranscriptionServer:
             batch_window_ms (int): Maximum time in milliseconds to wait for
                 the batch to fill after the first request arrives. Defaults
                 to 50.
+            segment_post_processor (callable, optional): A callable that receives
+                a transcription segment dict and returns a modified segment dict.
+                Applied to every segment before sending to the client. Useful for
+                plugging in custom post-processing (e.g. formatting, redaction).
+                Defaults to None.
         """
         self.cache_path = cache_path
         self.raw_pcm_input = raw_pcm_input
@@ -506,6 +517,7 @@ class TranscriptionServer:
         if batch_enabled and batch_window_ms < 0:
             raise ValueError(f"batch_window_ms must be >= 0, got {batch_window_ms}")
 
+        self.segment_post_processor = segment_post_processor
         self.client_manager = ClientManager(max_clients, max_connection_time)
         if faster_whisper_custom_model_path is not None and not os.path.exists(faster_whisper_custom_model_path):
             if "/" not in faster_whisper_custom_model_path:
