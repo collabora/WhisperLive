@@ -10,7 +10,8 @@ import tempfile
 from typing import Optional, List
 from fastapi import FastAPI, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import PlainTextResponse, JSONResponse
+from fastapi.responses import JSONResponse
+from starlette.responses import PlainTextResponse, JSONResponse, StreamingResponse
 import uvicorn
 from faster_whisper import WhisperModel
 import torch
@@ -431,6 +432,55 @@ class TranscriptionServer:
                 websocket.close()
             del websocket
 
+    def _stream_transcription(self, file, language, prompt, temperature,
+                              timestamp_granularities,
+                              faster_whisper_custom_model_path):
+        """Return a StreamingResponse that yields SSE events per segment."""
+
+        async def _sse_generator():
+            tmp_path = None
+            try:
+                suffix = os.path.splitext(file.filename)[1] or ".wav"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    shutil.copyfileobj(file.file, tmp)
+                    tmp_path = tmp.name
+
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                compute_type = "float16" if device == "cuda" else "int8"
+                model_name = faster_whisper_custom_model_path or "small"
+                transcriber = WhisperModel(model_name, device=device, compute_type=compute_type)
+                segments, info = transcriber.transcribe(
+                    tmp_path,
+                    language=language,
+                    initial_prompt=prompt,
+                    temperature=temperature,
+                    vad_filter=False,
+                    word_timestamps=(timestamp_granularities and "word" in timestamp_granularities),
+                )
+
+                for seg in segments:
+                    seg_dict = {
+                        "id": seg.id,
+                        "start": seg.start,
+                        "end": seg.end,
+                        "text": seg.text.strip(),
+                    }
+                    if timestamp_granularities and "word" in timestamp_granularities:
+                        seg_dict["words"] = [
+                            {"word": w.word, "start": w.start, "end": w.end, "probability": w.probability}
+                            for w in seg.words
+                        ]
+                    yield f"data: {json.dumps(seg_dict)}\n\n"
+
+                yield "data: [DONE]\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            finally:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+
+        return StreamingResponse(_sse_generator(), media_type="text/event-stream")
+
     def run(self,
             host,
             port=9090,
@@ -536,9 +586,23 @@ class TranscriptionServer:
                 stream: bool = Form(default=False)
             ):
                 if stream:
-                    return JSONResponse({"error": "Streaming not supported in this backend."}, status_code=400)
-                if chunking_strategy or known_speaker_names or known_speaker_references:
-                    logging.warning("Diarization/chunking params ignored; not supported.")
+                    return self._stream_transcription(
+                        file, language, prompt, temperature,
+                        timestamp_granularities,
+                        faster_whisper_custom_model_path,
+                    )
+
+                ignored_params = []
+                if chunking_strategy:
+                    ignored_params.append(f"chunking_strategy='{chunking_strategy}'")
+                if known_speaker_names:
+                    ignored_params.append("known_speaker_names")
+                if known_speaker_references:
+                    ignored_params.append("known_speaker_references")
+                if include:
+                    ignored_params.append(f"include={include}")
+                if ignored_params:
+                    logging.warning(f"Unsupported OpenAI params ignored: {', '.join(ignored_params)}")
 
                 supported_formats = ["json", "text", "srt", "verbose_json", "vtt"]
                 if response_format not in supported_formats:
