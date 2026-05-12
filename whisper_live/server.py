@@ -449,7 +449,8 @@ class TranscriptionServer:
             batch_enabled=False,
             batch_max_size=8,
             batch_window_ms=50,
-            raw_pcm_input=False):
+            raw_pcm_input=False,
+            api_key: Optional[str] = None):
         """
         Run the transcription server.
 
@@ -621,6 +622,21 @@ class TranscriptionServer:
             logging.info(f"✅ OpenAI-Compatible API started on http://0.0.0.0:{rest_port}")
 
         # Original WebSocket server (always supported)
+        extra_ws_kwargs = {}
+        if api_key:
+            def _ws_auth(path, request_headers):
+                auth = request_headers.get("Authorization", "")
+                token_param = None
+                # Check query string for token parameter
+                if "?" in path:
+                    from urllib.parse import urlparse, parse_qs
+                    parsed = urlparse(path)
+                    token_param = parse_qs(parsed.query).get("token", [None])[0]
+                if auth == f"Bearer {api_key}" or token_param == api_key:
+                    return None  # Allow connection
+                return (401, [("Content-Type", "text/plain")], b"Unauthorized\n")
+            extra_ws_kwargs["process_request"] = _ws_auth
+
         with serve(
             functools.partial(
                 self.recv_audio,
@@ -631,7 +647,8 @@ class TranscriptionServer:
                 trt_py_session=trt_py_session,
             ),
             host,
-            port
+            port,
+            **extra_ws_kwargs,
         ) as server:
             server.serve_forever()
 

@@ -320,9 +320,53 @@ class TestTranscriptionServerCleanup(unittest.TestCase):
         ws = MagicMock()
         client = MagicMock()
         self.server.client_manager.add_client(ws, client)
+        self.cleanup_server = self.server
         self.server.cleanup(ws)
         self.assertNotIn(ws, self.server.client_manager.clients)
         client.cleanup.assert_called_once()
+
+
+class TestWebSocketAuth(unittest.TestCase):
+    """Tests for the WebSocket process_request auth callback."""
+
+    def _make_auth_handler(self, api_key):
+        """Build the same auth function the server creates."""
+        def _ws_auth(path, request_headers):
+            auth = request_headers.get("Authorization", "")
+            token_param = None
+            if "?" in path:
+                from urllib.parse import urlparse, parse_qs
+                parsed = urlparse(path)
+                token_param = parse_qs(parsed.query).get("token", [None])[0]
+            if auth == f"Bearer {api_key}" or token_param == api_key:
+                return None
+            return (401, [("Content-Type", "text/plain")], b"Unauthorized\n")
+        return _ws_auth
+
+    def test_valid_bearer_token(self):
+        handler = self._make_auth_handler("my-secret")
+        result = handler("/", {"Authorization": "Bearer my-secret"})
+        self.assertIsNone(result)
+
+    def test_invalid_bearer_token(self):
+        handler = self._make_auth_handler("my-secret")
+        result = handler("/", {"Authorization": "Bearer wrong"})
+        self.assertEqual(result[0], 401)
+
+    def test_missing_auth_header(self):
+        handler = self._make_auth_handler("my-secret")
+        result = handler("/", {})
+        self.assertEqual(result[0], 401)
+
+    def test_valid_query_token(self):
+        handler = self._make_auth_handler("my-secret")
+        result = handler("/?token=my-secret", {})
+        self.assertIsNone(result)
+
+    def test_invalid_query_token(self):
+        handler = self._make_auth_handler("my-secret")
+        result = handler("/?token=wrong", {})
+        self.assertEqual(result[0], 401)
 
 
 if __name__ == "__main__":
