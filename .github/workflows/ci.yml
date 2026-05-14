@@ -48,6 +48,27 @@ jobs:
           echo "Running tests with Python ${{ matrix.python-version }}"
           python -m unittest discover -s tests
   
+  test-install-in-venv:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.12
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y portaudio19-dev
+
+      - name: Create virtual environment and install package
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install .
+          python -c "import whisper_live; print(whisper_live.__version__)"
+
   check-code-format:
     runs-on: ubuntu-22.04
     strategy:
