@@ -1,0 +1,9 @@
+name: whisper-live
+runtime:
+  name: python
+description: Infrastructure definitions for WhisperLive
+main: src/
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: python
