@@ -25,10 +25,11 @@ input from microphone and pre-recorded audio files.
 - [Citations](#citations)
 
 ## Installation
-- Install PortAudio
+- Install PortAudio (required system dependency for microphone input via PyAudio)
 ```bash
  bash scripts/setup.sh
 ```
+On Debian/Ubuntu this installs `portaudio19-dev`, on Fedora `portaudio-devel`, on macOS it uses Homebrew (`portaudio`).
 
 - Install whisper-live from pip
 ```bash
@@ -101,6 +102,7 @@ python3 run_server.py -p 9090 \
                       --max_clients 4 \
                       --max_connection_time 600
 ```
+  > **Note:** The TensorRT backend uses a C++ session by default. If you experience issues (e.g. repeated `CrossAttentionMask` warnings or crashes), add the `--trt_py_session` flag to use the Python session instead.
 - Use `--max_clients` option to restrict the number of clients the server should allow. Defaults to 4.
 - Use `--max_connection_time` options to limit connection time for a client in seconds. Defaults to 600.
 - WhisperLive now supports the [OpenVINO](https://github.com/openvinotoolkit/openvino) backend for efficient inference on Intel CPUs, iGPU and dGPUs. Currently, we tested the models uploaded to [huggingface by OpenVINO](https://huggingface.co/OpenVINO?search_models=whisper).
@@ -206,19 +208,20 @@ Refer to [`ios-client`](https://github.com/collabora/WhisperLive/tree/main/Audio
   - TensorRT. Refer to [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) for setup and more tensorrt backend configurations.
   ```bash
   docker build . -f docker/Dockerfile.tensorrt -t whisperlive-tensorrt
-  docker run -p 9090:9090 --runtime=nvidia --entrypoint /bin/bash -it whisperlive-tensorrt
+  docker run -p 9090:9090 --runtime=nvidia --gpus all --entrypoint /bin/bash -it whisperlive-tensorrt
 
   # Build small.en engine
   bash build_whisper_tensorrt.sh /app/TensorRT-LLM-examples small.en        # float16
   bash build_whisper_tensorrt.sh /app/TensorRT-LLM-examples small.en int8   # int8 weight only quantization
   bash build_whisper_tensorrt.sh /app/TensorRT-LLM-examples small.en int4   # int4 weight only quantization
 
-  # Run server with small.en
+  # Run server with small.en (pick one engine)
   python3 run_server.py --port 9090 \
                         --backend tensorrt \
                         --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_en_float16"
-                        --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_en_int8"
-                        --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_en_int4"
+  # or int8 / int4:
+  # --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_en_int8"
+  # --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_en_int4"
   ```
 
   - OpenVINO
