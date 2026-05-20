@@ -162,6 +162,7 @@ var elem_text = null;
 
 var segments = [];
 var text_segments = [];
+var captionLineCount = 3;
 
 function initPopupElement() {
   if (document.getElementById('popupElement')) {
@@ -209,22 +210,23 @@ function showPopup(customText) {
 }
 
 
-function init_element() {
+function init_element(lines = 3) {
+    captionLineCount = Math.min(Math.max(parseInt(lines, 10) || 3, 1), 8);
     if (document.getElementById('transcription')) {
         return;
     }
 
     elem_container = document.createElement('div');
     elem_container.id = "transcription";
-    elem_container.style.cssText = 'padding-top:16px;font-size:18px;line-height:18px;position:fixed;top:85%;left:50%;transform:translate(-50%,-50%);width:500px;height:90px;opacity:0.9;z-index:100;background:black;border-radius:10px;color:white;';
+    elem_container.style.cssText = 'padding-top:16px;font-size:18px;line-height:18px;position:fixed;top:85%;left:50%;transform:translate(-50%,-50%);width:500px;height:' + (captionLineCount * 30) + 'px;opacity:0.9;z-index:100;background:black;border-radius:10px;color:white;';
 
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i <= captionLineCount; i++) {
         elem_text = document.createElement('span');
         elem_text.style.cssText = 'position: absolute;padding-left:16px;padding-right:16px;';
         elem_text.id = "t" + i;
         elem_container.appendChild(elem_text);
 
-        if (i == 3) {
+        if (i == captionLineCount) {
             elem_text.style.top = "-1000px"
         }
     }
@@ -318,7 +320,7 @@ function get_lines(elem, line_height) {
 
 function remove_element() {
     var elem = document.getElementById('transcription')
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i <= captionLineCount; i++) {
         document.getElementById("t" + i).remove();
     }
     elem.remove()
@@ -327,6 +329,7 @@ function remove_element() {
 browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const { action, data } = request;
   const saveCaption = data.saveCaption || false;
+  const captionLines = data.captionLines || captionLineCount;
 
   if (action === "startCapture") {
       isCapturing = true;
@@ -364,7 +367,7 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   } else if (action === "show_transcript"){
     if (!isCapturing) return;
-    init_element();    
+    init_element(captionLines);
     message = JSON.parse(data.data);
     message = message["segments"];
 
@@ -391,10 +394,10 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     text = text.replace(/(\r\n|\n|\r)/gm, "");
     
-    var elem = document.getElementById('t3');
+    var elem = document.getElementById('t' + captionLineCount);
     elem.textContent = text;
   
-    var line_height_style = getStyle('t3', 'line-height');
+    var line_height_style = getStyle('t' + captionLineCount, 'line-height');
     var line_height = parseInt(line_height_style.substring(0, line_height_style.length - 2));
     var divHeight = elem.offsetHeight;
     var lines = divHeight / line_height;
@@ -404,27 +407,27 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     elem.textContent = '';
   
-    if (text_segments.length > 2) {
-        for (var i = 0; i < 3; i++) {
-            document.getElementById('t' + i).textContent = text_segments[text_segments.length - 3 + i];
+    if (text_segments.length > captionLineCount - 1) {
+        for (var i = 0; i < captionLineCount; i++) {
+            document.getElementById('t' + i).textContent = text_segments[text_segments.length - captionLineCount + i];
         }
     } else {
-        for (var i = 0; i < 3; i++) {
+        for (var i = 0; i < captionLineCount; i++) {
             document.getElementById('t' + i).textContent = '';
         }
     }
   
-    if (text_segments.length <= 2) {
+    if (text_segments.length <= captionLineCount - 1) {
         for (var i = 0; i < text_segments.length; i++) {
             document.getElementById('t' + i).textContent = text_segments[i];
         }
     } else {
-        for (var i = 0; i < 3; i++) {
-            document.getElementById('t' + i).textContent = text_segments[text_segments.length - 3 + i];
+        for (var i = 0; i < captionLineCount; i++) {
+            document.getElementById('t' + i).textContent = text_segments[text_segments.length - captionLineCount + i];
         }
     }
   
-    for (var i = 1; i < 3; i++)
+    for (var i = 1; i < captionLineCount; i++)
     {
         var parent_elem = document.getElementById('t' + (i - 1));
         var elem = document.getElementById('t' + i);

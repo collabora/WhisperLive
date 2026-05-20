@@ -8,9 +8,11 @@ document.addEventListener("DOMContentLoaded", function() {
   const languageDropdown = document.getElementById('languageDropdown');
   const taskDropdown = document.getElementById('taskDropdown');
   const modelSizeDropdown = document.getElementById('modelSizeDropdown');
+  const captionLinesDropdown = document.getElementById('captionLinesDropdown');
   let selectedLanguage = null;
   let selectedTask = taskDropdown.value;
   let selectedModelSize = modelSizeDropdown.value;
+  let selectedCaptionLines = captionLinesDropdown.value;
   
 
   browser.storage.local.get("capturingState")
@@ -69,6 +71,13 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
+  browser.storage.local.get("selectedCaptionLines", ({ selectedCaptionLines: storedCaptionLines }) => {
+    if (storedCaptionLines !== undefined) {
+      captionLinesDropdown.value = storedCaptionLines;
+      selectedCaptionLines = storedCaptionLines;
+    }
+  });
+
   startButton.addEventListener("click", function() {
     let host = "localhost";
     let port = "9090";
@@ -93,6 +102,7 @@ document.addEventListener("DOMContentLoaded", function() {
               modelSize: selectedModelSize,
               useVad: useVadCheckbox.checked,
               saveCaption: saveCaptionCheckbox.checked,
+              captionLines: Number(selectedCaptionLines),
             } 
           });
         toggleCaptureButtons(true);
@@ -135,7 +145,8 @@ document.addEventListener("DOMContentLoaded", function() {
     saveCaptionCheckbox.disabled = isCapturing;
     modelSizeDropdown.disabled = isCapturing;
     languageDropdown.disabled = isCapturing;
-    taskDropdown.disabled = isCapturing; 
+    taskDropdown.disabled = isCapturing;
+    captionLinesDropdown.disabled = isCapturing;
     startButton.classList.toggle("disabled", isCapturing);
     stopButton.classList.toggle("disabled", !isCapturing);
   }
@@ -173,6 +184,11 @@ document.addEventListener("DOMContentLoaded", function() {
   modelSizeDropdown.addEventListener('change', function() {
     selectedModelSize = modelSizeDropdown.value;
     browser.storage.local.set({ selectedModelSize });
+  });
+
+  captionLinesDropdown.addEventListener('change', function() {
+    selectedCaptionLines = captionLinesDropdown.value;
+    browser.storage.local.set({ selectedCaptionLines });
   });
 
   browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
