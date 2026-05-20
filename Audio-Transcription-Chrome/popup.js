@@ -9,9 +9,11 @@ document.addEventListener("DOMContentLoaded", function () {
   const languageDropdown = document.getElementById('languageDropdown');
   const taskDropdown = document.getElementById('taskDropdown');
   const modelSizeDropdown = document.getElementById('modelSizeDropdown');
+  const captionLinesDropdown = document.getElementById('captionLinesDropdown');
   let selectedLanguage = null;
   let selectedTask = taskDropdown.value;
   let selectedModelSize = modelSizeDropdown.value;
+  let selectedCaptionLines = captionLinesDropdown.value;
 
   // Add click event listeners to the buttons
   startButton.addEventListener("click", startCapture);
@@ -66,6 +68,13 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
+  chrome.storage.local.get("selectedCaptionLines", ({ selectedCaptionLines: storedCaptionLines }) => {
+    if (storedCaptionLines !== undefined) {
+      captionLinesDropdown.value = storedCaptionLines;
+      selectedCaptionLines = storedCaptionLines;
+    }
+  });
+
   // Function to handle the start capture button click event
   async function startCapture() {
     // Ignore click if the button is disabled
@@ -96,6 +105,7 @@ document.addEventListener("DOMContentLoaded", function () {
         modelSize: selectedModelSize,
         useVad: useVadCheckbox.checked,
         saveCaptions: saveCaptionsCheckbox.checked,
+        captionLines: Number(selectedCaptionLines),
       }, () => {
         // Update capturing state in storage and toggle the buttons
         chrome.storage.local.set({ capturingState: { isCapturing: true } }, () => {
@@ -143,7 +153,8 @@ document.addEventListener("DOMContentLoaded", function () {
     saveCaptionsCheckbox.disabled = isCapturing;
     modelSizeDropdown.disabled = isCapturing;
     languageDropdown.disabled = isCapturing;
-    taskDropdown.disabled = isCapturing; 
+    taskDropdown.disabled = isCapturing;
+    captionLinesDropdown.disabled = isCapturing;
     startButton.classList.toggle("disabled", isCapturing);
     stopButton.classList.toggle("disabled", !isCapturing);
   }
@@ -181,6 +192,11 @@ document.addEventListener("DOMContentLoaded", function () {
   modelSizeDropdown.addEventListener('change', function() {
     selectedModelSize = modelSizeDropdown.value;
     chrome.storage.local.set({ selectedModelSize });
+  });
+
+  captionLinesDropdown.addEventListener('change', function() {
+    selectedCaptionLines = captionLinesDropdown.value;
+    chrome.storage.local.set({ selectedCaptionLines });
   });
 
   chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
