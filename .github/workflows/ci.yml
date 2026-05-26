@@ -84,6 +84,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y portaudio19-dev
+
       - name: Build package artifacts
         run: |
           python -m pip install --upgrade pip
@@ -94,8 +97,8 @@ jobs:
         run: |
           python -m venv smoke-test-venv
           source smoke-test-venv/bin/activate
-          pip install --no-deps dist/*.whl
-          python -c "import whisper_live"
+          pip install dist/*.whl
+          python -c "import whisper_live.client; import whisper_live.server"
 
   build-and-push-docker-cpu:
     needs: [run-tests, check-code-format, venv-install-smoke-test]
@@ -181,7 +184,7 @@ jobs:
           tags: ghcr.io/collabora/whisperlive-openvino:latest
 
   publish-to-pypi:
-    needs: [run-tests, check-code-format]
+    needs: [run-tests, check-code-format, venv-install-smoke-test]
     runs-on: ubuntu-22.04
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
     steps:
