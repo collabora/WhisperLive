@@ -67,6 +67,9 @@ setup(
         "openvino-tokenizers",
         "optimum", 
         "optimum-intel",
+        "fastapi",
+        "uvicorn",
+        "python-multipart",
     ],
     python_requires=">=3.9"
 )
