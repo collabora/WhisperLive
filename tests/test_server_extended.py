@@ -343,11 +343,6 @@ class TestStreamTranscription(unittest.TestCase):
     def _make_app(self):
         """Create a FastAPI app with the transcribe endpoint that has streaming support."""
         from fastapi import FastAPI, UploadFile, Form
-        from fastapi.testclient import TestClient
-        from starlette.responses import StreamingResponse
-        import os
-        import tempfile
-        import shutil
 
         app = FastAPI()
         server = TranscriptionServer()
@@ -504,10 +499,9 @@ class TestRESTAPIParamWarnings(unittest.TestCase):
     def setUpClass(cls):
         """Build a FastAPI test app by extracting the endpoint definition."""
         import logging
-        from fastapi import FastAPI, UploadFile, Form
+        from fastapi import FastAPI, UploadFile, Form, File
         from fastapi.testclient import TestClient
         from typing import Optional, List
-        from starlette.responses import PlainTextResponse, JSONResponse
 
         app = FastAPI()
 
@@ -523,16 +517,12 @@ class TestRESTAPIParamWarnings(unittest.TestCase):
             chunking_strategy: Optional[str] = Form(default=None),
             include: Optional[List[str]] = Form(default=None),
             known_speaker_names: Optional[List[str]] = Form(default=None),
-            known_speaker_references: Optional[List[str]] = Form(default=None),
+            known_speaker_references: Optional[List[UploadFile]] = File(default=None),
             stream: bool = Form(default=False),
         ):
             ignored_params = []
             if chunking_strategy:
                 ignored_params.append(f"chunking_strategy='{chunking_strategy}'")
-            if known_speaker_names:
-                ignored_params.append("known_speaker_names")
-            if known_speaker_references:
-                ignored_params.append("known_speaker_references")
             if include:
                 ignored_params.append(f"include={include}")
             if ignored_params:
@@ -565,17 +555,17 @@ class TestRESTAPIParamWarnings(unittest.TestCase):
         ignored = resp.json()["ignored"]
         self.assertTrue(any("include" in p for p in ignored))
 
-    def test_known_speaker_names_warning(self):
+    def test_known_speaker_names_supported(self):
         resp = self._post(known_speaker_names="alice")
         self.assertEqual(resp.status_code, 200)
         ignored = resp.json()["ignored"]
-        self.assertTrue(any("known_speaker_names" in p for p in ignored))
+        self.assertFalse(any("known_speaker_names" in p for p in ignored))
 
     def test_multiple_ignored_params(self):
         resp = self._post(chunking_strategy="auto", known_speaker_names="bob")
         self.assertEqual(resp.status_code, 200)
         ignored = resp.json()["ignored"]
-        self.assertGreaterEqual(len(ignored), 2)
+        self.assertEqual(len(ignored), 1)
 
 
 class TestAPIKeyAuth(unittest.TestCase):
