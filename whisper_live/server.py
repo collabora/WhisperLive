@@ -9,19 +9,18 @@ import logging
 import shutil
 import tempfile
 from typing import Optional, List
-from fastapi import FastAPI, UploadFile, Form, Request
+from fastapi import FastAPI, UploadFile, Form, Request, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from starlette.responses import PlainTextResponse, JSONResponse, StreamingResponse
+from starlette.responses import PlainTextResponse, StreamingResponse
 import uvicorn
 from faster_whisper import WhisperModel
 import torch
 
 from enum import Enum
 
-from whisper_live import metrics as wl_metrics
-from typing import List, Optional
 import numpy as np
+from whisper_live import metrics as wl_metrics
 from websockets.sync.server import serve
 from websockets.exceptions import ConnectionClosed
 from whisper_live.vad import VoiceActivityDetector
@@ -523,6 +522,67 @@ class TranscriptionServer:
 
         return StreamingResponse(_sse_generator(), media_type="text/event-stream")
 
+    @staticmethod
+    def _normalize_form_list(values):
+        """Normalize repeated or comma-separated multipart form fields."""
+        if not values:
+            return []
+        normalized = []
+        for value in values:
+            if isinstance(value, str):
+                normalized.extend(item.strip() for item in value.split(",") if item.strip())
+        return normalized
+
+    async def _create_rest_diarizer(self, known_speaker_names, known_speaker_references):
+        """Create a diarizer from OpenAI-compatible known speaker fields."""
+        speaker_names = self._normalize_form_list(known_speaker_names)
+        speaker_references = known_speaker_references or []
+
+        if speaker_references and not speaker_names:
+            raise ValueError("known_speaker_references requires matching known_speaker_names")
+        if speaker_names and speaker_references and len(speaker_names) != len(speaker_references):
+            raise ValueError("known_speaker_names and known_speaker_references must have the same length")
+        if not speaker_names and not speaker_references:
+            return None
+
+        from whisper_live.diarization import SpeakerDiarizer, load_audio
+
+        diarizer = SpeakerDiarizer(
+            max_speakers=max(10, len(speaker_names)),
+            speaker_names=speaker_names,
+        )
+
+        for speaker_name, reference in zip(speaker_names, speaker_references):
+            suffix = os.path.splitext(reference.filename or "")[1] or ".wav"
+            reference_path = None
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    tmp.write(await reference.read())
+                    reference_path = tmp.name
+                audio_np = load_audio(reference_path)
+                if not diarizer.enroll_speaker(speaker_name, audio_np):
+                    raise ValueError(f"known_speaker_references for '{speaker_name}' is too short")
+            finally:
+                if reference_path and os.path.exists(reference_path):
+                    os.unlink(reference_path)
+
+        return diarizer
+
+    @staticmethod
+    def _speaker_labels_for_segments(segments, audio_np, diarizer, sample_rate=16000):
+        if diarizer is None or audio_np is None:
+            return {}
+        labels = {}
+        for index, segment in enumerate(segments):
+            start = max(0, int(segment.start * sample_rate))
+            end = min(len(audio_np), int(segment.end * sample_rate))
+            if end <= start:
+                continue
+            speaker = diarizer.identify_speaker(audio_np[start:end], sample_rate)
+            if speaker:
+                labels[index] = speaker
+        return labels
+
     def run(self,
             host,
             port=9090,
@@ -666,7 +726,7 @@ class TranscriptionServer:
                 chunking_strategy: Optional[str] = Form(default=None),
                 include: Optional[List[str]] = Form(default=None),
                 known_speaker_names: Optional[List[str]] = Form(default=None),
-                known_speaker_references: Optional[List[str]] = Form(default=None),
+                known_speaker_references: Optional[List[UploadFile]] = File(default=None),
                 stream: bool = Form(default=False),
                 hotwords: Optional[str] = Form(default=None),
             ):
@@ -680,10 +740,6 @@ class TranscriptionServer:
                 ignored_params = []
                 if chunking_strategy:
                     ignored_params.append(f"chunking_strategy='{chunking_strategy}'")
-                if known_speaker_names:
-                    ignored_params.append("known_speaker_names")
-                if known_speaker_references:
-                    ignored_params.append("known_speaker_references")
                 if include:
                     ignored_params.append(f"include={include}")
                 if ignored_params:
@@ -698,6 +754,7 @@ class TranscriptionServer:
                     logging.warning(f"Model '{model}' requested; using 'small' as fallback.")
                 model_name = faster_whisper_custom_model_path or "small"
 
+                tmp_path = None
                 try:
                     suffix = os.path.splitext(file.filename)[1] or ".wav"
                     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -717,9 +774,9 @@ class TranscriptionServer:
                         word_timestamps=(timestamp_granularities and "word" in timestamp_granularities),
                         hotwords=hotwords,
                     )
+                    segments = list(segments)
 
                     text = " ".join([s.text.strip() for s in segments])
-                    os.unlink(tmp_path)
 
                     if response_format == "text":
                         wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
@@ -735,7 +792,17 @@ class TranscriptionServer:
                             "text": text,
                             "segments": []
                         }
-                        for seg in segments:
+                        speaker_labels = {}
+                        try:
+                            rest_diarizer = await self._create_rest_diarizer(known_speaker_names, known_speaker_references)
+                        except ValueError as e:
+                            wl_metrics.track_rest_request(endpoint="transcriptions", status=400)
+                            return JSONResponse({"error": str(e)}, status_code=400)
+                        if rest_diarizer is not None:
+                            from whisper_live.diarization import load_audio
+                            audio_np = load_audio(tmp_path)
+                            speaker_labels = self._speaker_labels_for_segments(segments, audio_np, rest_diarizer)
+                        for index, seg in enumerate(segments):
                             seg_dict = {
                                 "id": seg.id,
                                 "seek": seg.seek,
@@ -748,6 +815,8 @@ class TranscriptionServer:
                                 "compression_ratio": seg.compression_ratio,
                                 "no_speech_prob": seg.no_speech_prob
                             }
+                            if index in speaker_labels:
+                                seg_dict["speaker"] = speaker_labels[index]
                             if timestamp_granularities and "word" in timestamp_granularities:
                                 seg_dict["words"] = [{"word": w.word, "start": w.start, "end": w.end, "probability": w.probability} for w in seg.words]
                             verbose["segments"].append(seg_dict)
@@ -768,6 +837,9 @@ class TranscriptionServer:
                     wl_metrics.track_rest_request(endpoint="transcriptions", status=500)
                     wl_metrics.track_error("rest_transcription")
                     return JSONResponse({"error": str(e)}, status_code=500)
+                finally:
+                    if tmp_path and os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
 
             threading.Thread(
                 target=uvicorn.run,
