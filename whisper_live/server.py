@@ -178,6 +178,7 @@ class TranscriptionServer:
         self.single_model = False
         self.batch_config = None
         self.raw_pcm_input = False
+        self.audio_formats = {}
         self.segment_post_processor = None
 
     def initialize_client(
@@ -361,7 +362,11 @@ class TranscriptionServer:
         frame_data = websocket.recv()
         if frame_data == b"END_OF_AUDIO":
             return False
-        if self.raw_pcm_input:
+        audio_format = self.audio_formats.get(websocket)
+        if audio_format == "uint8":
+            audio_np = np.frombuffer(frame_data, dtype=np.uint8)
+            return (audio_np.astype(np.float32) - 128.0) / 128.0
+        if self.raw_pcm_input or audio_format == "int16":
             audio_np = np.frombuffer(frame_data, dtype=np.int16)
             return audio_np.astype(np.float32) / 32768.0
         return np.frombuffer(frame_data, dtype=np.float32)
@@ -378,6 +383,10 @@ class TranscriptionServer:
                 wl_metrics.track_connection_rejected(reason="full")
                 websocket.close()
                 return False  # Indicates that the connection should not continue
+            audio_format = options.get("audio_format", "float32")
+            if audio_format not in {"float32", "int16", "uint8"}:
+                raise ValueError(f"Unsupported audio_format: {audio_format}")
+            self.audio_formats[websocket] = audio_format
 
             if self.backend.is_tensorrt():
                 self.vad_detector = VoiceActivityDetector(frame_rate=self.RATE)
@@ -845,3 +854,4 @@ class TranscriptionServer:
             if hasattr(client, 'translation_thread') and client.translation_thread:
                 client.translation_thread.join(timeout=2.0)
             self.client_manager.remove_client(websocket)
+        self.audio_formats.pop(websocket, None)
