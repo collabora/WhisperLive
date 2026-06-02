@@ -257,7 +257,7 @@ Accept raw PCM int16 audio from clients (useful for embedded devices):
 ```bash
 python3 run_server.py --port 9090 --backend faster_whisper --raw_pcm_input
 ```
-Audio is automatically normalized to float32 range [-1.0, 1.0].
+Audio is automatically normalized to float32 range [-1.0, 1.0]. Clients can also set `audio_format` in the initial websocket options to `float32` (default), `int16`, or `uint8`.
 
 ## Browser Extensions
 - Run the server with your desired backend as shown [here](https://github.com/collabora/WhisperLive?tab=readme-ov-file#running-the-server).

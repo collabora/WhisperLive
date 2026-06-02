@@ -273,6 +273,16 @@ class TestTranscriptionServerGetAudio(unittest.TestCase):
         self.assertTrue(np.all(result >= -1.0))
         self.assertTrue(np.all(result <= 1.0))
 
+    def test_uint8_audio_format_normalizes_unsigned_pcm(self):
+        import numpy as np
+        ws = MagicMock()
+        self.server.audio_formats[ws] = "uint8"
+        pcm = np.array([0, 128, 255], dtype=np.uint8)
+        ws.recv.return_value = pcm.tobytes()
+        result = self.server.get_audio_from_websocket(ws)
+        expected = (pcm.astype(np.float32) - 128.0) / 128.0
+        np.testing.assert_array_almost_equal(result, expected)
+
     def test_raw_pcm_input_off_reads_float32(self):
         import numpy as np
         self.server.raw_pcm_input = False
