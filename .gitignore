@@ -21,3 +21,5 @@ transcript*.srt
 translation*.srt
 *.wav
 docs/site/
+Audio-Transcription-Chrome/node_modules/
+Audio-Transcription-Chrome/package-lock.json
