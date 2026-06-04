@@ -90,8 +90,8 @@ document.addEventListener("DOMContentLoaded", function () {
     let port = "9090";
     const useCollaboraServer = useServerCheckbox.checked;
     if (useCollaboraServer){
-      host = "transcription.kurg.org"
-      port = "7090"
+      host = "boxerab--aavaaz-live-livetranscriber-web.modal.run"
+      port = ""
     }
 
     chrome.runtime.sendMessage(

@@ -129,7 +129,10 @@ async function startRecord(option) {
       return;
     }
 
-    socket = new WebSocket(`ws://${option.host}:${option.port}/`);
+    const wsUrl = option.port
+      ? `ws://${option.host}:${option.port}/`
+      : `wss://${option.host}/ws`;
+    socket = new WebSocket(wsUrl);
     isServerReady = false;
     let language = option.language;
 
