@@ -8,6 +8,7 @@ class TestSpeakerDiarizer(unittest.TestCase):
 
     def _make_diarizer(self, **kwargs):
         from whisper_live.diarization import SpeakerDiarizer
+
         d = SpeakerDiarizer(**kwargs)
         # Mock the embedding model to return deterministic embeddings
         d._model = MagicMock()
@@ -82,8 +83,26 @@ class TestSpeakerDiarizer(unittest.TestCase):
         self.assertEqual(len(d.speakers), 0)
         self.assertEqual(d._speaker_count, 0)
 
+    def test_enroll_speaker_uses_known_name(self):
+        d = self._make_diarizer(similarity_threshold=0.8)
+        self._set_embedding(d, [1.0, 0.0, 0.0])
+        audio = np.zeros(16000, dtype=np.float32)
+        self.assertTrue(d.enroll_speaker("Alice", audio))
+
+        self._set_embedding(d, [0.99, 0.01, 0.0])
+        speaker = d.identify_speaker(audio)
+        self.assertEqual(speaker, "Alice")
+
+    def test_speaker_names_label_new_speakers(self):
+        d = self._make_diarizer(speaker_names=["Alice"])
+        self._set_embedding(d, [1.0, 0.0, 0.0])
+        audio = np.zeros(16000, dtype=np.float32)
+        speaker = d.identify_speaker(audio)
+        self.assertEqual(speaker, "Alice")
+
     def test_import_error_without_pyannote(self):
         from whisper_live.diarization import SpeakerDiarizer
+
         d = SpeakerDiarizer()
         with patch.dict("sys.modules", {"pyannote": None, "pyannote.audio": None}):
             with self.assertRaises(ImportError):
@@ -100,8 +119,10 @@ class TestDiarizationInBase(unittest.TestCase):
             def __init__(self, **kwargs):
                 super().__init__(**kwargs)
                 self.language = "en"
+
             def transcribe_audio(self, input_sample):
                 return None
+
             def handle_transcription_output(self, result, duration):
                 pass
 
@@ -146,6 +167,34 @@ class TestDiarizationInBase(unittest.TestCase):
         result = client._identify_speaker(seg)
         self.assertEqual(result, "SPEAKER_01")
         mock_diarizer.identify_speaker.assert_called_once()
+
+
+class TestRestDiarizationHelpers(unittest.TestCase):
+    def test_normalize_form_list_accepts_repeated_or_comma_separated_values(self):
+        from whisper_live.server import TranscriptionServer
+
+        self.assertEqual(
+            TranscriptionServer._normalize_form_list(["Alice,Bob", "Carol"]),
+            ["Alice", "Bob", "Carol"],
+        )
+
+    def test_speaker_labels_for_segments(self):
+        from whisper_live.server import TranscriptionServer
+
+        segment = MagicMock()
+        segment.start = 0.0
+        segment.end = 1.0
+        diarizer = MagicMock()
+        diarizer.identify_speaker.return_value = "Alice"
+
+        speakers = TranscriptionServer._speaker_labels_for_segments(
+            [segment],
+            np.zeros(16000, dtype=np.float32),
+            diarizer,
+        )
+
+        self.assertEqual(speakers, {0: "Alice"})
+        diarizer.identify_speaker.assert_called_once()
 
 
 if __name__ == "__main__":

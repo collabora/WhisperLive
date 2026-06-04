@@ -12,6 +12,28 @@ import logging
 import numpy as np
 
 
+def load_audio(file_path, sample_rate=16000):
+    """Load an audio file as mono float32 PCM at the requested sample rate."""
+    import av
+
+    container = av.open(file_path)
+    resampler = av.AudioResampler(format="flt", layout="mono", rate=sample_rate)
+    chunks = []
+
+    try:
+        for frame in container.decode(audio=0):
+            for resampled_frame in resampler.resample(frame):
+                chunks.append(
+                    resampled_frame.to_ndarray().reshape(-1).astype(np.float32)
+                )
+    finally:
+        container.close()
+
+    if not chunks:
+        return np.array([], dtype=np.float32)
+    return np.concatenate(chunks)
+
+
 class SpeakerDiarizer:
     """Real-time speaker diarization using speaker embeddings and online clustering.
 
@@ -38,14 +60,21 @@ class SpeakerDiarizer:
         max_speakers=10,
         embedding_model="pyannote/wespeaker-voxceleb-resnet34-LM",
         hf_token=None,
+        speaker_names=None,
     ):
         self.similarity_threshold = similarity_threshold
         self.max_speakers = max_speakers
+        self.speaker_names = list(speaker_names or [])
         self.speakers = {}  # speaker_id -> embedding (averaged)
         self._speaker_count = 0
         self._model = None
         self._embedding_model_name = embedding_model
         self._hf_token = hf_token
+
+    def _next_speaker_id(self):
+        if self._speaker_count < len(self.speaker_names):
+            return self.speaker_names[self._speaker_count]
+        return f"SPEAKER_{self._speaker_count:02d}"
 
     def _load_model(self):
         """Lazy-load the embedding model on first use."""
@@ -128,13 +157,23 @@ class SpeakerDiarizer:
 
         if len(self.speakers) >= self.max_speakers:
             # Assign to closest speaker
-            return best_speaker if best_speaker else f"SPEAKER_{self._speaker_count:02d}"
+            return (
+                best_speaker if best_speaker else f"SPEAKER_{self._speaker_count:02d}"
+            )
 
         # Create a new speaker
-        speaker_id = f"SPEAKER_{self._speaker_count:02d}"
+        speaker_id = self._next_speaker_id()
         self._speaker_count += 1
         self.speakers[speaker_id] = embedding
         return speaker_id
+
+    def enroll_speaker(self, speaker_name, audio_np, sample_rate=16000):
+        """Enroll a known speaker from reference audio."""
+        embedding = self._compute_embedding(audio_np, sample_rate)
+        if embedding is None:
+            return False
+        self.speakers[speaker_name] = embedding
+        return True
 
     def reset(self):
         """Reset all speaker state."""
