@@ -67,7 +67,16 @@ class Client:
         if host is not None:
             protocol = "wss" if secure_connection else "ws"
             port = f":{port}" if port else ""
-            socket_url = f"{protocol}{host}{port}"
+            if host.startswith(("ws://", "wss://")):
+                host_without_scheme = host.split("://", 1)[1]
+                host_path_split = host_without_scheme.split("/", 1)
+                host_netloc = host_path_split[0]
+                if port and ":" not in host_netloc:
+                    socket_url = f"{host}{port}"
+                else:
+                    socket_url = host
+            else:
+                socket_url = f"{protocol}://{host}{port}"
             self.client_socket = websocket.WebSocketApp(
                 socket_url,
                 on_open=lambda ws: self.on_open(ws),
