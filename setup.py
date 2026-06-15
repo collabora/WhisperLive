@@ -70,6 +70,15 @@ setup(
         "fastapi",
         "uvicorn",
         "python-multipart",
+        # CTranslate2 (faster-whisper's backend) is hard-linked against
+        # libcublas.so.12 / libcudnn.so.9 but doesn't declare the matching
+        # wheels as runtime deps. torch >=2.12 also dropped the cu12
+        # wheels in favor of cu13, so users no longer get cu12 transitively.
+        # Without these wheels GPU inference dies at first transcription:
+        #   ERROR: Library libcublas.so.12 is not found or cannot be loaded
+        # Skip only for CPU-only inference.
+        "nvidia-cublas-cu12; sys_platform == 'linux'",
+        "nvidia-cudnn-cu12; sys_platform == 'linux'",
     ],
     python_requires=">=3.9"
 )
