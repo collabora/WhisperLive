@@ -19,6 +19,7 @@ input from microphone and pre-recorded audio files.
 - [Running the Client](#running-the-client)
 - [Browser Extensions](#browser-extensions)
 - [Whisper Live Server in Docker](#whisper-live-server-in-docker)
+- [Troubleshooting](#troubleshooting)
 - [Future Work](#future-work)
 - [Blog Posts](#blog-posts)
 - [Contact](#contact)
@@ -231,6 +232,21 @@ Refer to [`ios-client`](https://github.com/collabora/WhisperLive/tree/main/Audio
   ```bash
   docker run -it -p 9090:9090 ghcr.io/collabora/whisperlive-cpu:latest
   ```
+
+## Troubleshooting
+
+#### macOS OpenMP runtime conflict
+On macOS, especially on Intel Macs, `faster_whisper`/`ctranslate2` can conflict with OpenMP runtimes loaded by other Python packages. If the server aborts with a duplicate OpenMP runtime error, run the server with `KMP_DUPLICATE_LIB_OK=TRUE`:
+
+```bash
+KMP_DUPLICATE_LIB_OK=TRUE python3 run_server.py --port 9090 \
+                      --backend faster_whisper \
+                      --max_clients 4 \
+                      --max_connection_time 600 \
+                      --no_single_model
+```
+
+This workaround is intended for local development and testing. For production deployments, prefer using a clean environment that loads only one OpenMP runtime.
 
 ## Future Work
 - [x] Add translation to other languages on top of transcription.
