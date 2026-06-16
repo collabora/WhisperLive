@@ -603,6 +603,9 @@ class TranscriptionServer:
                 logging.info("Custom model option was provided. Switching to single model mode.")
                 self.single_model = True
                 # TODO: load model initially
+            elif batch_enabled:
+                logging.info("Batch inference enabled. Switching to single model mode for stock model.")
+                self.single_model = True
             else:
                 logging.info("Single model mode currently only works with custom models.")
         if not BackendType.is_valid(backend):
