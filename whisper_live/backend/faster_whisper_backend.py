@@ -220,6 +220,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 use_vad=self.use_vad,
                 vad_parameters=self.vad_parameters if self.use_vad else None,
                 word_timestamps=self.word_timestamps,
+                client_uid=self.client_uid,
             )
             ServeClientFasterWhisper.BATCH_WORKER.submit(request)
             request.future.wait(timeout=30)
