@@ -19,7 +19,7 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
         source /etc/os-release
     fi
 
-    if [[ "${ID:-}" == "fedora" ]]; then
+    if [[ "$(command -v dnf)" ]]; then
         echo "Detected Fedora, using dnf for installation"
         dnf install -y portaudio-devel wget
     else
