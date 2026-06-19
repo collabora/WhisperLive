@@ -60,7 +60,7 @@ setup(
         "openai-whisper==20250625",
         "kaldialign",
         "soundfile",
-        "tokenizers==0.20.3",
+        "tokenizers>=0.20.3,<0.23",
         "librosa",
         "numpy>=1.26.4,<2.5",
         "openvino",
