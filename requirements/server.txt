@@ -11,7 +11,7 @@ jiwer
 evaluate
 numpy<2
 openai-whisper==20250625
-tokenizers==0.20.3
+tokenizers>=0.20.3,<0.23
 transformers[torch]
 sentencepiece
 
