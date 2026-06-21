@@ -1,4 +1,5 @@
 import os
+import shutil
 import textwrap
 import scipy
 import numpy as np
@@ -12,15 +13,21 @@ def clear_screen():
 
 
 def print_transcript(text, translated=False, timestamps=False):
-    """Prints formatted transcript text."""
+    """Prints formatted transcript text in a subtitle-like block."""
+    terminal_width = shutil.get_terminal_size((80, 20)).columns
+    wrap_width = min(80, max(40, terminal_width - 8))
+    wrapper = textwrap.TextWrapper(width=wrap_width)
+
     if timestamps:
+        lines = []
         for t in text:
-            print(f'[{t["start"]} -> {t["end"]}] {t["text"]}')
+            lines.extend(wrapper.wrap(f'[{t["start"]} -> {t["end"]}] {t["text"]}'))
     else:
-        wrapper = textwrap.TextWrapper(width=60)
-        text=" ".join(text) if translated else "".join(text)
-        for line in wrapper.wrap(text=text):
-            print(line)
+        transcript = " ".join(text) if translated else "".join(text)
+        lines = wrapper.wrap(text=transcript)
+
+    for line in lines[-3:]:
+        print(line.center(terminal_width))
 
 
 def format_time(s):
