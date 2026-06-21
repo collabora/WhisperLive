@@ -23,6 +23,8 @@ The app streams microphone audio to a WhisperLive server via WebSocket and displ
 
 ## Getting Started
 
+This directory contains the Swift source files for the iOS client, but it does not include a generated `.xcodeproj` or `.xcodeworkspace`. Create a new Xcode project and add these files to it.
+
 1. Clone the repository (your fork):
 
     ```bash
@@ -30,16 +32,24 @@ The app streams microphone audio to a WhisperLive server via WebSocket and displ
     cd whisperlive/Audio-Transcription-iOS
     ```
 
-2. Open the `.xcodeproj` or `.xcodeworkspace` in Xcode
+2. In Xcode, choose **File ▸ New ▸ Project…**, then create an iOS **App** project with SwiftUI.
 
-3. Add the following to your `Info.plist`:
+3. Add the Swift files from this directory to the new app target:
+
+    - `AudioStream.swift`
+    - `AudioWebSocket.swift`
+    - `ContentView.swift`
+    - `RecordingViewModel.swift`
+    - `WhisperLive_iOS_ClientApp.swift`
+
+4. Use `WhisperLive-iOS-Client-Info.plist` as a reference for your app's `Info.plist`, or add the microphone usage description manually:
 
     ```xml
     <key>NSMicrophoneUsageDescription</key>
     <string>This app requires microphone access for transcription.</string>
     ```
 
-4. Run the app on a physical device (recommended)
+5. Run the app on a physical device (recommended)
 
 ## Running on a Physical Device (with Free Apple ID)
 
@@ -92,12 +102,12 @@ Now you can run and debug the app on your real device!
 ## Folder Structure
 ```
 Audio-Transcription-iOS/
-├── AudioViewModel.swift
-├── AudioStreamer.swift
+├── AudioStream.swift
 ├── AudioWebSocket.swift
-├── RecordingView.swift
+├── ContentView.swift
+├── RecordingViewModel.swift
+├── WhisperLive-iOS-Client-Info.plist
 ├── WhisperLive_iOS_ClientApp.swift
-├── Info.plist
 ├── README.md
 ```
 
