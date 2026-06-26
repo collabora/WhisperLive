@@ -168,6 +168,7 @@ client = TranscriptionClient(
   mute_audio_playback=False,                          # Only used for file input, False by Default
   enable_translation=True,
   target_language="hi",
+  initial_prompt=None,                                # Add context for the model, e.g. 'Jane Doe context'
 )
 ```
 It connects to the server running on localhost at port 9090. Using a multilingual model, language for the transcription will be automatically detected. You can also use the language option to specify the target language for the transcription, in this case, English ("en"). The translate option should be set to `True` if we want to translate from the source language to English and `False` if we want to transcribe in the source language.
