@@ -38,20 +38,17 @@ input from microphone and pre-recorded audio files.
 ```
 On Debian/Ubuntu this installs `portaudio19-dev`, on Fedora `portaudio-devel`, on macOS it uses Homebrew (`portaudio`).
 
-- Install whisper-live from pip
-```bash
- pip install whisper-live
-```
-
-
-- Install 3.12 venv on Fedora
+- Install 3.12 venv (on Fedora `sudo dnf install -y python3.12 python3.12-pip`)
 
 ```bash
-sudo dnf install -y python3.12 python3.12-pip
 python3.12 -m venv whisper_env
 source whisper_env/bin/activate
 ```
 
+- Install whisper-live from pip
+```bash
+ pip install whisper-live
+```
 
 ### OpenAI REST interface
 
