@@ -49,6 +49,8 @@ class Client:
         word_timestamps=False,
         max_retries=0,
         retry_delay=5,
+        initial_prompt=None,
+        vad_parameters=None,
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -75,6 +77,8 @@ class Client:
             target_language (str, optional): Target language for translation. Defaults to 'fr'.
             translation_callback (callable, optional): A callback function to handle translation results. Default is None.
             translation_srt_file_path (str, optional): The file path to save the translated output SRT file. Default is "output_translated.srt".
+            initial_prompt (str, optional): Optional text to provide context to the model (e.g. domain vocabulary or names). Default is None.
+            vad_parameters (dict, optional): Optional voice-activity-detection parameters passed to the server backend. Default is None.
         """
         self.recording = False
         self.task = "transcribe"
@@ -103,6 +107,10 @@ class Client:
         self.translation_callback = translation_callback
         self.translation_srt_file_path = translation_srt_file_path
         self.last_translated_segment = None
+
+        self.initial_prompt = initial_prompt
+        self.vad_parameters = vad_parameters
+
         if translate:
             self.task = "translate"
         self.enable_timestamps = enable_timestamps
@@ -330,6 +338,8 @@ class Client:
                     "enable_diarization": self.enable_diarization,
                     "max_speakers": self.max_speakers,
                     "word_timestamps": self.word_timestamps,
+                    "initial_prompt": self.initial_prompt,
+                    "vad_parameters": self.vad_parameters,
                 }
             )
         )
@@ -855,6 +865,8 @@ class TranscriptionClient(TranscriptionTeeClient):
         enable_diarization=False,
         max_speakers=10,
         word_timestamps=False,
+        initial_prompt=None,
+        vad_parameters=None,
     ):
 
         self.client = Client(
@@ -882,6 +894,8 @@ class TranscriptionClient(TranscriptionTeeClient):
             enable_diarization=enable_diarization,
             max_speakers=max_speakers,
             word_timestamps=word_timestamps,
+            initial_prompt=initial_prompt,
+            vad_parameters=vad_parameters,
         )
 
         if save_output_recording and not output_recording_filename.endswith(".wav"):
