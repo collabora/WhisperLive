@@ -81,13 +81,15 @@ class ServeClientBase(object):
 
         # threading
         self.lock = threading.Lock()
+        self.frames_ready = threading.Event()
 
     def speech_to_text(self):
         """
         Process an audio stream in an infinite loop, continuously transcribing the speech.
 
         This method continuously receives audio frames, performs real-time transcription, and sends
-        transcribed segments to the client via a WebSocket connection.
+        transcribed segments to the client via a WebSocket connection. The loop blocks until the first
+        audio frame arrives when a client is connected but still idle.
 
         If the client's language is not detected, it waits for 30 seconds of audio input to make a language prediction.
         It utilizes the Whisper ASR model to transcribe the audio, continuously processing and streaming results. Segments
@@ -103,6 +105,7 @@ class ServeClientBase(object):
                 break
 
             if self.frames_np is None:
+                self.frames_ready.wait()
                 continue
 
             if self.clip_audio:
@@ -170,7 +173,8 @@ class ServeClientBase(object):
 
         This method is responsible for maintaining the audio stream buffer, allowing the continuous addition
         of audio frames as they are received. It also ensures that the buffer does not exceed a specified size
-        to prevent excessive memory usage.
+        to prevent excessive memory usage. When the first frame arrives, it also wakes the transcription
+        thread so processing can begin.
 
         If the buffer size exceeds a threshold (45 seconds of audio data), it discards the oldest 30 seconds
         of audio data to maintain a reasonable buffer size. If the buffer is empty, it initializes it with the provided
@@ -194,6 +198,7 @@ class ServeClientBase(object):
         else:
             self.frames_np = np.concatenate((self.frames_np, frame_np), axis=0)
         self.lock.release()
+        self.frames_ready.set()
 
     def clip_audio_if_no_valid_segment(self):
         """
@@ -323,6 +328,7 @@ class ServeClientBase(object):
         """
         logging.info("Cleaning up.")
         self.exit = True
+        self.frames_ready.set()
     
     def get_segment_no_speech_prob(self, segment):
         return getattr(segment, "no_speech_prob", 0)
