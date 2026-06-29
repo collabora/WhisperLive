@@ -15,14 +15,19 @@ def clear_screen():
 def print_transcript(text, translated=False, timestamps=False):
     """Prints formatted transcript text in a subtitle-like block."""
     terminal_width = shutil.get_terminal_size((80, 20)).columns
-    wrap_width = min(80, max(40, terminal_width - 8))
-    wrapper = textwrap.TextWrapper(width=wrap_width)
+    wrap_width = max(10, min(80, terminal_width - 8))
 
     if timestamps:
         lines = []
         for t in text:
-            lines.extend(wrapper.wrap(f'[{t["start"]} -> {t["end"]}] {t["text"]}'))
+            prefix = f'[{t["start"]} -> {t["end"]}] '
+            wrapper = textwrap.TextWrapper(
+                width=wrap_width,
+                subsequent_indent=" " * len(prefix),
+            )
+            lines.extend(wrapper.wrap(f'{prefix}{t["text"]}'))
     else:
+        wrapper = textwrap.TextWrapper(width=wrap_width)
         transcript = " ".join(text) if translated else "".join(text)
         lines = wrapper.wrap(text=transcript)
 
