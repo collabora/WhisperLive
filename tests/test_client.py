@@ -4,9 +4,10 @@ import scipy
 import websocket
 import copy
 import unittest
+from io import StringIO
 from unittest.mock import patch, MagicMock
 from whisper_live.client import Client, TranscriptionClient, TranscriptionTeeClient
-from whisper_live.utils import resample
+from whisper_live.utils import print_transcript, resample
 from pathlib import Path
 
 
@@ -114,6 +115,33 @@ class TestAudioResampling(unittest.TestCase):
         self.assertEqual(sr, expected_sr)
 
         os.remove(resampled_audio)
+
+
+class TestPrintTranscript(unittest.TestCase):
+    @patch("whisper_live.utils.shutil.get_terminal_size")
+    @patch("sys.stdout", new_callable=StringIO)
+    def test_print_transcript_respects_narrow_terminals(self, mock_stdout, mock_terminal_size):
+        mock_terminal_size.return_value = os.terminal_size((20, 20))
+
+        print_transcript(["This transcript should still wrap cleanly on a narrow terminal."])
+
+        output_lines = [line for line in mock_stdout.getvalue().splitlines() if line.strip()]
+        self.assertGreater(len(output_lines), 1)
+        self.assertTrue(all(len(line) <= 20 for line in output_lines))
+
+    @patch("whisper_live.utils.shutil.get_terminal_size")
+    @patch("sys.stdout", new_callable=StringIO)
+    def test_print_transcript_indents_timestamp_continuations(self, mock_stdout, mock_terminal_size):
+        mock_terminal_size.return_value = os.terminal_size((32, 20))
+
+        print_transcript(
+            [{"start": "00:00", "end": "00:05", "text": "This line should wrap and keep its timestamp indentation."}],
+            timestamps=True,
+        )
+
+        output_lines = [line.rstrip() for line in mock_stdout.getvalue().splitlines() if line.strip()]
+        self.assertGreater(len(output_lines), 1)
+        self.assertTrue(output_lines[1].startswith(" " * len("[00:00 -> 00:05] ")))
 
 
 class TestSendingAudioPacket(BaseTestCase):
