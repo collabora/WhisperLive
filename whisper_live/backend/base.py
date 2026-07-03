@@ -21,6 +21,8 @@ class ServeClientBase(object):
     """Duration threshold in seconds for clipping audio with no valid segments."""
     CLIP_TAIL_DURATION_S = 5
     """Duration in seconds of audio to keep after clipping."""
+    FIRST_FRAME_WAIT_TIMEOUT_S = 0.1
+    """Interval in seconds for re-checking exit while waiting for the first audio frame."""
 
     client_uid: str
     """A unique identifier for the client."""
@@ -105,7 +107,8 @@ class ServeClientBase(object):
                 break
 
             if self.frames_np is None:
-                self.frames_ready.wait()
+                while self.frames_np is None and not self.exit:
+                    self.frames_ready.wait(timeout=self.FIRST_FRAME_WAIT_TIMEOUT_S)
                 continue
 
             if self.clip_audio:
@@ -184,20 +187,19 @@ class ServeClientBase(object):
             frame_np (numpy.ndarray): The audio frame data as a NumPy array.
 
         """
-        self.lock.acquire()
-        if self.frames_np is not None and self.frames_np.shape[0] > self.MAX_BUFFER_DURATION_S*self.RATE:
-            self.frames_offset += float(self.BUFFER_TRIM_DURATION_S)
-            self.frames_np = self.frames_np[int(self.BUFFER_TRIM_DURATION_S*self.RATE):]
-            # check timestamp offset(should be >= self.frame_offset)
-            # this basically means that there is no speech as timestamp offset hasnt updated
-            # and is less than frame_offset
-            if self.timestamp_offset < self.frames_offset:
-                self.timestamp_offset = self.frames_offset
-        if self.frames_np is None:
-            self.frames_np = frame_np.copy()
-        else:
-            self.frames_np = np.concatenate((self.frames_np, frame_np), axis=0)
-        self.lock.release()
+        with self.lock:
+            if self.frames_np is not None and self.frames_np.shape[0] > self.MAX_BUFFER_DURATION_S*self.RATE:
+                self.frames_offset += float(self.BUFFER_TRIM_DURATION_S)
+                self.frames_np = self.frames_np[int(self.BUFFER_TRIM_DURATION_S*self.RATE):]
+                # check timestamp offset(should be >= self.frame_offset)
+                # this basically means that there is no speech as timestamp offset hasnt updated
+                # and is less than frame_offset
+                if self.timestamp_offset < self.frames_offset:
+                    self.timestamp_offset = self.frames_offset
+            if self.frames_np is None:
+                self.frames_np = frame_np.copy()
+            else:
+                self.frames_np = np.concatenate((self.frames_np, frame_np), axis=0)
         self.frames_ready.set()
 
     def clip_audio_if_no_valid_segment(self):

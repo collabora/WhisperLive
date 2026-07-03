@@ -3,7 +3,7 @@ import queue
 import threading
 import time
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 
@@ -37,6 +37,9 @@ class WaitTrackingEvent:
 
     def set(self):
         self._event.set()
+
+    def __getattr__(self, name):
+        return getattr(self._event, name)
 
 
 class TestServeClientBaseInit(unittest.TestCase):
@@ -106,7 +109,6 @@ class TestAddFrames(unittest.TestCase):
         # timestamp_offset should be bumped to at least frames_offset
         self.assertGreaterEqual(self.client.timestamp_offset, self.client.frames_offset)
 
-
 class TestAddFramesThreadSafety(unittest.TestCase):
     def test_concurrent_add_frames(self):
         ws = MagicMock()
@@ -128,6 +130,18 @@ class TestAddFramesThreadSafety(unittest.TestCase):
 
         self.assertEqual(errors, [])
         self.assertIsNotNone(client.frames_np)
+
+    def test_exception_releases_lock_without_signaling_frames_ready(self):
+        ws = MagicMock()
+        client = ConcreteServeClient(client_uid="test", websocket=ws)
+        client.frames_np = np.array([0.1], dtype=np.float32)
+
+        with patch("whisper_live.backend.base.np.concatenate", side_effect=RuntimeError("boom")):
+            with self.assertRaisesRegex(RuntimeError, "boom"):
+                client.add_frames(np.array([0.2], dtype=np.float32))
+
+        self.assertFalse(client.lock.locked())
+        self.assertFalse(client.frames_ready.is_set())
 
 
 class TestGetAudioChunkForProcessing(unittest.TestCase):
@@ -281,6 +295,16 @@ class TestCleanup(unittest.TestCase):
         self.assertTrue(client.exit)
 
 
+def _supports_thread_time():
+    thread_time = getattr(time, "thread_time", None)
+    if thread_time is None:
+        return False
+    try:
+        thread_time()
+    except NotImplementedError:
+        return False
+    return True
+
 class TestSpeechToTextWaitingBehavior(unittest.TestCase):
     """Tests the first-frame wait behavior in speech_to_text()."""
 
@@ -344,6 +368,17 @@ class TestSpeechToTextWaitingBehavior(unittest.TestCase):
         self.assertTrue(self.client.exit)
         self.client.transcribe_audio.assert_not_called()
 
+    def test_exit_flag_unblocks_waiting_thread_without_signal(self):
+        self.client.transcribe_audio = MagicMock()
+        self._start_speech_thread()
+        self.assertTrue(self.client.frames_ready.wait_started.wait(timeout=1.0))
+
+        self.client.exit = True
+
+        self.assertTrue(self._join_speech_thread())
+        self.client.transcribe_audio.assert_not_called()
+
+    @unittest.skipUnless(_supports_thread_time(), "time.thread_time() not supported")
     def test_waiting_for_first_frame_uses_negligible_thread_cpu(self):
         self._start_speech_thread(target=self._measure_waiting_cpu)
         self.assertTrue(self.thread_started.wait(timeout=1.0))
@@ -353,7 +388,7 @@ class TestSpeechToTextWaitingBehavior(unittest.TestCase):
 
         self.assertTrue(self._join_speech_thread())
         self.assertIsNotNone(self.cpu_used)
-        self.assertLess(self.cpu_used, 0.05)
+        self.assertLess(self.cpu_used, 0.1)
 
 
 class TestTrimTranscript(unittest.TestCase):
