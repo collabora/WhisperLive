@@ -21,6 +21,8 @@ class ServeClientBase(object):
     """Duration threshold in seconds for clipping audio with no valid segments."""
     CLIP_TAIL_DURATION_S = 5
     """Duration in seconds of audio to keep after clipping."""
+    FIRST_FRAME_WAIT_TIMEOUT_S = 0.1
+    """Interval in seconds for re-checking exit while waiting for the first audio frame."""
 
     client_uid: str
     """A unique identifier for the client."""
@@ -81,13 +83,15 @@ class ServeClientBase(object):
 
         # threading
         self.lock = threading.Lock()
+        self.frames_ready = threading.Event()
 
     def speech_to_text(self):
         """
         Process an audio stream in an infinite loop, continuously transcribing the speech.
 
         This method continuously receives audio frames, performs real-time transcription, and sends
-        transcribed segments to the client via a WebSocket connection.
+        transcribed segments to the client via a WebSocket connection. The loop blocks until the first
+        audio frame arrives when a client is connected but still idle.
 
         If the client's language is not detected, it waits for 30 seconds of audio input to make a language prediction.
         It utilizes the Whisper ASR model to transcribe the audio, continuously processing and streaming results. Segments
@@ -103,6 +107,8 @@ class ServeClientBase(object):
                 break
 
             if self.frames_np is None:
+                while self.frames_np is None and not self.exit:
+                    self.frames_ready.wait(timeout=self.FIRST_FRAME_WAIT_TIMEOUT_S)
                 continue
 
             if self.clip_audio:
@@ -170,7 +176,8 @@ class ServeClientBase(object):
 
         This method is responsible for maintaining the audio stream buffer, allowing the continuous addition
         of audio frames as they are received. It also ensures that the buffer does not exceed a specified size
-        to prevent excessive memory usage.
+        to prevent excessive memory usage. When the first frame arrives, it also wakes the transcription
+        thread so processing can begin.
 
         If the buffer size exceeds a threshold (45 seconds of audio data), it discards the oldest 30 seconds
         of audio data to maintain a reasonable buffer size. If the buffer is empty, it initializes it with the provided
@@ -180,20 +187,20 @@ class ServeClientBase(object):
             frame_np (numpy.ndarray): The audio frame data as a NumPy array.
 
         """
-        self.lock.acquire()
-        if self.frames_np is not None and self.frames_np.shape[0] > self.MAX_BUFFER_DURATION_S*self.RATE:
-            self.frames_offset += float(self.BUFFER_TRIM_DURATION_S)
-            self.frames_np = self.frames_np[int(self.BUFFER_TRIM_DURATION_S*self.RATE):]
-            # check timestamp offset(should be >= self.frame_offset)
-            # this basically means that there is no speech as timestamp offset hasnt updated
-            # and is less than frame_offset
-            if self.timestamp_offset < self.frames_offset:
-                self.timestamp_offset = self.frames_offset
-        if self.frames_np is None:
-            self.frames_np = frame_np.copy()
-        else:
-            self.frames_np = np.concatenate((self.frames_np, frame_np), axis=0)
-        self.lock.release()
+        with self.lock:
+            if self.frames_np is not None and self.frames_np.shape[0] > self.MAX_BUFFER_DURATION_S*self.RATE:
+                self.frames_offset += float(self.BUFFER_TRIM_DURATION_S)
+                self.frames_np = self.frames_np[int(self.BUFFER_TRIM_DURATION_S*self.RATE):]
+                # check timestamp offset(should be >= self.frame_offset)
+                # this basically means that there is no speech as timestamp offset hasnt updated
+                # and is less than frame_offset
+                if self.timestamp_offset < self.frames_offset:
+                    self.timestamp_offset = self.frames_offset
+            if self.frames_np is None:
+                self.frames_np = frame_np.copy()
+            else:
+                self.frames_np = np.concatenate((self.frames_np, frame_np), axis=0)
+        self.frames_ready.set()
 
     def clip_audio_if_no_valid_segment(self):
         """
@@ -323,6 +330,7 @@ class ServeClientBase(object):
         """
         logging.info("Cleaning up.")
         self.exit = True
+        self.frames_ready.set()
     
     def get_segment_no_speech_prob(self, segment):
         return getattr(segment, "no_speech_prob", 0)
