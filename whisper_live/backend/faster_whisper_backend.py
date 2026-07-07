@@ -85,7 +85,12 @@ class ServeClientFasterWhisper(ServeClientBase):
         self.vad_parameters = vad_parameters or {"threshold": 0.5}
         self.hotwords = hotwords
 
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        # torch.cuda.is_available() is also True on ROCm, but the PyPI ctranslate2 wheel is
+        # CUDA-only and reports 0 devices there. Guard on the CTranslate2 device count so that
+        # AMD (and any CPU-only ctranslate2 build) falls back to CPU instead of crashing with
+        # "CUDA failed ...". A source-built ROCm ctranslate2 that exposes devices still uses GPU.
+        use_cuda = torch.cuda.is_available() and ctranslate2.get_cuda_device_count() > 0
+        device = "cuda" if use_cuda else "cpu"
         if device == "cuda":
             major, _ = torch.cuda.get_device_capability(device)
             self.compute_type = "float16" if major >= 7 else "float32"

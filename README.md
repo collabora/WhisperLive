@@ -70,7 +70,7 @@ python3 client_openai.py $AUDIO_FILE
 - Please follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) for setup of [NVIDIA/TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) and for building Whisper-TensorRT engine.
 
 ## Getting Started
-The server supports 3 backends `faster_whisper`, `tensorrt` and `openvino`. If running `tensorrt` backend follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md)
+The server supports 4 backends `faster_whisper`, `tensorrt`, `openvino` and `whisper_cpp`. If running `tensorrt` backend follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md). For GPU-accelerated Whisper on AMD/Intel/Apple GPUs via Vulkan or ROCm, see the [`whisper_cpp` backend](#whispercpp-backend-gpu-vulkan--rocm).
 
 ### Running the Server
 - [Faster Whisper](https://github.com/SYSTRAN/faster-whisper) backend
@@ -117,6 +117,40 @@ python3 run_server.py -p 9090 \
 python3 run_server.py -p 9090 -b openvino
 ```
 
+#### Running on AMD GPUs (ROCm)
+The `faster_whisper` backend runs on [CTranslate2](https://github.com/OpenNMT/CTranslate2), whose PyPI wheels are CUDA-only. On an AMD/ROCm machine PyTorch still reports `torch.cuda.is_available() == True`, so the server previously selected `device="cuda"` and crashed with `RuntimeError: CUDA failed ...`. The server now also checks `ctranslate2.get_cuda_device_count()` and **falls back to CPU automatically** when no CTranslate2-visible GPU is present, so the backend runs on CPU out of the box:
+```bash
+python3 run_server.py -p 9090 -b faster_whisper
+```
+For GPU-accelerated Whisper on AMD hardware, use the [`whisper_cpp` backend](#whispercpp-backend-gpu-vulkan--rocm) described below.
+
+#### whisper.cpp backend (GPU: Vulkan / ROCm)
+The `whisper_cpp` backend runs [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (ggml) via [pywhispercpp](https://github.com/absadiki/pywhispercpp). Unlike CTranslate2, ggml ships GPU backends that work on AMD (Vulkan / ROCm-HIP), Intel and Apple GPUs, giving real GPU-accelerated transcription there. **Vulkan is the portable choice** — one build runs on AMD, Intel and NVIDIA GPUs. It is verified on an AMD Radeon AI PRO R9700 (RDNA4, `gfx1201`) and a Ryzen AI Max+ 395 / Radeon 8060S ("Strix Halo", RDNA3.5, `gfx1151`), transcribing an 11 s clip in well under a second on both.
+
+**Docker (recommended, turnkey):**
+```bash
+docker build -f docker/Dockerfile.vulkan -t whisperlive-vulkan .
+docker run --rm -it \
+  --device=/dev/dri --group-add video \
+  --group-add "$(getent group render | cut -d: -f3)" \
+  -p 9090:9090 whisperlive-vulkan
+# On a multi-GPU box, pick one device with -e GGML_VK_VISIBLE_DEVICES=0
+# On NVIDIA, run with the NVIDIA container runtime so its Vulkan ICD is available.
+```
+
+**Native:** build `pywhispercpp` with a GPU backend, then start the server. `pywhispercpp`'s build forwards `GGML_*` environment variables to CMake:
+```bash
+# Vulkan (portable). Needs the Vulkan loader + shader compilers, e.g. on Ubuntu:
+#   apt install libvulkan-dev glslc glslang-tools spirv-headers spirv-tools mesa-vulkan-drivers vulkan-tools
+#   (recent AMD GPUs such as RDNA4 need an up-to-date Mesa/RADV, e.g. the kisak-mesa PPA)
+GGML_VULKAN=1 pip install "git+https://github.com/absadiki/pywhispercpp.git"
+
+# ...or ROCm/HIP (AMD only), targeting your GPU arch (e.g. gfx1100/gfx1151/gfx1201):
+GGML_HIP=1 AMDGPU_TARGETS=gfx1151 pip install "git+https://github.com/absadiki/pywhispercpp.git"
+
+python3 run_server.py -p 9090 -b whisper_cpp
+```
+Clients select the ggml model through the usual `model` option (e.g. `base.en`, `small`, `large-v3-turbo`, or a path to a local `ggml-*.bin`); named models are downloaded on first use. On load, whisper.cpp logs the backend it picked, e.g. `whisper_backend_init_gpu: using Vulkan0 backend` (or `ROCm0`); if `pywhispercpp` was built without a GPU backend it runs on CPU.
 
 #### Controlling OpenMP Threads
 To control the number of threads used by OpenMP, you can set the `OMP_NUM_THREADS` environment variable. This is useful for managing CPU resources and ensuring consistent performance. If not specified, `OMP_NUM_THREADS` is set to `1` by default. You can change this by using the `--omp_num_threads` argument:
@@ -299,6 +333,14 @@ Refer to [`ios-client`](https://github.com/collabora/WhisperLive/tree/main/Audio
   - OpenVINO
   ```
   docker run -it --device=/dev/dri -p 9090:9090 ghcr.io/collabora/whisperlive-openvino
+  ```
+
+  - whisper.cpp / Vulkan (AMD, Intel, NVIDIA — GPU-accelerated, see [whisper.cpp backend](#whispercpp-backend-gpu-vulkan--rocm))
+  ```bash
+  docker build -f docker/Dockerfile.vulkan -t whisperlive-vulkan .
+  docker run --rm -it --device=/dev/dri --group-add video \
+    --group-add "$(getent group render | cut -d: -f3)" \
+    -p 9090:9090 whisperlive-vulkan
   ```
 
 - CPU

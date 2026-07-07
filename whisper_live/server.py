@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from starlette.responses import PlainTextResponse, StreamingResponse
 import uvicorn
 from faster_whisper import WhisperModel
+import ctranslate2
 import torch
 
 from enum import Enum
@@ -148,6 +149,7 @@ class BackendType(Enum):
     FASTER_WHISPER = "faster_whisper"
     TENSORRT = "tensorrt"
     OPENVINO = "openvino"
+    WHISPER_CPP = "whisper_cpp"
 
     @staticmethod
     def valid_types() -> List[str]:
@@ -165,6 +167,9 @@ class BackendType(Enum):
     
     def is_openvino(self) -> bool:
         return self == BackendType.OPENVINO
+
+    def is_whisper_cpp(self) -> bool:
+        return self == BackendType.WHISPER_CPP
 
 
 class TranscriptionServer:
@@ -268,6 +273,39 @@ class TranscriptionServer:
                     "uid": self.client_uid,
                     "status": "WARNING",
                     "message": "OpenVINO not supported on Server yet. "
+                                "Reverting to available backend: 'faster_whisper'"
+                }))
+
+        if self.backend.is_whisper_cpp():
+            try:
+                from whisper_live.backend.whisper_cpp_backend import ServeClientWhisperCpp
+                client = ServeClientWhisperCpp(
+                    websocket,
+                    language=options["language"],
+                    task=options["task"],
+                    client_uid=options["uid"],
+                    model=options["model"],
+                    initial_prompt=options.get("initial_prompt"),
+                    use_vad=self.use_vad,
+                    single_model=self.single_model,
+                    send_last_n_segments=options.get("send_last_n_segments", 10),
+                    no_speech_thresh=options.get("no_speech_thresh", 0.45),
+                    clip_audio=options.get("clip_audio", False),
+                    same_output_threshold=options.get("same_output_threshold", 10),
+                    cache_path=self.cache_path,
+                    translation_queue=translation_queue,
+                    diarization=self._create_diarizer(options),
+                    word_timestamps=options.get("word_timestamps", False),
+                )
+                logging.info("Running whisper.cpp backend.")
+            except Exception as e:
+                logging.error(f"whisper.cpp backend not supported: {e}")
+                self.backend = BackendType.FASTER_WHISPER
+                self.client_uid = options["uid"]
+                websocket.send(json.dumps({
+                    "uid": self.client_uid,
+                    "status": "WARNING",
+                    "message": "whisper.cpp backend not available on this server. "
                                 "Reverting to available backend: 'faster_whisper'"
                 }))
 
@@ -486,7 +524,10 @@ class TranscriptionServer:
                     shutil.copyfileobj(file.file, tmp)
                     tmp_path = tmp.name
 
-                device = "cuda" if torch.cuda.is_available() else "cpu"
+                # ctranslate2 (faster_whisper) is CUDA-only on PyPI; on ROCm torch.cuda is True
+                # but ctranslate2 sees 0 devices, so guard to fall back to CPU instead of crashing.
+                use_cuda = torch.cuda.is_available() and ctranslate2.get_cuda_device_count() > 0
+                device = "cuda" if use_cuda else "cpu"
                 compute_type = "float16" if device == "cuda" else "int8"
                 model_name = faster_whisper_custom_model_path or "small"
                 transcriber = WhisperModel(model_name, device=device, compute_type=compute_type)
@@ -764,7 +805,10 @@ class TranscriptionServer:
                         shutil.copyfileobj(file.file, tmp)
                         tmp_path = tmp.name
 
-                    device = "cuda" if torch.cuda.is_available() else "cpu"
+                    # ctranslate2 (faster_whisper) is CUDA-only on PyPI; on ROCm torch.cuda is True
+                    # but ctranslate2 sees 0 devices, so guard to fall back to CPU instead of crashing.
+                    use_cuda = torch.cuda.is_available() and ctranslate2.get_cuda_device_count() > 0
+                    device = "cuda" if use_cuda else "cpu"
                     compute_type = "float16" if device == "cuda" else "int8"
 
                     transcriber = WhisperModel(model_name, device=device, compute_type=compute_type)

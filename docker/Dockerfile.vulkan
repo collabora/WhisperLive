@@ -1,0 +1,75 @@
+# WhisperLive — whisper.cpp (ggml) backend with Vulkan GPU acceleration.
+#
+# A single Vulkan build runs real-time Whisper on AMD (Mesa RADV), Intel (Mesa ANV)
+# and NVIDIA GPUs — no CUDA/ROCm toolkit required at runtime. This is the turnkey
+# answer to issue #520 (AMD Radeon, ROCm or Vulkan): verified on AMD Radeon AI PRO
+# R9700 (RDNA4, gfx1201) and Ryzen AI Max+ 395 / Radeon 8060S (RDNA3.5, gfx1151).
+#
+# Build:
+#   docker build -f docker/Dockerfile.vulkan -t whisperlive-vulkan .
+#
+# Run (expose the GPU + add the host 'render' group so /dev/dri is usable):
+#   docker run --rm -it \
+#     --device=/dev/dri --group-add video \
+#     --group-add "$(getent group render | cut -d: -f3)" \
+#     -p 9090:9090 whisperlive-vulkan
+#
+#   - Pick one GPU on a multi-GPU box:      -e GGML_VK_VISIBLE_DEVICES=0
+#   - Use a local model instead of download: mount it and pass -m /models/ggml-base.en.bin
+#     e.g.  -v /path/to/models:/models  ...  python run_server.py -b whisper_cpp -m /models/ggml-base.en.bin
+#   - NVIDIA GPUs: run with the NVIDIA container runtime so the NVIDIA Vulkan ICD is present.
+
+FROM ubuntu:24.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+# pywhispercpp's setup.py forwards every environment variable as a -D CMake argument,
+# so GGML_VULKAN=1 builds the ggml Vulkan backend.
+ENV GGML_VULKAN=1
+
+# 1) Runtime + build dependencies.
+#    - kisak-mesa PPA ships an up-to-date Mesa (RADV) so recent AMD GPUs (e.g. RDNA4)
+#      are enumerated over Vulkan; it also provides the Intel ANV driver.
+#    - glslc / glslang-tools / spirv-* are required to compile the ggml Vulkan shaders.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        software-properties-common ca-certificates gnupg wget && \
+    add-apt-repository -y ppa:kisak/kisak-mesa && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        libvulkan1 mesa-vulkan-drivers vulkan-tools \
+        libvulkan-dev glslc glslang-tools spirv-headers spirv-tools \
+        build-essential cmake git ninja-build pkg-config patchelf \
+        python3 python3-dev python3-venv python3-pip \
+        ffmpeg libsndfile1 && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# 2) Virtualenv (Ubuntu marks the system Python as externally managed).
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv "$VIRTUAL_ENV"
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+RUN pip install --no-cache-dir -U pip wheel setuptools ninja
+
+WORKDIR /app
+
+# 3) Server dependencies. The whisper_cpp backend itself only needs pywhispercpp +
+#    numpy, but whisper_live/server.py imports torch, onnxruntime, faster_whisper and
+#    ctranslate2 at module load. Install CPU-only builds of those (they are unused by
+#    the GPU whisper.cpp path) to keep the image lean and CUDA-free.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir \
+        "numpy<2" faster-whisper==1.2.0 onnxruntime \
+        websockets fastapi uvicorn python-multipart
+
+# 4) Build pywhispercpp from source with the Vulkan ggml backend. GGML_VULKAN=1 is
+#    forwarded to CMake by pywhispercpp's setup.py. pywhispercpp declares `repairwheel`
+#    as a build dependency, which bundles the freshly built libwhisper/libggml shared
+#    libraries into the wheel with a correct RPATH, so the install is self-contained
+#    (the system Vulkan loader is still used at runtime, so GPU ICDs keep working).
+RUN GGML_VULKAN=1 CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)" \
+        pip install --no-cache-dir "git+https://github.com/absadiki/pywhispercpp.git" && \
+    python -c "from pywhispercpp.model import Model; print('pywhispercpp import OK')"
+
+# 5) Application code.
+COPY whisper_live /app/whisper_live
+COPY run_server.py /app/
+
+EXPOSE 9090
+CMD ["python", "run_server.py", "--backend", "whisper_cpp", "--port", "9090"]
