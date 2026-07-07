@@ -70,7 +70,7 @@ python3 client_openai.py $AUDIO_FILE
 - Please follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md) for setup of [NVIDIA/TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) and for building Whisper-TensorRT engine.
 
 ## Getting Started
-The server supports 4 backends `faster_whisper`, `tensorrt`, `openvino` and `whisper_cpp`. If running `tensorrt` backend follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md). For GPU-accelerated Whisper on AMD/Intel/Apple GPUs via Vulkan or ROCm, see the [`whisper_cpp` backend](#whispercpp-backend-gpu-vulkan--rocm).
+The server supports 4 backends `faster_whisper`, `tensorrt`, `openvino` and `whisper_cpp`. If running `tensorrt` backend follow [TensorRT_whisper readme](https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md). For GPU-accelerated Whisper on AMD GPUs via Vulkan or ROCm, see the [`whisper_cpp` backend](#whispercpp-backend-gpu-vulkan--rocm).
 
 ### Running the Server
 - [Faster Whisper](https://github.com/SYSTRAN/faster-whisper) backend
