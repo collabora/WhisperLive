@@ -933,6 +933,10 @@ class _HookedClient(Client):
             self._on_session_started()
 
     def on_error(self, ws, error):
+        # websocket-client surfaces the server's CLOSE control frame (opcode 8)
+        # through on_error during shutdown; a normal close is not an error.
+        if getattr(error, "opcode", None) == 8:
+            return
         if self._on_error_hook:
             self._on_error_hook(error)
         super().on_error(ws, error)
@@ -1108,18 +1112,25 @@ class StreamingTranscriptionClient:
     # Alias for ``last_partial``; kept for readability at call sites.
     last_segment = last_partial
 
-    def close(self, drain_seconds: float = 2.0) -> None:
-        """Signal end-of-stream, wait briefly for final transcripts, then close.
+    def close(self, timeout: float = 15.0) -> None:
+        """Signal end-of-stream, wait for the server to finish, then close.
+
+        After ``END_OF_AUDIO`` the server transcribes any buffered audio, sends
+        the final committed segment, and closes the connection. Waiting for that
+        server-initiated close keeps the last segment from being dropped.
 
         Args:
-            drain_seconds: Seconds to wait for the server to flush remaining audio.
+            timeout: Maximum seconds to wait for the server to close before
+                forcing the connection shut.
         """
         if self._closed:
             return
         self._closed = True
         try:
             self._client.send_packet_to_server(Client.END_OF_AUDIO.encode("utf-8"))
-            time.sleep(drain_seconds)
+            deadline = time.time() + timeout
+            while self._client.recording and time.time() < deadline:
+                time.sleep(0.05)
         finally:
             self._client.close_websocket()
 

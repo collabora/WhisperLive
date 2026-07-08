@@ -1,4 +1,5 @@
 import json
+import time
 import unittest
 from unittest.mock import patch, MagicMock
 
@@ -153,11 +154,56 @@ class TestConnectLifecycle(StreamingClientTestCase):
 
     def test_close_sends_end_of_audio(self):
         self._server_ready()
+        self._inner.recording = False  # pretend server already closed
         with patch.object(self._inner, 'send_packet_to_server') as mock_send, \
                 patch.object(self._inner, 'close_websocket') as mock_close:
-            self.client.close(drain_seconds=0)
+            self.client.close()
         mock_send.assert_called_once_with(Client.END_OF_AUDIO.encode("utf-8"))
         mock_close.assert_called_once()
+
+    def test_close_waits_for_server_then_times_out(self):
+        self._server_ready()
+        self.assertTrue(self._inner.recording)  # server still "processing"
+        start = time.time()
+        with patch.object(self._inner, 'send_packet_to_server'), \
+                patch.object(self._inner, 'close_websocket') as mock_close:
+            self.client.close(timeout=0.2)
+        self.assertGreaterEqual(time.time() - start, 0.2)
+        mock_close.assert_called_once()
+
+    def test_close_returns_early_when_server_closes(self):
+        self._server_ready()
+
+        def close_soon(_msg):
+            self._inner.recording = False
+
+        with patch.object(self._inner, 'send_packet_to_server', side_effect=close_soon), \
+                patch.object(self._inner, 'close_websocket') as mock_close:
+            start = time.time()
+            self.client.close(timeout=10.0)
+        self.assertLess(time.time() - start, 1.0)
+        mock_close.assert_called_once()
+
+
+class TestErrorHandling(StreamingClientTestCase):
+    def test_close_frame_not_reported_as_error(self):
+        """A normal CLOSE control frame (opcode 8) must not fire on_error."""
+        self._server_ready()
+        errors = []
+        self.client._client._on_error_hook = errors.append
+        close_frame = MagicMock()
+        close_frame.opcode = 8
+        self._inner.on_error(self.mock_ws_app, close_frame)
+        self.assertEqual(errors, [])
+        self.assertFalse(self._inner.server_error)
+
+    def test_real_error_still_reported(self):
+        self._server_ready()
+        errors = []
+        self.client._client._on_error_hook = errors.append
+        self._inner.on_error(self.mock_ws_app, RuntimeError("boom"))
+        self.assertEqual(len(errors), 1)
+        self.assertTrue(self._inner.server_error)
 
 
 if __name__ == '__main__':
