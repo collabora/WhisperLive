@@ -69,8 +69,8 @@ def main():
     print("\n[INFO] Final transcript:")
     for seg in client.transcript:
         print(f"  [{float(seg['start']):.2f}s → {float(seg['end']):.2f}s] {seg['text'].strip()}")
-    if client.last_partial:
-        seg = client.last_segment
+    seg = client.last_partial
+    if seg:
         print(f"  [{float(seg['start']):.2f}s → {float(seg['end']):.2f}s] {seg['text'].strip()} (partial)")
 
 

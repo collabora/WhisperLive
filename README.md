@@ -265,7 +265,7 @@ Audio is automatically normalized to float32 range [-1.0, 1.0]. Clients can also
 
 `StreamingTranscriptionClient` lets you push raw PCM audio bytes from any source — a live microphone capture loop, a network stream, an audio pipeline — and receive transcripts via callbacks as speech is detected. Unlike `TranscriptionClient`, it does not manage audio capture internally; you control when and how audio is fed.
 
-A runnable example that reads from an audio file and stream the chunks is at [`examples/manual_audio_chunking.py`](examples/manual_audio_chunking.py):
+A runnable example that reads from an audio file and streams the chunks is at [`examples/manual_audio_chunking.py`](examples/manual_audio_chunking.py):
 
 ```bash
 python examples/manual_audio_chunking.py --file assets/jfk.flac

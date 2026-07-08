@@ -927,10 +927,10 @@ class _HookedClient(Client):
         super().__init__(*args, **kwargs)
 
     def on_message(self, ws, message):
-        data = json.loads(message)
-        if data.get("message") == "SERVER_READY" and self._on_session_started:
-            self._on_session_started()
+        was_recording = self.recording
         super().on_message(ws, message)
+        if not was_recording and self.recording and self._on_session_started:
+            self._on_session_started()
 
     def on_error(self, ws, error):
         if self._on_error_hook:
@@ -1007,7 +1007,8 @@ class StreamingTranscriptionClient:
         self._on_committed_transcript = on_committed_transcript
         self._ready_timeout = ready_timeout
         self._closed = False
-        self._last_committed_count = 0
+        self._transcript = []
+        self._committed_keys = set()
 
         self._client = _HookedClient(
             host=host,
@@ -1031,11 +1032,16 @@ class StreamingTranscriptionClient:
         )
 
     def _dispatch_transcript(self, text: str, segments: list) -> None:
-        new_committed = self._client.transcript[self._last_committed_count:]
-        for seg in new_committed:
+        for seg in segments:
+            if not seg.get("completed", False):
+                continue
+            key = (seg.get("start"), seg.get("end"), seg.get("text"))
+            if key in self._committed_keys:
+                continue
+            self._committed_keys.add(key)
+            self._transcript.append(seg)
             if self._on_committed_transcript:
                 self._on_committed_transcript(seg["text"].strip(), [seg])
-        self._last_committed_count = len(self._client.transcript)
 
         last = segments[-1] if segments else None
         if last and not last.get("completed", False) and self._on_partial_transcript:
@@ -1054,12 +1060,12 @@ class StreamingTranscriptionClient:
             time.sleep(0.05)
         return self
 
-    def send(self, audio_bytes: bytes, pcm_format: PcmFormat = "float32") -> None:
+    def send(self, audio_bytes: bytes, pcm_format: PcmFormat = "int16") -> None:
         """Send one PCM chunk. Any chunk size is fine; must be mono 16 kHz.
 
         Args:
             audio_bytes: Raw PCM payload.
-            pcm_format: ``"float32"`` passes through; ``"int16"`` is normalized to float32.
+            pcm_format: ``"int16"`` is normalized to float32; ``"float32"`` passes through.
         """
         if self._closed:
             raise RuntimeError("Client is already closed.")
@@ -1092,17 +1098,15 @@ class StreamingTranscriptionClient:
     @property
     def transcript(self) -> list:
         """All committed segments received so far."""
-        return self._client.transcript
+        return self._transcript
 
     @property
     def last_partial(self) -> Optional[dict]:
         """The most recent in-progress segment, or ``None`` if none pending."""
         return self._client.last_segment
-    
-    @property
-    def last_segment(self) -> Optional[dict]:
-        """The most recent in-progress segment, or ``None`` if none pending."""
-        return self._client.last_segment
+
+    # Alias for ``last_partial``; kept for readability at call sites.
+    last_segment = last_partial
 
     def close(self, drain_seconds: float = 2.0) -> None:
         """Signal end-of-stream, wait briefly for final transcripts, then close.
