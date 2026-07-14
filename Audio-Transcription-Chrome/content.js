@@ -96,11 +96,11 @@ function init_element(lines = 3) {
 
     elem_container = document.createElement('div');
     elem_container.id = "transcription";
-    elem_container.style.cssText = 'padding-top:16px;font-size:18px;position: fixed; top: 85%; left: 50%; transform: translate(-50%, -50%);line-height:18px;width:500px;height:' + (captionLineCount * 30) + 'px;opacity:0.9;z-index:100;background:black;border-radius:10px;color:white;';
+    elem_container.style.cssText = 'padding:0 24px;font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:600;line-height:30px;position:fixed;top:85%;left:50%;transform:translate(-50%,-50%);width:min(80vw,900px);min-height:' + (captionLineCount * 30) + 'px;z-index:2147483647;color:white;text-align:center;letter-spacing:0.01em;text-shadow:0 0 2px #000,0 2px 4px rgba(0,0,0,0.95);cursor:move;';
 
     for (var i = 0; i <= captionLineCount; i++) {
         elem_text = document.createElement('span');
-        elem_text.style.cssText = 'position: absolute;padding-left:16px;padding-right:16px;';
+        elem_text.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);max-width:100%;padding:2px 14px;background:rgba(0,0,0,0.72);border-radius:6px;box-decoration-break:clone;-webkit-box-decoration-break:clone;';
         elem_text.id = "t" + i;
         elem_container.appendChild(elem_text);
 
