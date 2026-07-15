@@ -9,7 +9,7 @@ scipy
 av
 jiwer
 evaluate
-numpy<2
+numpy>=1.26.4,<2.5
 openai-whisper==20250625
 tokenizers==0.20.3
 transformers[torch]
