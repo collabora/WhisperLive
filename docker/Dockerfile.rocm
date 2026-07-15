@@ -1,0 +1,44 @@
+# docker/Dockerfile.rocm
+#
+# WhisperLive faster_whisper backend on AMD ROCm GPUs.
+# Uses the official CTranslate2 ROCm wheel (ships kernels for gfx803 through
+# gfx1201 including Strix Halo gfx1151 and RDNA4 gfx1200/1201).
+#
+# Build:
+#   docker build -f docker/Dockerfile.rocm -t whisperlive-rocm .
+#
+# Run (expose the WebSocket port; add --enable_rest --rest_port 8000 -p 8000:8000 for REST):
+#   docker run --rm -it \
+#       --device=/dev/kfd --device=/dev/dri \
+#       --group-add "$(getent group video | cut -d: -f3)" \
+#       --group-add "$(getent group render | cut -d: -f3)" \
+#       -p 9090:9090 whisperlive-rocm
+
+FROM rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.10.0
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG CT2_WHEEL_URL=https://github.com/OpenNMT/CTranslate2/releases/download/v4.8.0/rocm-python-wheels-Linux.zip
+
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends curl unzip portaudio19-dev && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install the CTranslate2 ROCm wheel (official release artifact).
+# This replaces any CUDA-only ctranslate2 and enables GPU on AMD.
+RUN curl -sL "${CT2_WHEEL_URL}" -o /tmp/ct2-rocm.zip && \
+    unzip -j /tmp/ct2-rocm.zip 'temp-linux/ctranslate2-*-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl' -d /tmp && \
+    pip install --no-cache-dir --force-reinstall /tmp/ctranslate2-*-cp312-*.whl && \
+    rm -f /tmp/ct2-rocm.zip /tmp/ctranslate2-*.whl
+
+# Install server requirements
+COPY requirements/server.txt /app/
+RUN pip install --no-cache-dir -r server.txt && rm server.txt
+
+COPY whisper_live /app/whisper_live
+COPY run_server.py /app
+
+EXPOSE 9090
+
+CMD ["python", "run_server.py", "--port", "9090", "--backend", "faster_whisper"]
