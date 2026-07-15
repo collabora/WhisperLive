@@ -193,6 +193,7 @@ class TranscriptionServer:
         self.raw_pcm_input = False
         self.audio_formats = {}
         self.segment_post_processor = None
+        self.transcript_finalizer = None
 
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
@@ -337,6 +338,10 @@ class TranscriptionServer:
         if self.segment_post_processor is not None:
             client.segment_post_processor = self.segment_post_processor
 
+        # Attach end-of-stream finalizer if configured
+        if self.transcript_finalizer is not None:
+            client.transcript_finalizer = self.transcript_finalizer
+
         if translation_client:
             client.translation_client = translation_client
             client.translation_thread = translation_thread
@@ -476,6 +481,11 @@ class TranscriptionServer:
             while not self.client_manager.is_client_timeout(websocket):
                 if not self.process_audio_frames(websocket):
                     break
+            # stream ended normally (END_OF_AUDIO or timeout); socket still open,
+            # so run any end-of-stream finalizer before cleanup closes it.
+            client = self.client_manager.get_client(websocket)
+            if client:
+                client.finalize()
         except ConnectionClosed:
             logging.info("Connection closed by client")
         except Exception as e:
@@ -619,7 +629,8 @@ class TranscriptionServer:
             metrics_port: int = 0,
             api_key: Optional[str] = None,
             rate_limit_rpm: int = 0,
-            segment_post_processor=None):
+            segment_post_processor=None,
+            transcript_finalizer=None):
         """
         Run the transcription server.
 
@@ -640,6 +651,11 @@ class TranscriptionServer:
                 Applied to every segment before sending to the client. Useful for
                 plugging in custom post-processing (e.g. formatting, redaction).
                 Defaults to None.
+            transcript_finalizer (callable, optional): A callable that receives the
+                accumulated transcript (list of segment dicts) once the stream ends,
+                while the socket is still open, and may return a dict sent to the
+                client as a final message. Useful for cross-segment results (e.g.
+                paragraph grouping). Defaults to None.
         """
         self.cache_path = cache_path
         self.raw_pcm_input = raw_pcm_input
@@ -654,6 +670,7 @@ class TranscriptionServer:
             raise ValueError(f"batch_window_ms must be >= 0, got {batch_window_ms}")
 
         self.segment_post_processor = segment_post_processor
+        self.transcript_finalizer = transcript_finalizer
         self.client_manager = ClientManager(max_clients, max_connection_time)
         if faster_whisper_custom_model_path is not None and not os.path.exists(faster_whisper_custom_model_path):
             if "/" not in faster_whisper_custom_model_path:

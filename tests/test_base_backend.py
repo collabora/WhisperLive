@@ -640,5 +640,49 @@ class TestWordTimestamps(unittest.TestCase):
         self.assertNotIn("words", last)
 
 
+class TestFinalize(unittest.TestCase):
+    def _client(self):
+        client = ConcreteServeClient(client_uid="uid", websocket=MagicMock())
+        client.transcript = [{"start": 0.0, "end": 1.0, "text": "hi"}]
+        return client
+
+    def test_no_finalizer_sends_nothing(self):
+        client = self._client()
+        client.finalize()
+        client.websocket.send.assert_not_called()
+
+    def test_finalizer_payload_is_sent_with_uid(self):
+        client = self._client()
+        client.transcript_finalizer = lambda transcript: {"paragraphs": ["hi"]}
+        client.finalize()
+        client.websocket.send.assert_called_once()
+        sent = json.loads(client.websocket.send.call_args[0][0])
+        self.assertEqual(sent["uid"], "uid")
+        self.assertEqual(sent["paragraphs"], ["hi"])
+
+    def test_finalizer_receives_transcript(self):
+        seen = {}
+        client = self._client()
+
+        def finalizer(transcript):
+            seen["t"] = transcript
+            return None
+
+        client.transcript_finalizer = finalizer
+        client.finalize()
+        self.assertEqual(seen["t"], client.transcript)
+        client.websocket.send.assert_not_called()  # None -> nothing sent
+
+    def test_finalizer_exception_is_swallowed(self):
+        client = self._client()
+
+        def boom(transcript):
+            raise RuntimeError("nope")
+
+        client.transcript_finalizer = boom
+        client.finalize()  # must not raise
+        client.websocket.send.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

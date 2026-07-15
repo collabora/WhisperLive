@@ -81,6 +81,13 @@ class ServeClientBase(object):
         # WhisperLive's core code.
         self.segment_post_processor = None
 
+        # Optional end-of-stream callable. If set, called once when the audio
+        # stream ends (while the socket is still open) with the accumulated
+        # transcript (list of segment dicts). May return a JSON-serializable
+        # dict, which is sent to the client as a final message. Lets external
+        # projects emit cross-segment results (e.g. paragraph grouping).
+        self.transcript_finalizer = None
+
         # threading
         self.lock = threading.Lock()
         self.frames_ready = threading.Event()
@@ -305,6 +312,28 @@ class ServeClientBase(object):
                 wl_metrics.track_segment_emitted(completed=seg.get("completed", False))
         except Exception as e:
             logging.error(f"[ERROR]: Sending data to client: {e}")
+
+    def finalize(self):
+        """
+        Run the optional end-of-stream finalizer and send its result, if any.
+
+        Called once when the audio stream ends and the socket is still open. If
+        ``transcript_finalizer`` is set, it receives the accumulated transcript and
+        may return a dict that is sent to the client (merged with the client uid).
+        """
+        if self.transcript_finalizer is None:
+            return
+        try:
+            payload = self.transcript_finalizer(self.transcript)
+        except Exception as e:
+            logging.error(f"[ERROR]: transcript_finalizer failed: {e}")
+            return
+        if not payload:
+            return
+        try:
+            self.websocket.send(json.dumps({"uid": self.client_uid, **payload}))
+        except Exception as e:
+            logging.error(f"[ERROR]: Sending finalizer result to client: {e}")
 
     def disconnect(self):
         """
