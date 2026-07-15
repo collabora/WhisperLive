@@ -191,13 +191,28 @@ class BatchInferenceWorker:
     # -------------------------------------------------------------------------
 
     def _process_batch(self, batch: List[BatchRequest]):
-        """Dispatch to single or multi-item processing."""
+        """Dispatch to single or multi-item processing.
+
+        The multi-item path encodes a single 30s mel window per item, so audio
+        longer than 30s would be truncated there. Such items are routed to the
+        single path instead (``transcriber.transcribe`` windows long audio).
+        """
         if len(batch) == 1:
             self._process_single(batch[0])
             return
 
-        logging.info(f"[BatchInference] Processing batch of {len(batch)}")
-        self._process_multi(batch)
+        window_samples = 30 * self.transcriber.feature_extractor.sampling_rate
+        long_items = [r for r in batch if r.audio.shape[0] > window_samples]
+        short_items = [r for r in batch if r.audio.shape[0] <= window_samples]
+
+        for req in long_items:
+            self._process_single(req)
+
+        if len(short_items) == 1:
+            self._process_single(short_items[0])
+        elif short_items:
+            logging.info(f"[BatchInference] Processing batch of {len(short_items)}")
+            self._process_multi(short_items)
 
     def _process_single(self, req: BatchRequest):
         """Process a single request using standard ``transcriber.transcribe()``.

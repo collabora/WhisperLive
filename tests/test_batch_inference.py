@@ -40,6 +40,21 @@ class TestBatchInferenceWorker(unittest.TestCase):
         self.assertEqual(req.info, fake_info)
         self.mock_transcriber.transcribe.assert_called_once()
 
+    def test_long_audio_routed_to_single_path(self):
+        """Audio longer than 30s must not be truncated by the batched encode."""
+        self.mock_transcriber.feature_extractor.sampling_rate = 16000
+        self.mock_transcriber.transcribe.return_value = ([MagicMock()], MagicMock())
+
+        long1 = BatchRequest(audio=self._make_audio(31.0), language="en", use_vad=False)
+        long2 = BatchRequest(audio=self._make_audio(45.0), language="en", use_vad=False)
+        self.worker._process_batch([long1, long2])
+
+        # both long items go through the windowed transcribe() path, not encode()
+        self.assertEqual(self.mock_transcriber.transcribe.call_count, 2)
+        self.mock_transcriber.encode.assert_not_called()
+        self.assertTrue(long1.future.is_set())
+        self.assertTrue(long2.future.is_set())
+
     @mock.patch('whisper_live.batch_inference.get_suppressed_tokens', return_value=[-1])
     @mock.patch('whisper_live.batch_inference.Tokenizer')
     def test_multiple_requests_batched(self, mock_tokenizer_cls, mock_suppress):
