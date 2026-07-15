@@ -117,6 +117,9 @@ python3 run_server.py -p 9090 \
 python3 run_server.py -p 9090 -b openvino
 ```
 
+### Setting up AMD ROCm for faster_whisper backend
+- Please follow [ROCm_whisper readme](https://github.com/collabora/WhisperLive/blob/main/ROCm_whisper.md) for setup of AMD ROCm GPU support with the CTranslate2 ROCm wheel.
+
 
 #### Controlling OpenMP Threads
 To control the number of threads used by OpenMP, you can set the `OMP_NUM_THREADS` environment variable. This is useful for managing CPU resources and ensuring consistent performance. If not specified, `OMP_NUM_THREADS` is set to `1` by default. You can change this by using the `--omp_num_threads` argument:
@@ -299,6 +302,15 @@ Refer to [`ios-client`](https://github.com/collabora/WhisperLive/tree/main/Audio
   - OpenVINO
   ```
   docker run -it --device=/dev/dri -p 9090:9090 ghcr.io/collabora/whisperlive-openvino
+  ```
+
+  - AMD ROCm (faster-whisper on AMD GPU via CTranslate2 ROCm wheel)
+  ```bash
+  docker build -f docker/Dockerfile.rocm -t whisperlive-rocm .
+  docker run --rm -it --device=/dev/kfd --device=/dev/dri \
+      --group-add "$(getent group video | cut -d: -f3)" \
+      --group-add "$(getent group render | cut -d: -f3)" \
+      -p 9090:9090 whisperlive-rocm
   ```
 
 - CPU
