@@ -352,11 +352,11 @@ class Client:
         Args:
             message (bytes): The audio data packet in bytes to be sent to the server.
 
+        Raises:
+            Exception: If the WebSocket fails to send the packet.
+
         """
-        try:
-            self.client_socket.send(message, websocket.ABNF.OPCODE_BINARY)
-        except Exception as e:
-            print(e)
+        self.client_socket.send(message, websocket.ABNF.OPCODE_BINARY)
 
     def close_websocket(self):
         """
