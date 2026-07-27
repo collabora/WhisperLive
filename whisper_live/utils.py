@@ -8,8 +8,8 @@ from pathlib import Path
 
 
 def clear_screen():
-    """Clears the console screen."""
-    print("\033[H\033[2J", end="", flush=True)
+    """Clears the console screen and its scrollback buffer."""
+    print("\033[H\033[2J\033[3J", end="", flush=True)
 
 
 def print_transcript(text, translated=False, timestamps=False):
