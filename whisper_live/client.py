@@ -834,7 +834,7 @@ class TranscriptionClient(TranscriptionTeeClient):
         To create a TranscriptionClient and start transcription on microphone audio:
         ```python
         transcription_client = TranscriptionClient(host="localhost", port=9090)
-        transcription_client()
+        transcript = transcription_client()
         ```
     """
     def __init__(
@@ -912,6 +912,11 @@ class TranscriptionClient(TranscriptionTeeClient):
             output_recording_filename=output_recording_filename,
             mute_audio_playback=mute_audio_playback
         )
+
+    def __call__(self, audio=None, rtsp_url=None, hls_url=None, save_file=None):
+        """Run transcription and return the completed transcript as text."""
+        super().__call__(audio=audio, rtsp_url=rtsp_url, hls_url=hls_url, save_file=save_file)
+        return " ".join(segment["text"].strip() for segment in self.client.transcript)
 
 
 PcmFormat = Literal["float32", "int16"]

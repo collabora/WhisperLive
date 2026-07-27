@@ -3,7 +3,7 @@ import time
 import unittest
 from unittest.mock import patch, MagicMock, PropertyMock
 
-from whisper_live.client import Client, TranscriptionTeeClient
+from whisper_live.client import Client, TranscriptionClient, TranscriptionTeeClient
 
 
 class TestClientStatusMessages(unittest.TestCase):
@@ -180,6 +180,25 @@ class TestClientTranscriptionCallback(unittest.TestCase):
         })
         # should not raise
         self.client.on_message(MagicMock(), msg)
+
+
+class TestTranscriptionClientResult(unittest.TestCase):
+    @patch.object(TranscriptionTeeClient, "__call__")
+    def test_call_returns_completed_transcript(self, mock_call):
+        client = object.__new__(TranscriptionClient)
+        client.client = MagicMock(
+            transcript=[
+                {"text": " Hello "},
+                {"text": "world"},
+            ]
+        )
+
+        result = client(audio="sample.wav")
+
+        self.assertEqual(result, "Hello world")
+        mock_call.assert_called_once_with(
+            audio="sample.wav", rtsp_url=None, hls_url=None, save_file=None
+        )
 
 
 class TestClientSrtWriting(unittest.TestCase):
