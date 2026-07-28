@@ -12,8 +12,8 @@ def clear_screen():
     print("\033[H\033[2J", end="", flush=True)
 
 
-def print_transcript(text, translated=False, timestamps=False):
-    """Prints formatted transcript text in a subtitle-like block."""
+def print_transcript(text, translated=False, timestamps=False, max_lines=3):
+    """Prints the last `max_lines` wrapped lines of transcript text in a subtitle-like block."""
     terminal_width = shutil.get_terminal_size((80, 20)).columns
     wrap_width = max(10, min(80, terminal_width - 8))
 
@@ -31,7 +31,7 @@ def print_transcript(text, translated=False, timestamps=False):
         transcript = " ".join(text) if translated else "".join(text)
         lines = wrapper.wrap(text=transcript)
 
-    for line in lines[-3:]:
+    for line in lines[-max_lines:]:
         print(line.center(terminal_width))
 
 

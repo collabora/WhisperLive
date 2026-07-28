@@ -78,6 +78,7 @@ class Client:
             target_language (str, optional): Target language for translation. Defaults to 'fr'.
             translation_callback (callable, optional): A callback function to handle translation results. Default is None.
             translation_srt_file_path (str, optional): The file path to save the translated output SRT file. Default is "output_translated.srt".
+            display_segments (int, optional): Number of recent transcript segments to display, and the maximum lines printed. Defaults to 4.
             initial_prompt (str, optional): Optional text to provide context to the model (e.g. domain vocabulary or names). Default is None.
             vad_parameters (dict, optional): Optional voice-activity-detection parameters passed to the server backend. Default is None.
         """
@@ -221,25 +222,27 @@ class Client:
                         "text": self.last_segment["text"]
                     })
                 utils.clear_screen()
-                utils.print_transcript(original_text_with_timestamps, timestamps=True)
+                utils.print_transcript(original_text_with_timestamps, timestamps=True, max_lines=self.display_segments)
 
                 if self.enable_translation:
                     print(f"\n\nTRANSLATION to {self.target_language}:")
                     utils.print_transcript([
                         {"start": seg["start"], "end": seg["end"], "text": seg["text"]}
                         for seg in self.translated_transcript[-self.display_segments:]
-                    ], timestamps=True)
+                    ], timestamps=True, max_lines=self.display_segments)
 
             else:
                 original_text = [seg["text"] for seg in self.transcript[-self.display_segments:]]
                 if self.last_segment is not None and self.last_segment["text"] not in original_text:
                     original_text.append(self.last_segment["text"])
                 utils.clear_screen()
-                utils.print_transcript(original_text)
+                utils.print_transcript(original_text, max_lines=self.display_segments)
 
                 if self.enable_translation:
                     print(f"\n\nTRANSLATION to {self.target_language}:")
-                    utils.print_transcript([seg["text"] for seg in self.translated_transcript[-self.display_segments:]], translated=True)
+                    utils.print_transcript(
+                        [seg["text"] for seg in self.translated_transcript[-self.display_segments:]],
+                        translated=True, max_lines=self.display_segments)
 
 
     def on_message(self, ws, message):
@@ -826,6 +829,7 @@ class TranscriptionClient(TranscriptionTeeClient):
         target_language (str, optional): Target language for translation. Defaults to 'fr'.
         translation_callback (callable, optional): A callback function to handle translation results. Default is None.
         translation_srt_file_path (str, optional): The file path to save the translated output SRT file. Default is "output_translated.srt".
+        display_segments (int, optional): Number of recent transcript segments to display, and the maximum lines printed. Defaults to 4.
 
     Attributes:
         client (Client): An instance of the underlying Client class responsible for handling the WebSocket connection.
