@@ -189,6 +189,13 @@ class TestSendingAudioPacket(BaseTestCase):
         self.client.send_packet_to_server(self.mock_audio_packet)
         self.client.client_socket.send.assert_called_with(self.mock_audio_packet, websocket.ABNF.OPCODE_BINARY)
 
+    def test_send_packet_propagates_websocket_error(self):
+        error = websocket.WebSocketConnectionClosedException("connection closed")
+        self.client.client_socket.send.side_effect = error
+
+        with self.assertRaises(websocket.WebSocketConnectionClosedException):
+            self.client.send_packet_to_server(self.mock_audio_packet)
+
 class TestTee(BaseTestCase):
     @patch('whisper_live.client.websocket.WebSocketApp')
     @patch('whisper_live.client.pyaudio.PyAudio')
