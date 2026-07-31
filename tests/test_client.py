@@ -143,6 +143,46 @@ class TestPrintTranscript(unittest.TestCase):
         self.assertGreater(len(output_lines), 1)
         self.assertTrue(output_lines[1].startswith(" " * len("[00:00 -> 00:05] ")))
 
+    @patch("whisper_live.utils.shutil.get_terminal_size")
+    @patch("sys.stdout", new_callable=StringIO)
+    def test_print_transcript_honors_max_lines(self, mock_stdout, mock_terminal_size):
+        mock_terminal_size.return_value = os.terminal_size((80, 20))
+
+        print_transcript([f"segment {i} of the running transcript. " for i in range(10)], max_lines=4)
+
+        output_lines = [line for line in mock_stdout.getvalue().splitlines() if line.strip()]
+        self.assertEqual(len(output_lines), 4)
+        self.assertNotIn("segment 0", "".join(output_lines))
+
+    @patch("whisper_live.utils.shutil.get_terminal_size")
+    @patch("sys.stdout", new_callable=StringIO)
+    def test_print_transcript_defaults_to_three_lines(self, mock_stdout, mock_terminal_size):
+        mock_terminal_size.return_value = os.terminal_size((80, 20))
+
+        print_transcript([f"segment {i} of the running transcript. " for i in range(10)])
+
+        output_lines = [line for line in mock_stdout.getvalue().splitlines() if line.strip()]
+        self.assertEqual(len(output_lines), 3)
+
+
+class TestTranscriptDisplay(BaseTestCase):
+    @patch("whisper_live.utils.shutil.get_terminal_size")
+    @patch("sys.stdout", new_callable=StringIO)
+    def test_display_segments_controls_printed_lines(self, mock_stdout, mock_terminal_size):
+        mock_terminal_size.return_value = os.terminal_size((80, 20))
+        self.client.display_segments = 8
+        self.client.transcript = [
+            {"start": str(i), "end": str(i + 1), "text": f"segment {i} of the running transcript. "}
+            for i in range(8)
+        ]
+
+        self.client.process_segments([{"start": "8", "end": "9", "text": "tail", "completed": False}])
+
+        output = mock_stdout.getvalue()
+        output_lines = [line for line in output.splitlines() if line.strip()]
+        self.assertGreater(len(output_lines), 3)
+        self.assertIn("segment 0", output)
+
 
 class TestSendingAudioPacket(BaseTestCase):
     def test_send_packet(self):
