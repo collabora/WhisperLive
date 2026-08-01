@@ -3,10 +3,12 @@ import time
 import threading
 import collections
 import unittest
+from http import HTTPStatus
 from unittest import mock
 from unittest.mock import MagicMock, patch
+from websockets.http11 import Request
 
-from whisper_live.server import TranscriptionServer, BackendType, ClientManager
+from whisper_live.server import TranscriptionServer, BackendType, ClientManager, _websocket_auth
 
 
 class TestClientManagerAddRemove(unittest.TestCase):
@@ -659,15 +661,13 @@ class TestWebSocketAuth(unittest.TestCase):
     def _make_auth_handler(self, api_key):
         """Build the same auth function the server creates."""
         def _ws_auth(path, request_headers):
-            auth = request_headers.get("Authorization", "")
-            token_param = None
-            if "?" in path:
-                from urllib.parse import urlparse, parse_qs
-                parsed = urlparse(path)
-                token_param = parse_qs(parsed.query).get("token", [None])[0]
-            if auth == f"Bearer {api_key}" or token_param == api_key:
-                return None
-            return (401, [("Content-Type", "text/plain")], b"Unauthorized\n")
+            connection = MagicMock()
+            connection.respond.return_value = (401, [], b"Unauthorized\n")
+            request = Request(path, request_headers)
+            result = _websocket_auth(api_key, connection, request)
+            if result is not None:
+                connection.respond.assert_called_once_with(HTTPStatus.UNAUTHORIZED, "Unauthorized\n")
+            return result
         return _ws_auth
 
     def test_valid_bearer_token(self):
