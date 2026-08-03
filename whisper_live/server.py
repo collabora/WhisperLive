@@ -10,6 +10,7 @@ import shutil
 import tempfile
 from http import HTTPStatus
 from typing import Optional, List
+from urllib.parse import parse_qs, urlparse
 from fastapi import FastAPI, UploadFile, Form, Request, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -34,7 +35,6 @@ def _websocket_auth(api_key, connection, request):
     auth = request.headers.get("Authorization", "")
     token_param = None
     if "?" in request.path:
-        from urllib.parse import urlparse, parse_qs
         parsed = urlparse(request.path)
         token_param = parse_qs(parsed.query).get("token", [None])[0]
     if auth == f"Bearer {api_key}" or token_param == api_key:
