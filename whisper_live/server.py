@@ -8,7 +8,9 @@ import functools
 import logging
 import shutil
 import tempfile
+from http import HTTPStatus
 from typing import Optional, List
+from urllib.parse import parse_qs, urlparse
 from fastapi import FastAPI, UploadFile, Form, Request, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -27,6 +29,18 @@ from whisper_live.vad import VoiceActivityDetector
 from whisper_live.backend.base import ServeClientBase
 
 logging.basicConfig(level=logging.INFO)
+
+
+def _websocket_auth(api_key, connection, request):
+    auth = request.headers.get("Authorization", "")
+    token_param = None
+    if "?" in request.path:
+        parsed = urlparse(request.path)
+        token_param = parse_qs(parsed.query).get("token", [None])[0]
+    if auth == f"Bearer {api_key}" or token_param == api_key:
+        return None
+    return connection.respond(HTTPStatus.UNAUTHORIZED, "Unauthorized\n")
+
 
 class ClientManager:
     def __init__(self, max_clients=4, max_connection_time=600):
@@ -855,18 +869,7 @@ class TranscriptionServer:
         # Original WebSocket server (always supported)
         extra_ws_kwargs = {}
         if api_key:
-            def _ws_auth(path, request_headers):
-                auth = request_headers.get("Authorization", "")
-                token_param = None
-                # Check query string for token parameter
-                if "?" in path:
-                    from urllib.parse import urlparse, parse_qs
-                    parsed = urlparse(path)
-                    token_param = parse_qs(parsed.query).get("token", [None])[0]
-                if auth == f"Bearer {api_key}" or token_param == api_key:
-                    return None  # Allow connection
-                return (401, [("Content-Type", "text/plain")], b"Unauthorized\n")
-            extra_ws_kwargs["process_request"] = _ws_auth
+            extra_ws_kwargs["process_request"] = functools.partial(_websocket_auth, api_key)
 
         with serve(
             functools.partial(
