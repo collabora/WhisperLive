@@ -626,6 +626,22 @@ class TestWordTimestamps(unittest.TestCase):
         self.assertIsNotNone(last)
         self.assertIn("words", last)
 
+    def test_update_segments_retains_only_last_word_audio(self):
+        client = self._make_client(word_timestamps=True)
+        words = [
+            self._make_word(" hello", 0.0, 0.5, 0.9),
+            self._make_word(" world", 0.6, 1.0, 0.85),
+        ]
+        segment = self._make_segment(" hello world", 0.0, 1.0, words=words)
+
+        last = client.update_segments([segment], 2.0)
+
+        self.assertEqual(client.transcript[-1]["text"], " hello")
+        self.assertAlmostEqual(client.timestamp_offset, 0.6)
+        self.assertEqual(last["text"], " world")
+        self.assertEqual(last["start"], "0.600")
+        self.assertEqual(len(last["words"]), 1)
+
     def test_update_segments_no_words_when_disabled(self):
         client = self._make_client(word_timestamps=False)
         words1 = [self._make_word("hello", 0.0, 0.5, 0.9)]
