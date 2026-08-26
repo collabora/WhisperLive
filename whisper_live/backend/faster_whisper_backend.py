@@ -100,10 +100,11 @@ class ServeClientFasterWhisper(ServeClientBase):
         try:
             if single_model:
                 if ServeClientFasterWhisper.SINGLE_MODEL is None:
-                    self.create_model(device)
-                    ServeClientFasterWhisper.SINGLE_MODEL = self.transcriber
-                else:
-                    self.transcriber = ServeClientFasterWhisper.SINGLE_MODEL
+                    with ServeClientFasterWhisper.SINGLE_MODEL_LOCK:
+                        if ServeClientFasterWhisper.SINGLE_MODEL is None:
+                            self.create_model(device)
+                            ServeClientFasterWhisper.SINGLE_MODEL = self.transcriber
+                self.transcriber = ServeClientFasterWhisper.SINGLE_MODEL
             else:
                 self.create_model(device)
         except Exception as e:
