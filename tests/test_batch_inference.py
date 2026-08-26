@@ -86,6 +86,36 @@ class TestBatchInferenceWorker(unittest.TestCase):
 
     @mock.patch('whisper_live.batch_inference.get_suppressed_tokens', return_value=[-1])
     @mock.patch('whisper_live.batch_inference.Tokenizer')
+    def test_beam_size_reaches_generate(self, mock_tokenizer_cls, mock_suppress):
+        self.worker.beam_size = 1
+        self._mock_multi_path(mock_tokenizer_cls, 2)
+        self._run_batch([
+            BatchRequest(audio=self._make_audio(), language="en", use_vad=False)
+            for _ in range(2)
+        ])
+        self.assertEqual(self.mock_transcriber.model.generate.call_args.kwargs["beam_size"], 1)
+
+    def test_beam_size_reaches_single_path(self):
+        self.worker.beam_size = 1
+        self.mock_transcriber.transcribe.return_value = ([], MagicMock())
+        req = BatchRequest(audio=self._make_audio(), language="en", use_vad=False)
+        self._run_batch([req])
+        self.assertEqual(self.mock_transcriber.transcribe.call_args.kwargs["beam_size"], 1)
+
+    @mock.patch('whisper_live.batch_inference.get_suppressed_tokens', return_value=[-1])
+    @mock.patch('whisper_live.batch_inference.Tokenizer')
+    def test_fallback_items_are_counted(self, mock_tokenizer_cls, mock_suppress):
+        self._mock_multi_path(mock_tokenizer_cls, 2, score=-3.0)
+        with mock.patch("whisper_live.batch_inference.wl_metrics.track_batch_fallback") as track:
+            self._run_batch([
+                BatchRequest(audio=self._make_audio(), language="en", use_vad=False)
+                for _ in range(2)
+            ])
+        track.assert_called()
+        self.assertEqual(track.call_args_list[0].args[0], 2)
+
+    @mock.patch('whisper_live.batch_inference.get_suppressed_tokens', return_value=[-1])
+    @mock.patch('whisper_live.batch_inference.Tokenizer')
     def test_multiple_requests_batched(self, mock_tokenizer_cls, mock_suppress):
         """Multiple concurrent requests should go through the batched GPU path."""
         # Mock tokenizer

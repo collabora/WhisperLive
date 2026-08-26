@@ -679,6 +679,7 @@ class TranscriptionServer:
             batch_window_ms=50,
             batch_max_queue_wait_s=0.5,
             batch_max_admissions_per_s=5.0,
+            batch_beam_size=5,
             raw_pcm_input=False,
             metrics_port: int = 0,
             api_key: Optional[str] = None,
@@ -706,6 +707,8 @@ class TranscriptionServer:
             batch_max_admissions_per_s (float): Most new clients admitted per
                 second in batch mode, the rest get a WAIT. Bounds the burst
                 that gets in before the queue wait reflects it. Defaults to 5.
+            batch_beam_size (int): Beam width for batched decoding. 1 is
+                greedy and several times faster than the default 5.
             segment_post_processor (callable, optional): A callable that receives
                 a transcription segment dict and returns a modified segment dict.
                 Applied to every segment before sending to the client. Useful for
@@ -732,6 +735,8 @@ class TranscriptionServer:
             raise ValueError(f"batch_max_queue_wait_s must be > 0, got {batch_max_queue_wait_s}")
         if batch_enabled and batch_max_admissions_per_s <= 0:
             raise ValueError(f"batch_max_admissions_per_s must be > 0, got {batch_max_admissions_per_s}")
+        if batch_enabled and batch_beam_size < 1:
+            raise ValueError(f"batch_beam_size must be >= 1, got {batch_beam_size}")
 
         self.segment_post_processor = segment_post_processor
         self.transcript_finalizer = transcript_finalizer
@@ -749,6 +754,7 @@ class TranscriptionServer:
                 'max_batch_size': batch_max_size,
                 'batch_window_ms': batch_window_ms,
                 'max_queue_wait_s': batch_max_queue_wait_s,
+                'beam_size': batch_beam_size,
             }
             self.admission_limiter = AdmissionRateLimiter(batch_max_admissions_per_s)
             logging.info(f"Batch inference enabled (max_batch={batch_max_size}, window={batch_window_ms}ms)")

@@ -40,6 +40,7 @@ from faster_whisper.vad import (
     get_speech_timestamps,
 )
 
+from whisper_live import metrics as wl_metrics
 from whisper_live.transcriber.transcriber_faster_whisper import (
     Segment,
     TranscriptionInfo,
@@ -157,6 +158,9 @@ class BatchInferenceWorker:
         max_batch_size: Maximum number of requests per batch.
         batch_window_ms: Maximum time (ms) to wait for the batch to fill
             after the first request arrives.
+        beam_size: Beam width for the first (temperature 0) decode of every
+            item on both paths. Fallback decodes at higher temperatures sample
+            with a beam of 1.
         max_queue_wait_s: Measured queue wait above which ``overloaded()``
             reports True so the server can turn new clients away.
     """
@@ -169,8 +173,10 @@ class BatchInferenceWorker:
         max_batch_size: int = 16,
         batch_window_ms: int = 50,
         max_queue_wait_s: float = 2.0,
+        beam_size: int = 5,
     ):
         self.transcriber = transcriber
+        self.beam_size = beam_size
         self.max_batch_size = max_batch_size
         self.batch_window_ms = batch_window_ms
         self.max_queue_wait_s = max_queue_wait_s
@@ -309,6 +315,7 @@ class BatchInferenceWorker:
                 vad_parameters=req.vad_parameters if req.use_vad else None,
                 hotwords=req.hotwords,
                 word_timestamps=req.word_timestamps,
+                beam_size=self.beam_size,
             )
             # Materialize the generator into a list
             req.result = list(result) if result is not None else []
@@ -431,7 +438,7 @@ class BatchInferenceWorker:
                 sub_prompts = [prompts[i] for i in pending_indices]
 
                 gen_kwargs = dict(
-                    beam_size=5 if temp == 0.0 else 1,
+                    beam_size=self.beam_size if temp == 0.0 else 1,
                     patience=1,
                     length_penalty=1,
                     max_length=self.transcriber.max_length,
@@ -472,6 +479,8 @@ class BatchInferenceWorker:
                     else:
                         next_pending.append(idx)
 
+                if next_pending:
+                    wl_metrics.track_batch_fallback(len(next_pending))
                 pending_indices = next_pending
 
             # Step 5: Per-item segment parsing and result dispatch

@@ -53,6 +53,10 @@ try:
         "Total errors by type",
         ["type"],
     )
+    BATCH_FALLBACK_ITEMS = Counter(
+        "whisperlive_batch_fallback_items_total",
+        "Batched items re-decoded at a higher temperature after failing the quality check",
+    )
 
     _AVAILABLE = True
 
@@ -120,3 +124,8 @@ def track_rest_request(endpoint="/v1/audio/transcriptions", status="200"):
 def track_error(error_type="transcription"):
     if _AVAILABLE:
         ERRORS.labels(type=error_type).inc()
+
+
+def track_batch_fallback(items):
+    if _AVAILABLE:
+        BATCH_FALLBACK_ITEMS.inc(items)
