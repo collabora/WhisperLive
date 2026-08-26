@@ -47,6 +47,28 @@ STOCK_MODEL_SIZES = frozenset({
 # REST routes that stay reachable without an API key.
 API_KEY_EXEMPT_PATHS = frozenset({"/docs", "/redoc", "/openapi.json", "/health"})
 
+# Subprotocol a browser offers as `new WebSocket(url, ["bearer", token])`.
+BEARER_SUBPROTOCOL = "bearer"
+
+
+def _select_bearer_subprotocol(connection, subprotocols):
+    """Echo the bearer marker, never the token beside it.
+
+    Chrome closes the socket when the 101 omits a subprotocol it offered.
+    """
+    if BEARER_SUBPROTOCOL in subprotocols:
+        return BEARER_SUBPROTOCOL
+    return None
+
+
+def _all_websocket_checks(checks, connection, request):
+    """Run every handshake check and return the first refusal."""
+    for check in checks:
+        response = check(connection, request)
+        if response is not None:
+            return response
+    return None
+
 
 def _websocket_auth(api_key, connection, request):
     auth = request.headers.get("Authorization", "")
@@ -935,6 +957,7 @@ class TranscriptionServer:
             raw_pcm_input=False,
             metrics_port: int = 0,
             api_key: Optional[str] = None,
+            websocket_auth=None,
             rate_limit_rpm: int = 0,
             segment_post_processor=None,
             audio_preprocessor=None,
@@ -963,6 +986,11 @@ class TranscriptionServer:
                 ``(frame_np, sample_rate) -> np.ndarray`` applied to every audio
                 frame before VAD and before it reaches the backend. Useful for
                 plugging in noise reduction on live audio. Defaults to None.
+            websocket_auth (callable, optional): A callable
+                ``(connection, request) -> Response | None`` passed to the
+                websocket server as ``process_request``. Returning a response
+                refuses the handshake. When ``api_key`` is also set both checks
+                must pass. Defaults to None.
             default_model (str): The faster-whisper model the REST endpoint loads
                 when the request's ``model`` field is ``whisper-1`` or absent.
                 Defaults to "small". A custom model passed with
@@ -1038,9 +1066,16 @@ class TranscriptionServer:
             logging.info(f"✅ OpenAI-Compatible API started on http://0.0.0.0:{rest_port}")
 
         # Original WebSocket server (always supported)
-        extra_ws_kwargs = {}
+        extra_ws_kwargs = {"select_subprotocol": _select_bearer_subprotocol}
+        handshake_checks = []
         if api_key:
-            extra_ws_kwargs["process_request"] = functools.partial(_websocket_auth, api_key)
+            handshake_checks.append(functools.partial(_websocket_auth, api_key))
+        if websocket_auth is not None:
+            handshake_checks.append(websocket_auth)
+        if handshake_checks:
+            extra_ws_kwargs["process_request"] = functools.partial(
+                _all_websocket_checks, handshake_checks
+            )
 
         with serve(
             functools.partial(
