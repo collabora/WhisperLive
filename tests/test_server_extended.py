@@ -351,6 +351,35 @@ class TestTranscriptionServerHandleNewConnection(unittest.TestCase):
         self.assertEqual(sent["message"], queue_wait_s / TranscriptionServer.SECONDS_PER_MINUTE)
 
 
+    @mock.patch("websockets.WebSocketCommonProtocol")
+    def test_rate_limited_admission_returns_false(self, mock_ws):
+        from whisper_live.backend.faster_whisper_backend import ServeClientFasterWhisper
+        from whisper_live.server import AdmissionRateLimiter
+
+        mock_ws.recv.return_value = json.dumps({
+            "uid": "test",
+            "language": "en",
+            "task": "transcribe",
+            "model": "tiny.en",
+        })
+        worker = MagicMock()
+        worker.overloaded.return_value = False
+        worker.queue_wait_s = 0.0
+        self.server.admission_limiter = AdmissionRateLimiter(per_second=1.0)
+        self.assertTrue(self.server.admission_limiter.allow())
+
+        with (
+            mock.patch.object(ServeClientFasterWhisper, "BATCH_WORKER", worker),
+            mock.patch("whisper_live.server.wl_metrics.track_connection_rejected") as track_rejected,
+        ):
+            result = self.server.handle_new_connection(mock_ws, None, None, False)
+
+        self.assertFalse(result)
+        track_rejected.assert_called_once_with(reason="rate_limited")
+        sent = json.loads(mock_ws.send.call_args.args[0])
+        self.assertEqual(sent["status"], "WAIT")
+
+
 class TestTranscriptionServerCleanup(unittest.TestCase):
     def setUp(self):
         self.server = TranscriptionServer()
@@ -725,3 +754,18 @@ class TestWebSocketAuth(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAdmissionRateLimiter(unittest.TestCase):
+    def test_bucket_empties_then_refills(self):
+        from whisper_live.server import AdmissionRateLimiter
+
+        clock = [100.0]
+        with mock.patch("whisper_live.server.time.monotonic", side_effect=lambda: clock[0]):
+            limiter = AdmissionRateLimiter(per_second=2.0)
+            self.assertTrue(limiter.allow())
+            self.assertTrue(limiter.allow())
+            self.assertFalse(limiter.allow())
+            clock[0] += 0.5
+            self.assertTrue(limiter.allow())
+            self.assertFalse(limiter.allow())

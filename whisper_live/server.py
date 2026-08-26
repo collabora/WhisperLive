@@ -181,6 +181,26 @@ class BackendType(Enum):
         return self == BackendType.OPENVINO
 
 
+class AdmissionRateLimiter:
+    """Token bucket that admits at most ``per_second`` clients per second."""
+
+    def __init__(self, per_second):
+        self.per_second = per_second
+        self.tokens = per_second
+        self.refilled_at = time.monotonic()
+        self.lock = threading.Lock()
+
+    def allow(self):
+        with self.lock:
+            now = time.monotonic()
+            self.tokens = min(self.per_second, self.tokens + (now - self.refilled_at) * self.per_second)
+            self.refilled_at = now
+            if self.tokens < 1:
+                return False
+            self.tokens -= 1
+            return True
+
+
 class TranscriptionServer:
     RATE = 16000
     SECONDS_PER_MINUTE = 60
@@ -191,6 +211,7 @@ class TranscriptionServer:
         self.use_vad = True
         self.single_model = False
         self.batch_config = None
+        self.admission_limiter = None
         self.raw_pcm_input = False
         self.audio_formats = {}
         self.segment_post_processor = None
@@ -391,23 +412,29 @@ class TranscriptionServer:
             return audio_np.astype(np.float32) / 32768.0
         return np.frombuffer(frame_data, dtype=np.float32)
 
-    def is_batch_worker_overloaded(self, websocket, options):
-        """Whether the batch worker is behind, sending the client a WAIT if so.
+    def batch_admission_refusal(self, websocket, options):
+        """Why a new client is turned away in batch mode, None when it may connect.
 
-        The WAIT message carries minutes, matching ``ClientManager.is_server_full``.
+        Refused clients get a WAIT carrying minutes, matching ``ClientManager.is_server_full``.
         """
         from whisper_live.backend.faster_whisper_backend import ServeClientFasterWhisper
 
         worker = ServeClientFasterWhisper.BATCH_WORKER
-        if worker is None or not worker.overloaded():
-            return False
+        if worker is None:
+            return None
+        if worker.overloaded():
+            reason = "overloaded"
+        elif self.admission_limiter is not None and not self.admission_limiter.allow():
+            reason = "rate_limited"
+        else:
+            return None
         response = {
             "uid": options["uid"],
             "status": "WAIT",
             "message": worker.queue_wait_s / self.SECONDS_PER_MINUTE,
         }
         websocket.send(json.dumps(response))
-        return True
+        return reason
 
     def handle_new_connection(self, websocket, faster_whisper_custom_model_path,
                               whisper_tensorrt_path, trt_multilingual, trt_py_session=False):
@@ -421,8 +448,9 @@ class TranscriptionServer:
                 wl_metrics.track_connection_rejected(reason="full")
                 websocket.close()
                 return False  # Indicates that the connection should not continue
-            if self.is_batch_worker_overloaded(websocket, options):
-                wl_metrics.track_connection_rejected(reason="overloaded")
+            refusal = self.batch_admission_refusal(websocket, options)
+            if refusal:
+                wl_metrics.track_connection_rejected(reason=refusal)
                 websocket.close()
                 return False
             audio_format = options.get("audio_format", "float32")
@@ -649,7 +677,8 @@ class TranscriptionServer:
             batch_enabled=False,
             batch_max_size=16,
             batch_window_ms=50,
-            batch_max_queue_wait_s=2.0,
+            batch_max_queue_wait_s=0.5,
+            batch_max_admissions_per_s=5.0,
             raw_pcm_input=False,
             metrics_port: int = 0,
             api_key: Optional[str] = None,
@@ -673,7 +702,10 @@ class TranscriptionServer:
                 to 50.
             batch_max_queue_wait_s (float): Measured batch queue wait in
                 seconds above which new clients are turned away with a WAIT
-                message. Defaults to 2.0.
+                message. Defaults to 0.5.
+            batch_max_admissions_per_s (float): Most new clients admitted per
+                second in batch mode, the rest get a WAIT. Bounds the burst
+                that gets in before the queue wait reflects it. Defaults to 5.
             segment_post_processor (callable, optional): A callable that receives
                 a transcription segment dict and returns a modified segment dict.
                 Applied to every segment before sending to the client. Useful for
@@ -698,6 +730,8 @@ class TranscriptionServer:
             raise ValueError(f"batch_window_ms must be >= 0, got {batch_window_ms}")
         if batch_enabled and batch_max_queue_wait_s <= 0:
             raise ValueError(f"batch_max_queue_wait_s must be > 0, got {batch_max_queue_wait_s}")
+        if batch_enabled and batch_max_admissions_per_s <= 0:
+            raise ValueError(f"batch_max_admissions_per_s must be > 0, got {batch_max_admissions_per_s}")
 
         self.segment_post_processor = segment_post_processor
         self.transcript_finalizer = transcript_finalizer
@@ -716,6 +750,7 @@ class TranscriptionServer:
                 'batch_window_ms': batch_window_ms,
                 'max_queue_wait_s': batch_max_queue_wait_s,
             }
+            self.admission_limiter = AdmissionRateLimiter(batch_max_admissions_per_s)
             logging.info(f"Batch inference enabled (max_batch={batch_max_size}, window={batch_window_ms}ms)")
         else:
             self.batch_config = None
