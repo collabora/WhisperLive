@@ -14,6 +14,7 @@ from whisper_live.backend.base import ServeClientBase
 class ServeClientFasterWhisper(ServeClientBase):
     SINGLE_MODEL = None
     SINGLE_MODEL_LOCK = threading.Lock()
+    BATCH_WAIT_TIMEOUT_SECONDS = 30
     BATCH_WORKER = None
 
     def __init__(
@@ -223,7 +224,11 @@ class ServeClientFasterWhisper(ServeClientBase):
                 client_uid=self.client_uid,
             )
             ServeClientFasterWhisper.BATCH_WORKER.submit(request)
-            request.future.wait(timeout=30)
+            if not request.future.wait(timeout=self.BATCH_WAIT_TIMEOUT_SECONDS):
+                request.abandoned = True
+                raise TimeoutError(
+                    f"batch inference gave no result within {self.BATCH_WAIT_TIMEOUT_SECONDS}s"
+                )
             if request.error:
                 raise request.error
             if self.language is None and request.info is not None:

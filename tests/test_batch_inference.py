@@ -134,6 +134,19 @@ class TestBatchInferenceWorker(unittest.TestCase):
         self.assertIsNone(req2.error)
         self.assertIsNotNone(req2.result)
 
+    def test_abandoned_request_skipped(self):
+        """A request whose session stopped waiting must not reach the model."""
+        self.mock_transcriber.transcribe.return_value = ([MagicMock()], MagicMock())
+        abandoned = BatchRequest(audio=self._make_audio(), language="en", abandoned=True)
+        live = BatchRequest(audio=self._make_audio(), language="en")
+        self.worker.submit(abandoned)
+        self.worker.submit(live)
+        live.future.wait(timeout=5)
+
+        self.assertTrue(live.future.is_set())
+        self.assertFalse(abandoned.future.is_set())
+        self.mock_transcriber.transcribe.assert_called_once()
+
     def test_worker_stop(self):
         """Worker thread should exit cleanly when stop() is called."""
         self.assertTrue(self.worker._thread.is_alive())

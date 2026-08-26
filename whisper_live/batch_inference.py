@@ -67,6 +67,8 @@ class BatchRequest:
         result: List of ``Segment`` objects (filled by worker).
         info: ``TranscriptionInfo`` metadata (filled by worker).
         error: Exception instance if processing failed.
+        abandoned: Set by the session thread when it stopped waiting; the
+            worker skips such requests instead of spending GPU time on them.
     """
     audio: np.ndarray
     language: Optional[str] = None
@@ -82,6 +84,7 @@ class BatchRequest:
     result: Optional[Any] = None
     info: Optional[Any] = None
     error: Optional[Exception] = None
+    abandoned: bool = False
 
 
 class BatchInferenceWorker:
@@ -175,6 +178,10 @@ class BatchInferenceWorker:
                     batch.append(item)
                 except queue.Empty:
                     break
+
+            batch = [req for req in batch if not req.abandoned]
+            if not batch:
+                continue
 
             # Process the collected batch
             try:
