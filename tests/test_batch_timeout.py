@@ -23,6 +23,7 @@ class TestBatchWaitTimeout(unittest.TestCase):
         self.client.use_vad = False
         self.client.vad_parameters = None
         self.client.word_timestamps = False
+        self.client.hotwords = None
         self.client.client_uid = "uid"
         self.worker = NeverAnsweringWorker()
 

@@ -203,6 +203,40 @@ class TestBatchInferenceWorker(unittest.TestCase):
         split_calls = self.mock_transcriber._split_segments_by_timestamps.call_args_list
         self.assertTrue(all(call.kwargs["tokens"] == [] for call in split_calls))
 
+    @mock.patch('whisper_live.batch_inference.get_suppressed_tokens', return_value=[-1])
+    @mock.patch('whisper_live.batch_inference.Tokenizer')
+    def test_hotwords_reach_both_paths(self, mock_tokenizer_cls, mock_suppress):
+        self._mock_multi_path(mock_tokenizer_cls, n_items=2)
+        self.mock_transcriber.transcribe.return_value = ([MagicMock()], MagicMock())
+
+        batched = [
+            BatchRequest(audio=self._make_audio(), language="en", use_vad=False, hotwords="aavaaz")
+            for _ in range(2)
+        ]
+        single = BatchRequest(audio=self._make_audio(31.0), language="en", hotwords="aavaaz")
+        self._run_batch(batched + [single])
+
+        for call in self.mock_transcriber.get_prompt.call_args_list:
+            self.assertEqual(call.kwargs["hotwords"], "aavaaz")
+        self.assertEqual(self.mock_transcriber.transcribe.call_args.kwargs["hotwords"], "aavaaz")
+
+    @mock.patch('whisper_live.batch_inference.get_suppressed_tokens', return_value=[-1])
+    @mock.patch('whisper_live.batch_inference.Tokenizer')
+    def test_word_timestamps_take_single_path(self, mock_tokenizer_cls, mock_suppress):
+        self._mock_multi_path(mock_tokenizer_cls, n_items=2)
+        self.mock_transcriber.transcribe.return_value = ([MagicMock()], MagicMock())
+
+        batched = [
+            BatchRequest(audio=self._make_audio(), language="en", use_vad=False)
+            for _ in range(2)
+        ]
+        with_words = BatchRequest(audio=self._make_audio(), language="en", word_timestamps=True)
+        self._run_batch(batched + [with_words])
+
+        self.mock_transcriber.transcribe.assert_called_once()
+        self.assertTrue(self.mock_transcriber.transcribe.call_args.kwargs["word_timestamps"])
+        self.assertEqual(self.mock_transcriber.model.generate.call_args.args[0].shape[0], 2)
+
     def test_abandoned_request_skipped(self):
         """A request whose session stopped waiting must not reach the model."""
         self.mock_transcriber.transcribe.return_value = ([MagicMock()], MagicMock())

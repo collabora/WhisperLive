@@ -64,6 +64,9 @@ class BatchRequest:
         initial_prompt: Optional prompt for Whisper conditioning.
         use_vad: Whether to apply Voice Activity Detection.
         vad_parameters: Parameters forwarded to ``VadOptions``.
+        hotwords: Optional phrases to bias decoding toward.
+        word_timestamps: Whether to compute per-word timings; such requests
+            take the single path, the batched path has no word alignment.
         future: Event signaled when the result is ready.
         result: List of ``Segment`` objects (filled by worker).
         info: ``TranscriptionInfo`` metadata (filled by worker).
@@ -78,6 +81,7 @@ class BatchRequest:
     use_vad: bool = True
     vad_parameters: Optional[Dict] = None
     word_timestamps: bool = False
+    hotwords: Optional[str] = None
     client_uid: Optional[str] = None
     # Signaling
     future: threading.Event = field(default_factory=threading.Event)
@@ -201,19 +205,23 @@ class BatchInferenceWorker:
     def _process_batch(self, batch: List[BatchRequest]):
         """Dispatch to single or multi-item processing.
 
-        The multi-item path encodes a single 30s mel window per item, so audio
-        longer than 30s would be truncated there. Such items are routed to the
-        single path instead (``transcriber.transcribe`` windows long audio).
+        The multi-item path encodes a single 30s mel window per item and has
+        no word alignment, so audio longer than 30s and requests wanting word
+        timestamps go through ``transcriber.transcribe`` one at a time.
         """
         if len(batch) == 1:
             self._process_single(batch[0])
             return
 
         window_samples = 30 * self.transcriber.feature_extractor.sampling_rate
-        long_items = [r for r in batch if r.audio.shape[0] > window_samples]
-        short_items = [r for r in batch if r.audio.shape[0] <= window_samples]
 
-        for req in long_items:
+        def needs_single_path(req):
+            return req.audio.shape[0] > window_samples or req.word_timestamps
+
+        single_items = [r for r in batch if needs_single_path(r)]
+        short_items = [r for r in batch if not needs_single_path(r)]
+
+        for req in single_items:
             self._process_single(req)
 
         if len(short_items) == 1:
@@ -236,6 +244,8 @@ class BatchInferenceWorker:
                 initial_prompt=req.initial_prompt,
                 vad_filter=req.use_vad,
                 vad_parameters=req.vad_parameters if req.use_vad else None,
+                hotwords=req.hotwords,
+                word_timestamps=req.word_timestamps,
             )
             # Materialize the generator into a list
             req.result = list(result) if result is not None else []
@@ -330,6 +340,7 @@ class BatchInferenceWorker:
                     tokenizer,
                     previous_tokens=previous_tokens,
                     without_timestamps=False,
+                    hotwords=req.hotwords,
                 )
                 tokenizers_list.append(tokenizer)
                 prompts.append(prompt)
