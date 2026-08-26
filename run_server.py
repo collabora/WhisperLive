@@ -104,6 +104,13 @@ if __name__ == "__main__":
              'Clients must send "Authorization: Bearer <key>" header or "?token=<key>" query parameter.'
     )
     parser.add_argument(
+        '--default_model',
+        type=str,
+        default='small',
+        help='faster-whisper model the REST endpoint loads when the request does not name one '
+             '(default: small). Overridden by --faster_whisper_custom_model_path.'
+    )
+    parser.add_argument(
         '--rate_limit_rpm',
         type=int,
         default=0,
@@ -142,4 +149,5 @@ if __name__ == "__main__":
         metrics_port=args.metrics_port,
         api_key=args.api_key,
         rate_limit_rpm=args.rate_limit_rpm,
+        default_model=args.default_model,
     )
