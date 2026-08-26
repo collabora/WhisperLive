@@ -624,7 +624,7 @@ class TranscriptionServer:
             enable_rest=False,
             cors_origins: Optional[str] = None,
             batch_enabled=False,
-            batch_max_size=8,
+            batch_max_size=16,
             batch_window_ms=50,
             raw_pcm_input=False,
             metrics_port: int = 0,
@@ -643,7 +643,7 @@ class TranscriptionServer:
                 forced to True and a ``BatchInferenceWorker`` is started after
                 the first client connects. Defaults to False.
             batch_max_size (int): Maximum number of requests per GPU batch.
-                Defaults to 8.
+                Defaults to 16.
             batch_window_ms (int): Maximum time in milliseconds to wait for
                 the batch to fill after the first request arrives. Defaults
                 to 50.

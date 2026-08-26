@@ -121,7 +121,7 @@ class BatchInferenceWorker:
     def __init__(
         self,
         transcriber,
-        max_batch_size: int = 8,
+        max_batch_size: int = 16,
         batch_window_ms: int = 50,
     ):
         self.transcriber = transcriber
