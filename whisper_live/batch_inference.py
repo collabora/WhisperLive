@@ -73,6 +73,11 @@ class BatchRequest:
         error: Exception instance if processing failed.
         abandoned: Set by the session thread when it stopped waiting; the
             worker skips such requests instead of spending GPU time on them.
+        features: Mel spectrogram, filled by ``prepare_features``.
+        speech_chunks: VAD speech timestamps, filled by ``prepare_features``.
+        speech_duration: Seconds of audio left after VAD, filled by
+            ``prepare_features``.  ``None`` means the request has not been
+            preprocessed yet, ``0.0`` means VAD found no speech.
     """
     audio: np.ndarray
     language: Optional[str] = None
@@ -85,11 +90,45 @@ class BatchRequest:
     client_uid: Optional[str] = None
     # Signaling
     future: threading.Event = field(default_factory=threading.Event)
+    # Preprocessing (filled by prepare_features, in the session thread or the worker)
+    features: Optional[np.ndarray] = None
+    speech_chunks: Optional[list] = None
+    speech_duration: Optional[float] = None
     # Results (filled by batch worker)
     result: Optional[Any] = None
     info: Optional[Any] = None
     error: Optional[Exception] = None
     abandoned: bool = False
+
+
+def prepare_features(transcriber, request: BatchRequest):
+    """Run VAD and mel extraction for one request and store them on it.
+
+    Called from the session thread so the batch worker only does GPU work.
+    ``feature_extractor`` is stateless numpy and the silero VAD runs through
+    one thread safe onnxruntime session, so parallel calls are fine.
+    """
+    sampling_rate = transcriber.feature_extractor.sampling_rate
+    audio = request.audio
+    speech_chunks = None
+
+    if request.use_vad:
+        vad_params = request.vad_parameters or {}
+        vad_opts = VadOptions(**vad_params) if isinstance(vad_params, dict) else vad_params
+        speech_chunks = get_speech_timestamps(audio, vad_opts)
+        if speech_chunks:
+            audio_chunks, _ = collect_chunks(audio, speech_chunks)
+            audio = np.concatenate(audio_chunks, axis=0) if audio_chunks else audio
+
+    request.speech_chunks = speech_chunks
+
+    if audio.shape[0] == 0:
+        request.speech_duration = 0.0
+        return
+
+    request.speech_duration = audio.shape[0] / sampling_rate
+    features = transcriber.feature_extractor(audio)
+    request.features = pad_or_trim(features)  # -> [n_mels, 3000]
 
 
 class BatchInferenceWorker:
@@ -259,7 +298,8 @@ class BatchInferenceWorker:
         """Batched GPU path: encode + generate for multiple sessions at once.
 
         Pipeline:
-            1. Per-item CPU preprocessing (VAD filtering + mel feature extraction)
+            1. Per-item CPU preprocessing, unless the session thread already
+               ran ``prepare_features``
             2. Batch GPU encode — single ``transcriber.encode()`` call
             3. Per-item prompt construction (handles different languages/tasks)
             4. Batch GPU generate — single ``transcriber.model.generate()`` call
@@ -270,29 +310,20 @@ class BatchInferenceWorker:
         preprocessed = []
         for req in batch:
             try:
-                audio = req.audio
-                full_duration = audio.shape[0] / sampling_rate
-                speech_chunks = None
+                if req.speech_duration is None:
+                    prepare_features(self.transcriber, req)
 
-                if req.use_vad:
-                    vad_params = req.vad_parameters or {}
-                    vad_opts = VadOptions(**vad_params) if isinstance(vad_params, dict) else vad_params
-                    speech_chunks = get_speech_timestamps(audio, vad_opts)
-                    if speech_chunks:
-                        audio_chunks, _ = collect_chunks(audio, speech_chunks)
-                        audio = np.concatenate(audio_chunks, axis=0) if audio_chunks else audio
-
-                if audio.shape[0] == 0:
+                if req.speech_duration == 0:
                     # No speech detected — return empty result immediately
                     req.result = []
                     req.info = self._make_info(req, 0.0, 0.0)
                     req.future.set()
                     continue
 
-                duration = audio.shape[0] / sampling_rate
-                features = self.transcriber.feature_extractor(audio)
-                features = pad_or_trim(features)  # -> [n_mels, 3000]
-                preprocessed.append((req, features, duration, full_duration, speech_chunks))
+                full_duration = req.audio.shape[0] / sampling_rate
+                preprocessed.append(
+                    (req, req.features, req.speech_duration, full_duration, req.speech_chunks)
+                )
             except Exception as e:
                 req.error = e
                 req.future.set()

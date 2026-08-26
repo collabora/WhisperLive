@@ -222,7 +222,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         """
         # Batch inference path: submit to central queue and wait
         if ServeClientFasterWhisper.BATCH_WORKER is not None:
-            from whisper_live.batch_inference import BatchRequest
+            from whisper_live.batch_inference import BatchRequest, prepare_features
             request = BatchRequest(
                 audio=input_sample,
                 language=self.language,
@@ -234,6 +234,8 @@ class ServeClientFasterWhisper(ServeClientBase):
                 hotwords=self.hotwords,
                 client_uid=self.client_uid,
             )
+            if not request.word_timestamps:
+                prepare_features(self.transcriber, request)
             ServeClientFasterWhisper.BATCH_WORKER.submit(request)
             if not request.future.wait(timeout=self.BATCH_WAIT_TIMEOUT_SECONDS):
                 request.abandoned = True

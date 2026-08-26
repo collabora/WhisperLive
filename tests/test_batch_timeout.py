@@ -16,6 +16,24 @@ class NeverAnsweringWorker:
         self.submitted.append(request)
 
 
+class CountingFeatureExtractor:
+    sampling_rate = 16000
+    mel_bins = 80
+    frames = 10
+
+    def __init__(self):
+        self.calls = 0
+
+    def __call__(self, audio):
+        self.calls += 1
+        return np.zeros((self.mel_bins, self.frames), dtype=np.float32)
+
+
+class FakeTranscriber:
+    def __init__(self):
+        self.feature_extractor = CountingFeatureExtractor()
+
+
 class TestBatchWaitTimeout(unittest.TestCase):
     def setUp(self):
         self.client = ServeClientFasterWhisper.__new__(ServeClientFasterWhisper)
@@ -27,6 +45,7 @@ class TestBatchWaitTimeout(unittest.TestCase):
         self.client.word_timestamps = False
         self.client.hotwords = None
         self.client.client_uid = "uid"
+        self.client.transcriber = FakeTranscriber()
         self.worker = NeverAnsweringWorker()
 
     def test_timeout_raises_and_marks_request_abandoned(self):
@@ -39,6 +58,52 @@ class TestBatchWaitTimeout(unittest.TestCase):
 
         self.assertEqual(len(self.worker.submitted), 1)
         self.assertTrue(self.worker.submitted[0].abandoned)
+
+
+class TestSessionThreadPreprocessing(unittest.TestCase):
+    SECONDS_OF_AUDIO = 1.0
+    PADDED_FRAMES = 3000
+
+    def setUp(self):
+        self.client = ServeClientFasterWhisper.__new__(ServeClientFasterWhisper)
+        self.client.language = "en"
+        self.client.task = "transcribe"
+        self.client.initial_prompt = None
+        self.client.use_vad = False
+        self.client.vad_parameters = None
+        self.client.word_timestamps = False
+        self.client.hotwords = None
+        self.client.client_uid = "uid"
+        self.client.transcriber = FakeTranscriber()
+        self.worker = NeverAnsweringWorker()
+
+    def submit_one_chunk(self):
+        samples = int(CountingFeatureExtractor.sampling_rate * self.SECONDS_OF_AUDIO)
+        with (
+            mock.patch.object(ServeClientFasterWhisper, "BATCH_WORKER", self.worker),
+            mock.patch.object(ServeClientFasterWhisper, "BATCH_WAIT_TIMEOUT_SECONDS", 0.01),
+        ):
+            with self.assertRaises(TimeoutError):
+                self.client.transcribe_audio(np.zeros(samples, dtype=np.float32))
+        return self.worker.submitted[0]
+
+    def test_features_prepared_before_submit(self):
+        request = self.submit_one_chunk()
+
+        self.assertEqual(
+            request.features.shape,
+            (CountingFeatureExtractor.mel_bins, self.PADDED_FRAMES),
+        )
+        self.assertEqual(request.speech_duration, self.SECONDS_OF_AUDIO)
+        self.assertEqual(self.client.transcriber.feature_extractor.calls, 1)
+
+    def test_word_timestamps_request_left_unprepared(self):
+        self.client.word_timestamps = True
+        request = self.submit_one_chunk()
+
+        self.assertIsNone(request.features)
+        self.assertIsNone(request.speech_duration)
+        self.assertEqual(self.client.transcriber.feature_extractor.calls, 0)
 
 
 class TimingOutClient(ServeClientBase):

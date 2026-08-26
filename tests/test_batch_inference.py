@@ -237,6 +237,30 @@ class TestBatchInferenceWorker(unittest.TestCase):
         self.assertTrue(self.mock_transcriber.transcribe.call_args.kwargs["word_timestamps"])
         self.assertEqual(self.mock_transcriber.model.generate.call_args.args[0].shape[0], 2)
 
+    @mock.patch('whisper_live.batch_inference.get_speech_timestamps')
+    @mock.patch('whisper_live.batch_inference.get_suppressed_tokens', return_value=[-1])
+    @mock.patch('whisper_live.batch_inference.Tokenizer')
+    def test_prepared_request_skips_worker_preprocessing(self, mock_tokenizer_cls, mock_suppress, mock_vad):
+        """Features computed in the session thread must not be recomputed."""
+        self._mock_multi_path(mock_tokenizer_cls, n_items=2)
+
+        requests = [
+            BatchRequest(
+                audio=self._make_audio(),
+                language="en",
+                use_vad=True,
+                features=np.zeros((80, 3000), dtype=np.float32),
+                speech_chunks=None,
+                speech_duration=1.0,
+            )
+            for _ in range(2)
+        ]
+        self._run_batch(requests)
+
+        self.mock_transcriber.feature_extractor.assert_not_called()
+        mock_vad.assert_not_called()
+        self.mock_transcriber.encode.assert_called()
+
     def test_abandoned_request_skipped(self):
         """A request whose session stopped waiting must not reach the model."""
         self.mock_transcriber.transcribe.return_value = ([MagicMock()], MagicMock())
