@@ -185,6 +185,24 @@ class TestBatchInferenceWorker(unittest.TestCase):
             self.assertEqual(req.info.duration, 2.0)
             self.assertEqual(req.info.duration_after_vad, 1.0)
 
+    @mock.patch('whisper_live.batch_inference.get_suppressed_tokens', return_value=[-1])
+    @mock.patch('whisper_live.batch_inference.Tokenizer')
+    def test_silence_yields_no_segments(self, mock_tokenizer_cls, mock_suppress):
+        """High no_speech_prob with low logprob is silence, so no text is emitted."""
+        self._mock_multi_path(mock_tokenizer_cls, n_items=2, no_speech_prob=0.9, score=-2.0)
+        self.mock_transcriber._split_segments_by_timestamps.return_value = ([], None, None)
+
+        requests = [
+            BatchRequest(audio=self._make_audio(), language="en", use_vad=False)
+            for _ in range(2)
+        ]
+        self._run_batch(requests)
+
+        for req in requests:
+            self.assertEqual(req.result, [])
+        split_calls = self.mock_transcriber._split_segments_by_timestamps.call_args_list
+        self.assertTrue(all(call.kwargs["tokens"] == [] for call in split_calls))
+
     def test_abandoned_request_skipped(self):
         """A request whose session stopped waiting must not reach the model."""
         self.mock_transcriber.transcribe.return_value = ([MagicMock()], MagicMock())

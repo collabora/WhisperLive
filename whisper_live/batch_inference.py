@@ -346,7 +346,7 @@ class BatchInferenceWorker:
             no_speech_thresh = 0.6
 
             n = len(preprocessed)
-            final_results = [None] * n  # tuples of (gen_result, avg_logprob, used_temp)
+            final_results = [None] * n  # tuples of (gen_result, avg_logprob, used_temp, is_silence)
             pending_indices = list(range(n))
 
             for temp in temperatures:
@@ -402,7 +402,7 @@ class BatchInferenceWorker:
                     )
 
                     if not bad or is_silence or temp == temperatures[-1]:
-                        final_results[idx] = (gen_result, avg_logprob, temp)
+                        final_results[idx] = (gen_result, avg_logprob, temp, is_silence)
                     else:
                         next_pending.append(idx)
 
@@ -412,9 +412,9 @@ class BatchInferenceWorker:
             for i, (req, features, duration, full_duration, speech_chunks) in enumerate(preprocessed):
                 try:
                     tokenizer = tokenizers_list[i]
-                    gen_result, avg_logprob, used_temp = final_results[i]
+                    gen_result, avg_logprob, used_temp, is_silence = final_results[i]
 
-                    tokens = gen_result.sequences_ids[0]
+                    tokens = [] if is_silence else gen_result.sequences_ids[0]
                     segment_size = int(ceil(duration) * self.transcriber.frames_per_second)
 
                     subsegments, _, _ = self.transcriber._split_segments_by_timestamps(
