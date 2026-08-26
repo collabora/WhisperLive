@@ -22,6 +22,9 @@ class ServeClientBase(object):
     CLIP_TAIL_DURATION_S = 5
     """Duration in seconds of audio to keep after clipping."""
     FIRST_FRAME_WAIT_TIMEOUT_S = 0.1
+    AUDIO_WAIT_TIMEOUT_S = 0.1
+    VOICE_WAIT_TIMEOUT_S = 0.25
+    ERROR_BACKOFF_S = 1.0
     """Interval in seconds for re-checking exit while waiting for the first audio frame."""
 
     client_uid: str
@@ -123,7 +126,8 @@ class ServeClientBase(object):
 
             input_bytes, duration = self.get_audio_chunk_for_processing()
             if duration < 1.0:
-                time.sleep(0.1)     # wait for audio chunks to arrive
+                self.frames_ready.clear()
+                self.frames_ready.wait(timeout=self.AUDIO_WAIT_TIMEOUT_S)
                 continue
             try:
                 input_sample = input_bytes.copy()
@@ -132,16 +136,21 @@ class ServeClientBase(object):
 
                 if result is None or self.language is None:
                     self.timestamp_offset += duration
-                    time.sleep(0.25)    # wait for voice activity, result is None when no voice activity
+                    self.frames_ready.clear()
+                    self.frames_ready.wait(timeout=self.VOICE_WAIT_TIMEOUT_S)
                     continue
                 wl_metrics.track_transcription_latency(time.time() - t0)
                 wl_metrics.track_audio_processed(duration)
                 self.handle_transcription_output(result, duration)
 
+            except TimeoutError as e:
+                logging.error(f"[ERROR]: Dropping {duration:.1f}s of audio: {e}")
+                wl_metrics.track_error("transcription")
+                self.timestamp_offset += duration
             except Exception as e:
                 logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
                 wl_metrics.track_error("transcription")
-                time.sleep(0.01)
+                time.sleep(self.ERROR_BACKOFF_S)
 
     def transcribe_audio(self):
         raise NotImplementedError
