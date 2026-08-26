@@ -16,6 +16,9 @@ class ServeClientFasterWhisper(ServeClientBase):
     SINGLE_MODEL_LOCK = threading.Lock()
     BATCH_WAIT_TIMEOUT_SECONDS = 30
     BATCH_WORKER = None
+    BATCH_WORKER_LOCK = threading.Lock()
+    # the batched GPU path encodes one 30 s window, longer requests fall back to serial transcribe
+    BATCH_MAX_CHUNK_S = 30
 
     def __init__(
         self,
@@ -194,6 +197,12 @@ class ServeClientFasterWhisper(ServeClientBase):
             logging.info(f"Detected language {self.language} with probability {info.language_probability}")
             self.websocket.send(json.dumps(
                 {"uid": self.client_uid, "language": self.language, "language_prob": info.language_probability}))
+
+    def get_audio_chunk_for_processing(self):
+        input_bytes, duration = super().get_audio_chunk_for_processing()
+        if ServeClientFasterWhisper.BATCH_WORKER is None or duration <= self.BATCH_MAX_CHUNK_S:
+            return input_bytes, duration
+        return input_bytes[: self.BATCH_MAX_CHUNK_S * self.RATE], float(self.BATCH_MAX_CHUNK_S)
 
     def transcribe_audio(self, input_sample):
         """

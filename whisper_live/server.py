@@ -318,15 +318,16 @@ class TranscriptionServer:
 
                 # Start batch inference worker on first client (after model is loaded)
                 if (self.batch_config is not None
-                        and ServeClientFasterWhisper.BATCH_WORKER is None
                         and ServeClientFasterWhisper.SINGLE_MODEL is not None):
-                    from whisper_live.batch_inference import BatchInferenceWorker
-                    worker = BatchInferenceWorker(
-                        transcriber=ServeClientFasterWhisper.SINGLE_MODEL,
-                        **self.batch_config,
-                    )
-                    worker.start()
-                    ServeClientFasterWhisper.BATCH_WORKER = worker
+                    with ServeClientFasterWhisper.BATCH_WORKER_LOCK:
+                        if ServeClientFasterWhisper.BATCH_WORKER is None:
+                            from whisper_live.batch_inference import BatchInferenceWorker
+                            worker = BatchInferenceWorker(
+                                transcriber=ServeClientFasterWhisper.SINGLE_MODEL,
+                                **self.batch_config,
+                            )
+                            worker.start()
+                            ServeClientFasterWhisper.BATCH_WORKER = worker
         except Exception as e:
             logging.error(e)
             return
