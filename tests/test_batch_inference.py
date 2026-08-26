@@ -118,6 +118,7 @@ class TestBatchInferenceWorker(unittest.TestCase):
     @mock.patch('whisper_live.batch_inference.get_suppressed_tokens', return_value=[-1])
     @mock.patch('whisper_live.batch_inference.Tokenizer')
     def test_fallback_items_are_counted(self, mock_tokenizer_cls, mock_suppress):
+        self.worker.temperature_fallback = True
         self._mock_multi_path(mock_tokenizer_cls, 2, score=-3.0)
         with mock.patch("whisper_live.batch_inference.wl_metrics.track_batch_fallback") as track:
             self._run_batch([

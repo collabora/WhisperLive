@@ -679,8 +679,8 @@ class TranscriptionServer:
             batch_window_ms=50,
             batch_max_queue_wait_s=0.5,
             batch_max_admissions_per_s=5.0,
-            batch_beam_size=5,
-            batch_temperature_fallback=True,
+            batch_beam_size=1,
+            batch_temperature_fallback=False,
             raw_pcm_input=False,
             metrics_port: int = 0,
             api_key: Optional[str] = None,
@@ -708,11 +708,12 @@ class TranscriptionServer:
             batch_max_admissions_per_s (float): Most new clients admitted per
                 second in batch mode, the rest get a WAIT. Bounds the burst
                 that gets in before the queue wait reflects it. Defaults to 5.
-            batch_beam_size (int): Beam width for batched decoding. 1 is
-                greedy and several times faster than the default 5.
+            batch_beam_size (int): Beam width for batched decoding. The
+                default 1 is greedy, 5 matches ``transcriber.transcribe`` at
+                about 2.5x the decode time.
             batch_temperature_fallback (bool): Re-decode batched items that
                 fail the quality check at higher temperatures. Each fallback
-                pass costs about as much as the first. Defaults to True.
+                pass costs about as much as the first. Defaults to False.
             segment_post_processor (callable, optional): A callable that receives
                 a transcription segment dict and returns a modified segment dict.
                 Applied to every segment before sending to the client. Useful for

@@ -162,11 +162,13 @@ class BatchInferenceWorker:
         batch_window_ms: Maximum time (ms) to wait for the batch to fill
             after the first request arrives.
         beam_size: Beam width for the first (temperature 0) decode of every
-            item on both paths. Fallback decodes at higher temperatures sample
-            with a beam of 1.
+            item on both paths. Greedy (1) decodes about 2.5x faster than 5.
+            Fallback decodes at higher temperatures sample with a beam of 1.
         temperature_fallback: Re-decode items that fail the compression ratio
             or log probability check at rising temperatures, like
-            ``transcriber.transcribe``. Off keeps the temperature 0 result.
+            ``transcriber.transcribe``. Each extra pass costs about as much as
+            the first, which halves throughput at beam 1. Off keeps the
+            temperature 0 result.
         max_queue_wait_s: Measured queue wait above which ``overloaded()``
             reports True so the server can turn new clients away.
     """
@@ -179,8 +181,8 @@ class BatchInferenceWorker:
         max_batch_size: int = 16,
         batch_window_ms: int = 50,
         max_queue_wait_s: float = 2.0,
-        beam_size: int = 5,
-        temperature_fallback: bool = True,
+        beam_size: int = 1,
+        temperature_fallback: bool = False,
     ):
         self.transcriber = transcriber
         self.beam_size = beam_size
