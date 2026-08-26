@@ -8,7 +8,14 @@ from unittest import mock
 from unittest.mock import MagicMock, patch
 from websockets.http11 import Request
 
-from whisper_live.server import TranscriptionServer, BackendType, ClientManager, _websocket_auth
+from whisper_live.server import (
+    BEARER_SUBPROTOCOL,
+    TranscriptionServer,
+    BackendType,
+    ClientManager,
+    _select_bearer_subprotocol,
+    _websocket_auth,
+)
 
 
 class TestClientManagerAddRemove(unittest.TestCase):
@@ -750,6 +757,74 @@ class TestWebSocketAuth(unittest.TestCase):
         handler = self._make_auth_handler("my-secret")
         result = handler("/?token=wrong", {})
         self.assertEqual(result[0], 401)
+
+
+class TestBearerSubprotocolSelection(unittest.TestCase):
+    """Tests for the select_subprotocol callback passed to serve()."""
+
+    def test_bearer_offer_is_echoed(self):
+        selected = _select_bearer_subprotocol(MagicMock(), [BEARER_SUBPROTOCOL, "a.jwt.token"])
+        self.assertEqual(selected, BEARER_SUBPROTOCOL)
+
+    def test_the_token_is_never_selected(self):
+        selected = _select_bearer_subprotocol(MagicMock(), ["a.jwt.token"])
+        self.assertIsNone(selected)
+
+    def test_no_offer_selects_nothing(self):
+        self.assertIsNone(_select_bearer_subprotocol(MagicMock(), []))
+
+
+class TestRunWebsocketAuthWiring(unittest.TestCase):
+    """Tests that run() wires websocket_auth and the subprotocol into serve()."""
+
+    def _serve_kwargs(self, mock_serve, **run_kwargs):
+        TranscriptionServer().run("0.0.0.0", backend="faster_whisper", **run_kwargs)
+        return mock_serve.call_args.kwargs
+
+    def _refuse(self, connection, request):
+        return connection.respond(HTTPStatus.UNAUTHORIZED, "Unauthorized\n")
+
+    @patch("whisper_live.server.serve")
+    def test_subprotocol_is_always_selected(self, mock_serve):
+        kwargs = self._serve_kwargs(mock_serve)
+        self.assertIs(kwargs["select_subprotocol"], _select_bearer_subprotocol)
+        self.assertNotIn("process_request", kwargs)
+
+    @patch("whisper_live.server.serve")
+    def test_websocket_auth_becomes_process_request(self, mock_serve):
+        kwargs = self._serve_kwargs(mock_serve, websocket_auth=self._refuse)
+        connection = MagicMock()
+        connection.respond.return_value = (401, [], b"Unauthorized\n")
+        result = kwargs["process_request"](connection, Request("/", {}))
+        self.assertEqual(result[0], 401)
+
+    @patch("whisper_live.server.serve")
+    def test_the_api_key_alone_does_not_admit_a_connection(self, mock_serve):
+        kwargs = self._serve_kwargs(mock_serve, api_key="my-secret", websocket_auth=self._refuse)
+        connection = MagicMock()
+        connection.respond.return_value = (401, [], b"Unauthorized\n")
+        request = Request("/", {"Authorization": "Bearer my-secret"})
+        self.assertEqual(kwargs["process_request"](connection, request)[0], 401)
+
+    @patch("whisper_live.server.serve")
+    def test_websocket_auth_alone_does_not_admit_a_connection(self, mock_serve):
+        def admit(connection, request):
+            return None
+
+        kwargs = self._serve_kwargs(mock_serve, api_key="my-secret", websocket_auth=admit)
+        connection = MagicMock()
+        connection.respond.return_value = (401, [], b"Unauthorized\n")
+        request = Request("/", {"Authorization": "Bearer wrong"})
+        self.assertEqual(kwargs["process_request"](connection, request)[0], 401)
+
+    @patch("whisper_live.server.serve")
+    def test_both_checks_passing_admits_the_connection(self, mock_serve):
+        def admit(connection, request):
+            return None
+
+        kwargs = self._serve_kwargs(mock_serve, api_key="my-secret", websocket_auth=admit)
+        request = Request("/", {"Authorization": "Bearer my-secret"})
+        self.assertIsNone(kwargs["process_request"](MagicMock(), request))
 
 
 def _make_transcription_info(language="en", language_probability=0.97, duration=1.0):
