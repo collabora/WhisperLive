@@ -680,6 +680,7 @@ class TranscriptionServer:
             batch_max_queue_wait_s=0.5,
             batch_max_admissions_per_s=5.0,
             batch_beam_size=5,
+            batch_temperature_fallback=True,
             raw_pcm_input=False,
             metrics_port: int = 0,
             api_key: Optional[str] = None,
@@ -709,6 +710,9 @@ class TranscriptionServer:
                 that gets in before the queue wait reflects it. Defaults to 5.
             batch_beam_size (int): Beam width for batched decoding. 1 is
                 greedy and several times faster than the default 5.
+            batch_temperature_fallback (bool): Re-decode batched items that
+                fail the quality check at higher temperatures. Each fallback
+                pass costs about as much as the first. Defaults to True.
             segment_post_processor (callable, optional): A callable that receives
                 a transcription segment dict and returns a modified segment dict.
                 Applied to every segment before sending to the client. Useful for
@@ -755,6 +759,7 @@ class TranscriptionServer:
                 'batch_window_ms': batch_window_ms,
                 'max_queue_wait_s': batch_max_queue_wait_s,
                 'beam_size': batch_beam_size,
+                'temperature_fallback': batch_temperature_fallback,
             }
             self.admission_limiter = AdmissionRateLimiter(batch_max_admissions_per_s)
             logging.info(f"Batch inference enabled (max_batch={batch_max_size}, window={batch_window_ms}ms)")

@@ -50,6 +50,9 @@ from whisper_live.transcriber.transcriber_faster_whisper import (
 )
 
 
+FALLBACK_TEMPERATURES = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+
+
 @dataclass
 class BatchRequest:
     """A single inference request submitted by a session thread.
@@ -161,6 +164,9 @@ class BatchInferenceWorker:
         beam_size: Beam width for the first (temperature 0) decode of every
             item on both paths. Fallback decodes at higher temperatures sample
             with a beam of 1.
+        temperature_fallback: Re-decode items that fail the compression ratio
+            or log probability check at rising temperatures, like
+            ``transcriber.transcribe``. Off keeps the temperature 0 result.
         max_queue_wait_s: Measured queue wait above which ``overloaded()``
             reports True so the server can turn new clients away.
     """
@@ -174,9 +180,11 @@ class BatchInferenceWorker:
         batch_window_ms: int = 50,
         max_queue_wait_s: float = 2.0,
         beam_size: int = 5,
+        temperature_fallback: bool = True,
     ):
         self.transcriber = transcriber
         self.beam_size = beam_size
+        self.temperature_fallback = temperature_fallback
         self.max_batch_size = max_batch_size
         self.batch_window_ms = batch_window_ms
         self.max_queue_wait_s = max_queue_wait_s
@@ -413,7 +421,7 @@ class BatchInferenceWorker:
             # only failed items are re-decoded at the next temperature.
             suppress_tokens = get_suppressed_tokens(tokenizers_list[0], [-1])
 
-            temperatures = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+            temperatures = FALLBACK_TEMPERATURES if self.temperature_fallback else [0.0]
             comp_thresh = 2.4
             logprob_thresh = -1.0
             no_speech_thresh = 0.6
