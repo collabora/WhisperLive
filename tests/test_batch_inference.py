@@ -24,6 +24,35 @@ class TestBatchInferenceWorker(unittest.TestCase):
     def _make_audio(self, duration_s=1.0):
         return np.random.randn(int(16000 * duration_s)).astype(np.float32)
 
+    def _mock_multi_path(self, mock_tokenizer_cls, n_items, no_speech_prob=0.1, score=-1.0):
+        mock_tok = MagicMock()
+        mock_tok.decode.return_value = "hello world"
+        mock_tokenizer_cls.return_value = mock_tok
+        self.mock_transcriber.feature_extractor.return_value = np.zeros((80, 3000), dtype=np.float32)
+        self.mock_transcriber.feature_extractor.sampling_rate = 16000
+        self.mock_transcriber.encode.return_value = np.zeros((n_items, 1500, 512), dtype=np.float32)
+        gen_result = MagicMock()
+        gen_result.sequences_ids = [[50257, 50362, 1234, 50256]]
+        gen_result.scores = [np.float32(score)]
+        gen_result.no_speech_prob = no_speech_prob
+        self.mock_transcriber.model.generate.return_value = [gen_result] * n_items
+        self.mock_transcriber.model.is_multilingual = False
+        self.mock_transcriber.max_length = 448
+        self.mock_transcriber.frames_per_second = 50
+        self.mock_transcriber.get_prompt.return_value = [50258]
+        self.mock_transcriber._split_segments_by_timestamps.return_value = (
+            [{"start": 0.0, "end": 1.0, "tokens": [1234], "seek": 0}],
+            None,
+            None,
+        )
+
+    def _run_batch(self, requests):
+        for req in requests:
+            self.worker.submit(req)
+        for req in requests:
+            req.future.wait(timeout=5)
+            self.assertIsNone(req.error)
+
     def test_single_request_uses_transcribe(self):
         """Single request should fall back to transcriber.transcribe()."""
         fake_segment = MagicMock()
@@ -133,6 +162,28 @@ class TestBatchInferenceWorker(unittest.TestCase):
 
         self.assertIsNone(req2.error)
         self.assertIsNotNone(req2.result)
+
+    @mock.patch('whisper_live.batch_inference.collect_chunks')
+    @mock.patch('whisper_live.batch_inference.get_speech_timestamps')
+    @mock.patch('whisper_live.batch_inference.get_suppressed_tokens', return_value=[-1])
+    @mock.patch('whisper_live.batch_inference.Tokenizer')
+    def test_vad_timestamps_restored(self, mock_tokenizer_cls, mock_suppress, mock_vad, mock_collect):
+        """Segment times must refer to the original audio, not the VAD-collapsed audio."""
+        self._mock_multi_path(mock_tokenizer_cls, n_items=2)
+        mock_vad.return_value = [{"start": 16000, "end": 32000}]
+        mock_collect.side_effect = lambda audio, chunks: ([audio[16000:32000]], None)
+
+        requests = [
+            BatchRequest(audio=self._make_audio(2.0), language="en", use_vad=True)
+            for _ in range(2)
+        ]
+        self._run_batch(requests)
+
+        for req in requests:
+            self.assertEqual(req.result[0].start, 1.0)
+            self.assertEqual(req.result[0].end, 2.0)
+            self.assertEqual(req.info.duration, 2.0)
+            self.assertEqual(req.info.duration_after_vad, 1.0)
 
     def test_abandoned_request_skipped(self):
         """A request whose session stopped waiting must not reach the model."""

@@ -45,6 +45,7 @@ from whisper_live.transcriber.transcriber_faster_whisper import (
     TranscriptionInfo,
     get_compression_ratio,
     get_suppressed_tokens,
+    restore_speech_timestamps,
 )
 
 
@@ -255,10 +256,12 @@ class BatchInferenceWorker:
             5. Per-item segment parsing and result dispatch
         """
         # Step 1: Per-item CPU preprocessing (VAD + feature extraction)
+        sampling_rate = self.transcriber.feature_extractor.sampling_rate
         preprocessed = []
         for req in batch:
             try:
                 audio = req.audio
+                full_duration = audio.shape[0] / sampling_rate
                 speech_chunks = None
 
                 if req.use_vad:
@@ -276,10 +279,10 @@ class BatchInferenceWorker:
                     req.future.set()
                     continue
 
-                duration = audio.shape[0] / self.transcriber.feature_extractor.sampling_rate
+                duration = audio.shape[0] / sampling_rate
                 features = self.transcriber.feature_extractor(audio)
                 features = pad_or_trim(features)  # -> [n_mels, 3000]
-                preprocessed.append((req, features, audio, duration, speech_chunks))
+                preprocessed.append((req, features, duration, full_duration, speech_chunks))
             except Exception as e:
                 req.error = e
                 req.future.set()
@@ -297,7 +300,7 @@ class BatchInferenceWorker:
             prompts = []
             resolved_languages = []
 
-            for i, (req, features, audio, duration, speech_chunks) in enumerate(preprocessed):
+            for i, (req, *_) in enumerate(preprocessed):
                 lang = req.language
                 # If language unknown, detect from encoder output
                 if lang is None:
@@ -406,7 +409,7 @@ class BatchInferenceWorker:
                 pending_indices = next_pending
 
             # Step 5: Per-item segment parsing and result dispatch
-            for i, (req, features, audio, duration, speech_chunks) in enumerate(preprocessed):
+            for i, (req, features, duration, full_duration, speech_chunks) in enumerate(preprocessed):
                 try:
                     tokenizer = tokenizers_list[i]
                     gen_result, avg_logprob, used_temp = final_results[i]
@@ -442,9 +445,12 @@ class BatchInferenceWorker:
                             temperature=used_temp,
                         ))
 
+                    if speech_chunks:
+                        segments = list(restore_speech_timestamps(segments, speech_chunks, sampling_rate))
+
                     req.result = segments
                     req.info = self._make_info(
-                        req, duration, duration,
+                        req, full_duration, duration,
                         language=resolved_languages[i],
                     )
                 except Exception as e:
