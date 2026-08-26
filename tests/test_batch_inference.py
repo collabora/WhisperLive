@@ -261,6 +261,37 @@ class TestBatchInferenceWorker(unittest.TestCase):
         mock_vad.assert_not_called()
         self.mock_transcriber.encode.assert_called()
 
+    def test_queue_wait_ema_drives_overloaded(self):
+        """A backlogged queue makes the worker report overloaded, an idle one clears it."""
+        self.worker.stop()
+        self.mock_transcriber.transcribe.return_value = ([MagicMock()], MagicMock())
+        max_queue_wait_s = 1.0
+        backlog_s = 100.0
+        worker = BatchInferenceWorker(
+            transcriber=self.mock_transcriber,
+            max_batch_size=1,
+            batch_window_ms=0,
+            max_queue_wait_s=max_queue_wait_s,
+        )
+        self.assertFalse(worker.overloaded())
+
+        lagging = BatchRequest(audio=self._make_audio(), language="en", use_vad=False)
+        lagging.submitted_at = time.monotonic() - backlog_s
+        worker._queue.put(lagging)
+        worker.start()
+        try:
+            lagging.future.wait(timeout=5)
+            self.assertGreater(worker.queue_wait_s, max_queue_wait_s)
+            self.assertTrue(worker.overloaded())
+
+            deadline = time.monotonic() + 5
+            while worker.queue_wait_s != 0.0 and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertEqual(worker.queue_wait_s, 0.0)
+            self.assertFalse(worker.overloaded())
+        finally:
+            worker.stop()
+
     def test_abandoned_request_skipped(self):
         """A request whose session stopped waiting must not reach the model."""
         self.mock_transcriber.transcribe.return_value = ([MagicMock()], MagicMock())

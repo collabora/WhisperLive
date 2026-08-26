@@ -323,6 +323,33 @@ class TestTranscriptionServerHandleNewConnection(unittest.TestCase):
         result = self.server.handle_new_connection(mock_ws, None, None, False)
         self.assertFalse(result)
 
+    @mock.patch("websockets.WebSocketCommonProtocol")
+    def test_overloaded_batch_worker_returns_false(self, mock_ws):
+        from whisper_live.backend.faster_whisper_backend import ServeClientFasterWhisper
+
+        mock_ws.recv.return_value = json.dumps({
+            "uid": "test",
+            "language": "en",
+            "task": "transcribe",
+            "model": "tiny.en",
+        })
+        queue_wait_s = 120.0
+        worker = MagicMock()
+        worker.overloaded.return_value = True
+        worker.queue_wait_s = queue_wait_s
+
+        with (
+            mock.patch.object(ServeClientFasterWhisper, "BATCH_WORKER", worker),
+            mock.patch("whisper_live.server.wl_metrics.track_connection_rejected") as track_rejected,
+        ):
+            result = self.server.handle_new_connection(mock_ws, None, None, False)
+
+        self.assertFalse(result)
+        track_rejected.assert_called_once_with(reason="overloaded")
+        sent = json.loads(mock_ws.send.call_args.args[0])
+        self.assertEqual(sent["status"], "WAIT")
+        self.assertEqual(sent["message"], queue_wait_s / TranscriptionServer.SECONDS_PER_MINUTE)
+
 
 class TestTranscriptionServerCleanup(unittest.TestCase):
     def setUp(self):

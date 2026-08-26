@@ -183,6 +183,7 @@ class BackendType(Enum):
 
 class TranscriptionServer:
     RATE = 16000
+    SECONDS_PER_MINUTE = 60
 
     def __init__(self):
         self.client_manager = None
@@ -390,6 +391,24 @@ class TranscriptionServer:
             return audio_np.astype(np.float32) / 32768.0
         return np.frombuffer(frame_data, dtype=np.float32)
 
+    def is_batch_worker_overloaded(self, websocket, options):
+        """Whether the batch worker is behind, sending the client a WAIT if so.
+
+        The WAIT message carries minutes, matching ``ClientManager.is_server_full``.
+        """
+        from whisper_live.backend.faster_whisper_backend import ServeClientFasterWhisper
+
+        worker = ServeClientFasterWhisper.BATCH_WORKER
+        if worker is None or not worker.overloaded():
+            return False
+        response = {
+            "uid": options["uid"],
+            "status": "WAIT",
+            "message": worker.queue_wait_s / self.SECONDS_PER_MINUTE,
+        }
+        websocket.send(json.dumps(response))
+        return True
+
     def handle_new_connection(self, websocket, faster_whisper_custom_model_path,
                               whisper_tensorrt_path, trt_multilingual, trt_py_session=False):
         try:
@@ -402,6 +421,10 @@ class TranscriptionServer:
                 wl_metrics.track_connection_rejected(reason="full")
                 websocket.close()
                 return False  # Indicates that the connection should not continue
+            if self.is_batch_worker_overloaded(websocket, options):
+                wl_metrics.track_connection_rejected(reason="overloaded")
+                websocket.close()
+                return False
             audio_format = options.get("audio_format", "float32")
             if audio_format not in {"float32", "int16", "uint8"}:
                 raise ValueError(f"Unsupported audio_format: {audio_format}")
@@ -626,6 +649,7 @@ class TranscriptionServer:
             batch_enabled=False,
             batch_max_size=16,
             batch_window_ms=50,
+            batch_max_queue_wait_s=2.0,
             raw_pcm_input=False,
             metrics_port: int = 0,
             api_key: Optional[str] = None,
@@ -647,6 +671,9 @@ class TranscriptionServer:
             batch_window_ms (int): Maximum time in milliseconds to wait for
                 the batch to fill after the first request arrives. Defaults
                 to 50.
+            batch_max_queue_wait_s (float): Measured batch queue wait in
+                seconds above which new clients are turned away with a WAIT
+                message. Defaults to 2.0.
             segment_post_processor (callable, optional): A callable that receives
                 a transcription segment dict and returns a modified segment dict.
                 Applied to every segment before sending to the client. Useful for
@@ -669,6 +696,8 @@ class TranscriptionServer:
             raise ValueError(f"batch_max_size must be >= 1, got {batch_max_size}")
         if batch_enabled and batch_window_ms < 0:
             raise ValueError(f"batch_window_ms must be >= 0, got {batch_window_ms}")
+        if batch_enabled and batch_max_queue_wait_s <= 0:
+            raise ValueError(f"batch_max_queue_wait_s must be > 0, got {batch_max_queue_wait_s}")
 
         self.segment_post_processor = segment_post_processor
         self.transcript_finalizer = transcript_finalizer
@@ -685,6 +714,7 @@ class TranscriptionServer:
             self.batch_config = {
                 'max_batch_size': batch_max_size,
                 'batch_window_ms': batch_window_ms,
+                'max_queue_wait_s': batch_max_queue_wait_s,
             }
             logging.info(f"Batch inference enabled (max_batch={batch_max_size}, window={batch_window_ms}ms)")
         else:

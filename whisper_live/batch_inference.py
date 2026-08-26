@@ -78,6 +78,7 @@ class BatchRequest:
         speech_duration: Seconds of audio left after VAD, filled by
             ``prepare_features``.  ``None`` means the request has not been
             preprocessed yet, ``0.0`` means VAD found no speech.
+        submitted_at: ``time.monotonic()`` stamp set by ``submit()``.
     """
     audio: np.ndarray
     language: Optional[str] = None
@@ -94,6 +95,7 @@ class BatchRequest:
     features: Optional[np.ndarray] = None
     speech_chunks: Optional[list] = None
     speech_duration: Optional[float] = None
+    submitted_at: float = 0.0
     # Results (filled by batch worker)
     result: Optional[Any] = None
     info: Optional[Any] = None
@@ -155,17 +157,24 @@ class BatchInferenceWorker:
         max_batch_size: Maximum number of requests per batch.
         batch_window_ms: Maximum time (ms) to wait for the batch to fill
             after the first request arrives.
+        max_queue_wait_s: Measured queue wait above which ``overloaded()``
+            reports True so the server can turn new clients away.
     """
+
+    QUEUE_WAIT_EMA_ALPHA = 0.2
 
     def __init__(
         self,
         transcriber,
         max_batch_size: int = 16,
         batch_window_ms: int = 50,
+        max_queue_wait_s: float = 2.0,
     ):
         self.transcriber = transcriber
         self.max_batch_size = max_batch_size
         self.batch_window_ms = batch_window_ms
+        self.max_queue_wait_s = max_queue_wait_s
+        self.queue_wait_s = 0.0
         self._queue: queue.Queue = queue.Queue()
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -193,7 +202,19 @@ class BatchInferenceWorker:
                 then call ``request.future.wait()`` to block until the
                 result is ready.
         """
+        request.submitted_at = time.monotonic()
         self._queue.put(request)
+
+    def overloaded(self) -> bool:
+        """Whether requests are waiting longer in the queue than allowed."""
+        return self.queue_wait_s > self.max_queue_wait_s
+
+    def _record_queue_wait(self, request: BatchRequest):
+        waited = time.monotonic() - request.submitted_at
+        self.queue_wait_s = (
+            self.QUEUE_WAIT_EMA_ALPHA * waited
+            + (1 - self.QUEUE_WAIT_EMA_ALPHA) * self.queue_wait_s
+        )
 
     # -------------------------------------------------------------------------
     # Worker loop
@@ -207,9 +228,11 @@ class BatchInferenceWorker:
             # Block until first request arrives
             try:
                 first = self._queue.get(timeout=0.5)
-                batch.append(first)
             except queue.Empty:
+                self.queue_wait_s = 0.0
                 continue
+            self._record_queue_wait(first)
+            batch.append(first)
 
             # Collect more requests within the batch window
             deadline = time.monotonic() + (self.batch_window_ms / 1000.0)
@@ -219,9 +242,10 @@ class BatchInferenceWorker:
                     break
                 try:
                     item = self._queue.get(timeout=remaining)
-                    batch.append(item)
                 except queue.Empty:
                     break
+                self._record_queue_wait(item)
+                batch.append(item)
 
             batch = [req for req in batch if not req.abandoned]
             if not batch:
