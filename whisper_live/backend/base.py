@@ -4,6 +4,7 @@ import threading
 import time
 import queue
 import numpy as np
+from websockets.exceptions import ConnectionClosed
 
 from whisper_live import metrics as wl_metrics
 
@@ -319,6 +320,10 @@ class ServeClientBase(object):
             )
             for seg in segments:
                 wl_metrics.track_segment_emitted(completed=seg.get("completed", False))
+        except ConnectionClosed:
+            # the client hung up while this batch was on its way out, which is
+            # what a normal disconnect looks like from here
+            logging.info("Client gone before the last segments were sent")
         except Exception as e:
             logging.error(f"[ERROR]: Sending data to client: {e}")
 

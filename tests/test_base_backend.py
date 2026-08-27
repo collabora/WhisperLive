@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+from websockets.exceptions import ConnectionClosed
 
 from whisper_live.backend.base import ServeClientBase
 
@@ -686,3 +687,30 @@ class TestFinalize(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSendTranscriptionToClient(unittest.TestCase):
+    """A client that hangs up mid-send is a normal disconnect, not an error."""
+
+    def setUp(self):
+        self.ws = MagicMock()
+        self.client = ConcreteServeClient(client_uid="test", websocket=self.ws)
+        self.segments = [{"start": "0.0", "end": "1.0", "text": "hello", "completed": True}]
+
+    def test_segments_reach_the_client(self):
+        self.client.send_transcription_to_client(self.segments)
+        sent = json.loads(self.ws.send.call_args[0][0])
+        self.assertEqual(sent["uid"], "test")
+        self.assertEqual(sent["segments"], self.segments)
+
+    def test_a_client_that_hung_up_is_not_logged_as_an_error(self):
+        self.ws.send.side_effect = ConnectionClosed(None, None)
+        with self.assertLogs(level="INFO") as captured:
+            self.client.send_transcription_to_client(self.segments)
+        self.assertFalse(any(line.startswith("ERROR") for line in captured.output))
+
+    def test_a_real_send_failure_is_still_an_error(self):
+        self.ws.send.side_effect = RuntimeError("socket exploded")
+        with self.assertLogs(level="ERROR") as captured:
+            self.client.send_transcription_to_client(self.segments)
+        self.assertTrue(any("socket exploded" in line for line in captured.output))
