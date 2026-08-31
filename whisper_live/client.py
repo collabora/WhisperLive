@@ -21,7 +21,6 @@ class Client:
     """
     INSTANCES = {}
     END_OF_AUDIO = "END_OF_AUDIO"
-    NORMAL_CLOSURE = 1000
 
     def __init__(
         self,
@@ -48,7 +47,6 @@ class Client:
         hotwords=None,
         enable_diarization=False,
         max_speakers=10,
-        known_speakers=None,
         word_timestamps=False,
         max_retries=0,
         retry_delay=5,
@@ -83,13 +81,6 @@ class Client:
             display_segments (int, optional): Number of recent transcript segments to display, and the maximum lines printed. Defaults to 4.
             initial_prompt (str, optional): Optional text to provide context to the model (e.g. domain vocabulary or names). Default is None.
             vad_parameters (dict, optional): Optional voice-activity-detection parameters passed to the server backend. Default is None.
-            known_speakers (list, optional): Reference clips to enroll in the server's diarizer at connection
-                time, as dicts of ``{"name": str, "audio_base64": str}`` where the audio is base64-encoded WAV
-                bytes. Default is None.
-            max_retries (int, optional): Number of reconnect attempts after an unexpected close. A close this
-                client asked for, a normal close after the server sent DISCONNECT, and a server error are not
-                retried. Default is 0.
-            retry_delay (int, optional): Seconds to wait before each reconnect attempt. Default is 5.
         """
         self.recording = False
         self.task = "transcribe"
@@ -129,13 +120,10 @@ class Client:
         self.hotwords = hotwords
         self.enable_diarization = enable_diarization
         self.max_speakers = max_speakers
-        self.known_speakers = known_speakers or []
         self.word_timestamps = word_timestamps
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self._retry_count = 0
-        self._client_initiated_close = False
-        self._server_disconnect = False
         self.audio_bytes = None
 
         if host is not None and port is not None:
@@ -161,7 +149,6 @@ class Client:
 
     def _create_websocket(self):
         """Creates a new WebSocketApp instance."""
-        self._server_disconnect = False
         self.client_socket = websocket.WebSocketApp(
             self.socket_url,
             on_open=lambda ws: self.on_open(ws),
@@ -284,7 +271,6 @@ class Client:
         if "message" in message.keys() and message["message"] == "DISCONNECT":
             print("[INFO]: Server disconnected due to overtime.")
             self.recording = False
-            self._server_disconnect = True
 
         if "message" in message.keys() and message["message"] == "SERVER_READY":
             self.last_response_received = time.time()
@@ -312,33 +298,12 @@ class Client:
         self.server_error = True
         self.error_message = error
 
-    def _should_reconnect(self, close_status_code):
-        """Decide whether an ``on_close`` should be followed by a reconnect.
-
-        Only unexpected closes are retried. A close this client asked for, a
-        normal close after the server said ``DISCONNECT``, and a close following
-        a server error are all treated as final.
-
-        Args:
-            close_status_code (int or None): The websocket close code.
-
-        Returns:
-            bool: True if a reconnect attempt should be made.
-        """
-        if self.max_retries <= 0 or self._retry_count >= self.max_retries:
-            return False
-        if self.server_error or self._client_initiated_close:
-            return False
-        if self._server_disconnect and close_status_code == self.NORMAL_CLOSURE:
-            return False
-        return True
-
     def on_close(self, ws, close_status_code, close_msg):
         print(f"[INFO]: Websocket connection closed: {close_status_code}: {close_msg}")
         self.recording = False
         self.waiting = False
 
-        if self._should_reconnect(close_status_code):
+        if self.max_retries > 0 and self._retry_count < self.max_retries and not self.server_error:
             self._retry_count += 1
             print(f"[INFO]: Reconnecting ({self._retry_count}/{self.max_retries}) in {self.retry_delay}s...")
             time.sleep(self.retry_delay)
@@ -376,7 +341,6 @@ class Client:
                     "hotwords": self.hotwords,
                     "enable_diarization": self.enable_diarization,
                     "max_speakers": self.max_speakers,
-                    "known_speakers": self.known_speakers,
                     "word_timestamps": self.word_timestamps,
                     "initial_prompt": self.initial_prompt,
                     "vad_parameters": self.vad_parameters,
@@ -395,8 +359,6 @@ class Client:
             Exception: If the WebSocket fails to send the packet.
 
         """
-        if message == Client.END_OF_AUDIO.encode("utf-8"):
-            self._client_initiated_close = True
         self.client_socket.send(message, websocket.ABNF.OPCODE_BINARY)
 
     def close_websocket(self):
@@ -407,7 +369,6 @@ class Client:
         closing the connection, it joins the WebSocket thread to ensure proper termination.
 
         """
-        self._client_initiated_close = True
         try:
             self.client_socket.close()
         except Exception as e:
