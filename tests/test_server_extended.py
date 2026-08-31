@@ -752,6 +752,482 @@ class TestWebSocketAuth(unittest.TestCase):
         self.assertEqual(result[0], 401)
 
 
+def _make_transcription_info(language="en", language_probability=0.97, duration=1.0):
+    info = MagicMock()
+    info.language = language
+    info.language_probability = language_probability
+    info.duration = duration
+    return info
+
+
+def _make_segment(index=0, text=" hello ", start=0.0, end=1.0):
+    seg = MagicMock()
+    seg.id = index
+    seg.seek = 0
+    seg.start = start
+    seg.end = end
+    seg.text = text
+    seg.tokens = []
+    seg.temperature = 0.0
+    seg.avg_logprob = -0.1
+    seg.compression_ratio = 1.2
+    seg.no_speech_prob = 0.01
+    seg.words = []
+    return seg
+
+
+class TestHealthEndpoint(unittest.TestCase):
+    """Tests for the REST /health route built by build_rest_app()."""
+
+    def _make_client(self, api_key=None, **kwargs):
+        from fastapi.testclient import TestClient
+
+        self.server = TranscriptionServer()
+        self.server.client_manager = ClientManager(max_clients=3, max_connection_time=60)
+        app = self.server.build_rest_app("faster_whisper", api_key=api_key, **kwargs)
+        return TestClient(app)
+
+    def test_health_reports_backend_model_and_clients(self):
+        client = self._make_client()
+        self.server.client_manager.add_client(MagicMock(), MagicMock())
+        resp = client.get("/health")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(
+            resp.json(),
+            {
+                "status": "ok",
+                "backend": "faster_whisper",
+                "model": "small",
+                "clients": 1,
+                "max_clients": 3,
+            },
+        )
+
+    def test_health_reports_default_model_override(self):
+        from fastapi.testclient import TestClient
+
+        server = TranscriptionServer()
+        server.default_model = "large-v3"
+        server.client_manager = ClientManager(max_clients=2, max_connection_time=60)
+        client = TestClient(server.build_rest_app("faster_whisper"))
+        self.assertEqual(client.get("/health").json()["model"], "large-v3")
+
+    def test_health_reports_custom_model_path(self):
+        client = self._make_client(faster_whisper_custom_model_path="org/custom-model")
+        self.assertEqual(client.get("/health").json()["model"], "org/custom-model")
+
+    def test_health_needs_no_api_key(self):
+        client = self._make_client(api_key="test-secret")
+        resp = client.get("/health")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "ok")
+
+    def test_health_works_with_api_key_header(self):
+        client = self._make_client(api_key="test-secret")
+        resp = client.get("/health", headers={"Authorization": "Bearer test-secret"})
+        self.assertEqual(resp.status_code, 200)
+
+    def test_docs_routes_need_no_api_key(self):
+        client = self._make_client(api_key="test-secret")
+        for path in ("/docs", "/redoc", "/openapi.json"):
+            with self.subTest(path=path):
+                self.assertEqual(client.get(path).status_code, 200)
+
+    def test_transcriptions_still_requires_api_key(self):
+        import io
+
+        client = self._make_client(api_key="test-secret")
+        resp = client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("test.wav", io.BytesIO(b"\x00" * 100), "audio/wav")},
+        )
+        self.assertEqual(resp.status_code, 401)
+
+
+class TestRestModelSelection(unittest.TestCase):
+    """Tests for _resolve_rest_model() and the REST model cache."""
+
+    def setUp(self):
+        self.server = TranscriptionServer()
+
+    def test_whisper_1_alias_uses_default(self):
+        self.assertEqual(self.server._resolve_rest_model("whisper-1"), "small")
+
+    def test_missing_model_uses_default(self):
+        self.assertEqual(self.server._resolve_rest_model(None), "small")
+        self.assertEqual(self.server._resolve_rest_model(""), "small")
+
+    def test_default_model_is_configurable(self):
+        self.server.default_model = "medium"
+        self.assertEqual(self.server._resolve_rest_model("whisper-1"), "medium")
+
+    def test_stock_sizes_are_honoured(self):
+        for name in ("tiny", "base", "small", "medium", "large-v2", "large-v3", "large-v3-turbo"):
+            with self.subTest(name=name):
+                self.assertEqual(self.server._resolve_rest_model(name), name)
+
+    def test_english_only_variants_are_honoured(self):
+        for name in ("tiny.en", "base.en", "small.en", "medium.en"):
+            with self.subTest(name=name):
+                self.assertEqual(self.server._resolve_rest_model(name), name)
+
+    def test_hf_repo_id_is_honoured(self):
+        self.assertEqual(self.server._resolve_rest_model("deepdml/faster-whisper-x"), "deepdml/faster-whisper-x")
+
+    def test_local_path_is_honoured(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as model_dir:
+            self.assertEqual(self.server._resolve_rest_model(model_dir), model_dir)
+
+    def test_unknown_name_falls_back_to_default(self):
+        self.server.default_model = "base"
+        self.assertEqual(self.server._resolve_rest_model("gpt-4o-transcribe"), "base")
+
+    @patch("whisper_live.server.WhisperModel")
+    def test_model_is_loaded_once_per_name(self, mock_model_cls):
+        first = self.server._get_rest_model("small")
+        second = self.server._get_rest_model("small")
+        self.assertIs(first, second)
+        mock_model_cls.assert_called_once()
+
+    @patch("whisper_live.server.WhisperModel")
+    def test_different_names_load_separate_models(self, mock_model_cls):
+        mock_model_cls.side_effect = [MagicMock(name="small"), MagicMock(name="medium")]
+        small = self.server._get_rest_model("small")
+        medium = self.server._get_rest_model("medium")
+        self.assertIsNot(small, medium)
+        self.assertEqual(mock_model_cls.call_count, 2)
+        self.assertEqual(set(self.server.rest_models), {"small", "medium"})
+
+    @patch("whisper_live.server.serve")
+    def test_run_threads_default_model(self, mock_serve):
+        server = TranscriptionServer()
+        server.run("0.0.0.0", backend="faster_whisper", default_model="large-v3")
+        self.assertEqual(server.default_model, "large-v3")
+
+    @patch("whisper_live.server.serve")
+    def test_custom_model_path_outranks_default_model(self, mock_serve):
+        server = TranscriptionServer()
+        server.run(
+            "0.0.0.0",
+            backend="faster_whisper",
+            faster_whisper_custom_model_path="org/custom-model",
+            default_model="large-v3",
+        )
+        self.assertEqual(server.default_model, "org/custom-model")
+
+
+class TestRestTranscribeModelAndLanguage(unittest.TestCase):
+    """Tests that the REST endpoint honours `model` and reports language."""
+
+    def setUp(self):
+        self.server = TranscriptionServer()
+        self.server.client_manager = ClientManager(max_clients=2, max_connection_time=60)
+
+    def _post(self, mock_model_cls, **fields):
+        import io
+        from fastapi.testclient import TestClient
+
+        transcriber = MagicMock()
+        transcriber.transcribe.return_value = (iter([_make_segment()]), _make_transcription_info())
+        mock_model_cls.return_value = transcriber
+        self.transcriber = transcriber
+
+        client = TestClient(self.server.build_rest_app("faster_whisper"))
+        return client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("test.wav", io.BytesIO(b"\x00" * 100), "audio/wav")},
+            data=fields,
+        )
+
+    @patch("whisper_live.server.WhisperModel")
+    def test_stock_model_name_is_loaded(self, mock_model_cls):
+        resp = self._post(mock_model_cls, model="medium")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(mock_model_cls.call_args[0][0], "medium")
+
+    @patch("whisper_live.server.WhisperModel")
+    def test_whisper_1_loads_default_model(self, mock_model_cls):
+        self.server.default_model = "base"
+        resp = self._post(mock_model_cls, model="whisper-1")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(mock_model_cls.call_args[0][0], "base")
+
+    @patch("whisper_live.server.WhisperModel")
+    def test_repeated_requests_reuse_cached_model(self, mock_model_cls):
+        import io
+        from fastapi.testclient import TestClient
+
+        transcriber = MagicMock()
+        transcriber.transcribe.side_effect = lambda *a, **k: (
+            iter([_make_segment()]), _make_transcription_info()
+        )
+        mock_model_cls.return_value = transcriber
+
+        client = TestClient(self.server.build_rest_app("faster_whisper"))
+        for _ in range(3):
+            resp = client.post(
+                "/v1/audio/transcriptions",
+                files={"file": ("test.wav", io.BytesIO(b"\x00" * 100), "audio/wav")},
+                data={"model": "small"},
+            )
+            self.assertEqual(resp.status_code, 200)
+        mock_model_cls.assert_called_once()
+
+    @patch("whisper_live.server.WhisperModel")
+    def test_json_response_includes_language(self, mock_model_cls):
+        resp = self._post(mock_model_cls, response_format="json")
+        body = resp.json()
+        self.assertEqual(body["text"], "hello")
+        self.assertEqual(body["language"], "en")
+        self.assertAlmostEqual(body["language_probability"], 0.97)
+
+    @patch("whisper_live.server.WhisperModel")
+    def test_verbose_json_includes_language_probability(self, mock_model_cls):
+        resp = self._post(mock_model_cls, response_format="verbose_json")
+        body = resp.json()
+        self.assertEqual(body["language"], "en")
+        self.assertAlmostEqual(body["language_probability"], 0.97)
+
+
+class TestStreamLanguageEvent(unittest.TestCase):
+    """The SSE stream must announce the detected language before any segment."""
+
+    def _stream(self, mock_model_cls, language_probability=0.91):
+        import io
+        from fastapi.testclient import TestClient
+
+        transcriber = MagicMock()
+        transcriber.transcribe.return_value = (
+            iter([_make_segment(text=" hello world ")]),
+            _make_transcription_info(language="de", language_probability=language_probability),
+        )
+        mock_model_cls.return_value = transcriber
+
+        server = TranscriptionServer()
+        server.client_manager = ClientManager(max_clients=2, max_connection_time=60)
+        client = TestClient(server.build_rest_app("faster_whisper"))
+        resp = client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("test.wav", io.BytesIO(b"\x00" * 100), "audio/wav")},
+            data={"stream": "true"},
+        )
+        events = [
+            json.loads(line.removeprefix("data: "))
+            for line in resp.text.split("\n")
+            if line.startswith("data: ") and "[DONE]" not in line
+        ]
+        return events
+
+    @patch("whisper_live.server.WhisperModel")
+    def test_first_event_carries_language(self, mock_model_cls):
+        events = self._stream(mock_model_cls)
+        self.assertEqual(events[0]["language"], "de")
+        self.assertAlmostEqual(events[0]["language_probability"], 0.91)
+
+    @patch("whisper_live.server.WhisperModel")
+    def test_language_event_precedes_segments(self, mock_model_cls):
+        events = self._stream(mock_model_cls)
+        self.assertNotIn("text", events[0])
+        self.assertEqual(events[1]["text"], "hello world")
+
+    @patch("whisper_live.server.WhisperModel")
+    def test_stream_honours_model_field(self, mock_model_cls):
+        import io
+        from fastapi.testclient import TestClient
+
+        transcriber = MagicMock()
+        transcriber.transcribe.return_value = (iter([]), _make_transcription_info())
+        mock_model_cls.return_value = transcriber
+
+        server = TranscriptionServer()
+        server.client_manager = ClientManager(max_clients=2, max_connection_time=60)
+        client = TestClient(server.build_rest_app("faster_whisper"))
+        client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("test.wav", io.BytesIO(b"\x00" * 100), "audio/wav")},
+            data={"stream": "true", "model": "large-v3"},
+        )
+        self.assertEqual(mock_model_cls.call_args[0][0], "large-v3")
+
+
+class TestAudioPreprocessor(unittest.TestCase):
+    """Tests for the optional audio_preprocessor hook."""
+
+    def setUp(self):
+        self.server = TranscriptionServer()
+        self.server.backend = BackendType.FASTER_WHISPER
+        self.server.client_manager = ClientManager(max_clients=2, max_connection_time=60)
+
+    def _add_client(self, preprocessor):
+        import numpy as np
+
+        ws = MagicMock()
+        ws.recv.return_value = np.array([0.1, 0.2, 0.3], dtype=np.float32).tobytes()
+        client = MagicMock()
+        client.audio_preprocessor = preprocessor
+        self.server.client_manager.add_client(ws, client)
+        return ws, client
+
+    def test_preprocessor_output_reaches_add_frames(self):
+        import numpy as np
+
+        gained = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        ws, client = self._add_client(lambda frame, rate: gained)
+        self.assertTrue(self.server.process_audio_frames(ws))
+        np.testing.assert_array_equal(client.add_frames.call_args[0][0], gained)
+
+    def test_preprocessor_receives_frame_and_sample_rate(self):
+        import numpy as np
+
+        seen = {}
+
+        def preprocessor(frame, sample_rate):
+            seen["frame"] = frame
+            seen["sample_rate"] = sample_rate
+            return frame
+
+        ws, _ = self._add_client(preprocessor)
+        self.server.process_audio_frames(ws)
+        self.assertEqual(seen["sample_rate"], TranscriptionServer.RATE)
+        np.testing.assert_allclose(seen["frame"], [0.1, 0.2, 0.3], rtol=1e-6)
+
+    def test_no_preprocessor_leaves_frame_untouched(self):
+        import numpy as np
+
+        ws, client = self._add_client(None)
+        self.server.process_audio_frames(ws)
+        np.testing.assert_allclose(client.add_frames.call_args[0][0], [0.1, 0.2, 0.3], rtol=1e-6)
+
+    def test_failing_preprocessor_does_not_break_the_stream(self):
+        import numpy as np
+
+        def preprocessor(frame, sample_rate):
+            raise RuntimeError("denoiser exploded")
+
+        ws, client = self._add_client(preprocessor)
+        self.assertTrue(self.server.process_audio_frames(ws))
+        np.testing.assert_allclose(client.add_frames.call_args[0][0], [0.1, 0.2, 0.3], rtol=1e-6)
+
+    def test_preprocessor_runs_before_vad_for_tensorrt(self):
+        import numpy as np
+
+        self.server.backend = BackendType.TENSORRT
+        self.server.use_vad = True
+        denoised = np.array([0.9, 0.9, 0.9], dtype=np.float32)
+        ws, client = self._add_client(lambda frame, rate: denoised)
+        self.server.vad_detector = MagicMock(return_value=True)
+        self.server.process_audio_frames(ws)
+        np.testing.assert_array_equal(self.server.vad_detector.call_args[0][0], denoised)
+
+    @patch("whisper_live.server.serve")
+    def test_run_stores_preprocessor(self, mock_serve):
+        def preprocessor(frame, sample_rate):
+            return frame
+
+        server = TranscriptionServer()
+        server.run("0.0.0.0", backend="faster_whisper", audio_preprocessor=preprocessor)
+        self.assertIs(server.audio_preprocessor, preprocessor)
+
+    def test_initialize_client_attaches_preprocessor(self):
+        def preprocessor(frame, sample_rate):
+            return frame
+
+        server = TranscriptionServer()
+        server.backend = BackendType.FASTER_WHISPER
+        server.cache_path = "~/.cache/whisper-live/"
+        server.client_manager = ClientManager(max_clients=2, max_connection_time=60)
+        ws = MagicMock()
+        options = {"uid": "abc", "language": "en", "task": "transcribe", "model": "small"}
+        with patch("whisper_live.backend.faster_whisper_backend.ServeClientFasterWhisper") as mock_backend:
+            server.initialize_client(ws, options, None, None, False, audio_preprocessor=preprocessor)
+        client = server.client_manager.get_client(ws)
+        self.assertIs(client.audio_preprocessor, preprocessor)
+
+
+class TestKnownSpeakersOverWebSocket(unittest.TestCase):
+    """Tests for known_speakers enrollment sent in the WebSocket handshake."""
+
+    def setUp(self):
+        self.server = TranscriptionServer()
+        self.diarizer = MagicMock()
+        self.diarizer.enroll_speaker.return_value = True
+
+    def _options(self, **extra):
+        import base64
+
+        options = {
+            "uid": "abc",
+            "known_speakers": [
+                {"name": "alice", "audio_base64": base64.b64encode(b"RIFFfake").decode()},
+            ],
+        }
+        options.update(extra)
+        return options
+
+    def _create_diarizer(self, options):
+        import numpy as np
+
+        with patch("whisper_live.diarization.SpeakerDiarizer", return_value=self.diarizer), \
+                patch("whisper_live.diarization.load_audio", return_value=np.zeros(16000, dtype="float32")):
+            return self.server._create_diarizer(options)
+
+    def test_known_speakers_alone_create_a_diarizer(self):
+        diarizer = self._create_diarizer(self._options())
+        self.assertIs(diarizer, self.diarizer)
+
+    def test_known_speakers_are_enrolled(self):
+        self._create_diarizer(self._options())
+        self.diarizer.enroll_speaker.assert_called_once()
+        self.assertEqual(self.diarizer.enroll_speaker.call_args[0][0], "alice")
+
+    def test_multiple_known_speakers_enrolled(self):
+        import base64
+
+        speakers = [
+            {"name": "alice", "audio_base64": base64.b64encode(b"RIFFa").decode()},
+            {"name": "bob", "audio_base64": base64.b64encode(b"RIFFb").decode()},
+        ]
+        self._create_diarizer({"uid": "abc", "known_speakers": speakers})
+        enrolled = [call[0][0] for call in self.diarizer.enroll_speaker.call_args_list]
+        self.assertEqual(enrolled, ["alice", "bob"])
+
+    def test_no_known_speakers_and_no_diarization_returns_none(self):
+        self.assertIsNone(self.server._create_diarizer({"uid": "abc"}))
+
+    def test_diarization_without_known_speakers_enrolls_nothing(self):
+        diarizer = self._create_diarizer({"uid": "abc", "enable_diarization": True})
+        self.assertIs(diarizer, self.diarizer)
+        self.diarizer.enroll_speaker.assert_not_called()
+
+    def test_speaker_without_audio_is_skipped(self):
+        self._create_diarizer({"uid": "abc", "known_speakers": [{"name": "alice"}]})
+        self.diarizer.enroll_speaker.assert_not_called()
+
+    def test_invalid_base64_does_not_raise(self):
+        import numpy as np
+
+        with patch("whisper_live.diarization.load_audio", return_value=np.zeros(16000, dtype="float32")):
+            TranscriptionServer._enroll_known_speakers(
+                self.diarizer,
+                [{"name": "alice", "audio_base64": "not base64 @@@"}],
+            )
+        self.diarizer.enroll_speaker.assert_not_called()
+
+    def test_too_short_reference_is_reported_not_raised(self):
+        import base64
+        import numpy as np
+
+        self.diarizer.enroll_speaker.return_value = False
+        with patch("whisper_live.diarization.load_audio", return_value=np.zeros(10, dtype="float32")):
+            TranscriptionServer._enroll_known_speakers(
+                self.diarizer,
+                [{"name": "alice", "audio_base64": base64.b64encode(b"RIFFa").decode()}],
+            )
+        self.diarizer.enroll_speaker.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
 
