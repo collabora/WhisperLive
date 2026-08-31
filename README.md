@@ -25,6 +25,7 @@ input from microphone and pre-recorded audio files.
   - [Raw PCM Input](#raw-pcm-input)
 - [Streaming Client (Manual Audio Chunking)](#streaming-client-manual-audio-chunking)
 - [Browser Extensions](#browser-extensions)
+- [Aavaaz](#aavaaz)
 - [Whisper Live Server in Docker](#whisper-live-server-in-docker)
 - [Troubleshooting](#troubleshooting)
 - [Future Work](#future-work)
@@ -324,6 +325,10 @@ client.send_array(samples)
 ## Browser Extensions
 - Run the server with your desired backend as shown [here](https://github.com/collabora/WhisperLive?tab=readme-ov-file#running-the-server).
 - Transcribe audio directly from your browser using our Chrome or Firefox extensions. Refer to [Audio-Transcription-Chrome](https://github.com/collabora/whisper-live/tree/main/Audio-Transcription-Chrome#readme) and https://github.com/collabora/WhisperLive/blob/main/TensorRT_whisper.md
+
+## Aavaaz
+
+[Aavaaz](https://github.com/collabora/aavaaz/tree/master) is a production-grade speech-to-text platform built on WhisperLive, adding speaker diarization, sentiment analysis, PII redaction, webhooks, and OpenAI-compatible REST APIs. It's free to try -- see the [Aavaaz README](https://github.com/collabora/aavaaz/tree/master#quick-start) to get started.
 
 ## iOS Client
 
