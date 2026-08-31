@@ -81,12 +81,6 @@ class ServeClientBase(object):
         # WhisperLive's core code.
         self.segment_post_processor = None
 
-        # Optional pre-processing callable for incoming audio.
-        # If set, called with (frame_np, sample_rate) and must return a numpy
-        # array of samples. Applied by the server before VAD and add_frames,
-        # so external projects can run noise reduction on live audio.
-        self.audio_preprocessor = None
-
         # threading
         self.lock = threading.Lock()
         self.frames_ready = threading.Event()
