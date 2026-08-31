@@ -1,4 +1,6 @@
+import socket
 import subprocess
+import sys
 import time
 import json
 import unittest
@@ -77,8 +79,19 @@ class TestServerInferenceAccuracy(unittest.TestCase):
         cls.mock_pyaudio = cls.mock_pyaudio_patch.start()
         cls.mock_pyaudio.return_value.open.return_value = mock.MagicMock()
         
-        cls.server_process = subprocess.Popen(["python", "run_server.py"])
-        time.sleep(2)
+        cls.server_process = subprocess.Popen([sys.executable, "run_server.py"])
+        cls.wait_for_server()
+
+    @staticmethod
+    def wait_for_server(host="localhost", port=9090, timeout=120):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                with socket.create_connection((host, port), timeout=1):
+                    return
+            except OSError:
+                time.sleep(0.2)
+        raise RuntimeError(f"server did not listen on {host}:{port} within {timeout}s")
 
     @classmethod
     def tearDownClass(cls):

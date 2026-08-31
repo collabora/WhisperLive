@@ -4,6 +4,7 @@ import threading
 import time
 import queue
 import numpy as np
+from websockets.exceptions import ConnectionClosed
 
 from whisper_live import metrics as wl_metrics
 
@@ -22,6 +23,9 @@ class ServeClientBase(object):
     CLIP_TAIL_DURATION_S = 5
     """Duration in seconds of audio to keep after clipping."""
     FIRST_FRAME_WAIT_TIMEOUT_S = 0.1
+    AUDIO_WAIT_TIMEOUT_S = 0.1
+    VOICE_WAIT_TIMEOUT_S = 0.25
+    ERROR_BACKOFF_S = 1.0
     """Interval in seconds for re-checking exit while waiting for the first audio frame."""
 
     client_uid: str
@@ -81,6 +85,13 @@ class ServeClientBase(object):
         # WhisperLive's core code.
         self.segment_post_processor = None
 
+        # Optional end-of-stream callable. If set, called once when the audio
+        # stream ends (while the socket is still open) with the accumulated
+        # transcript (list of segment dicts). May return a JSON-serializable
+        # dict, which is sent to the client as a final message. Lets external
+        # projects emit cross-segment results (e.g. paragraph grouping).
+        self.transcript_finalizer = None
+
         # threading
         self.lock = threading.Lock()
         self.frames_ready = threading.Event()
@@ -116,7 +127,8 @@ class ServeClientBase(object):
 
             input_bytes, duration = self.get_audio_chunk_for_processing()
             if duration < 1.0:
-                time.sleep(0.1)     # wait for audio chunks to arrive
+                self.frames_ready.clear()
+                self.frames_ready.wait(timeout=self.AUDIO_WAIT_TIMEOUT_S)
                 continue
             try:
                 input_sample = input_bytes.copy()
@@ -125,16 +137,21 @@ class ServeClientBase(object):
 
                 if result is None or self.language is None:
                     self.timestamp_offset += duration
-                    time.sleep(0.25)    # wait for voice activity, result is None when no voice activity
+                    self.frames_ready.clear()
+                    self.frames_ready.wait(timeout=self.VOICE_WAIT_TIMEOUT_S)
                     continue
                 wl_metrics.track_transcription_latency(time.time() - t0)
                 wl_metrics.track_audio_processed(duration)
                 self.handle_transcription_output(result, duration)
 
+            except TimeoutError as e:
+                logging.error(f"[ERROR]: Dropping {duration:.1f}s of audio: {e}")
+                wl_metrics.track_error("transcription")
+                self.timestamp_offset += duration
             except Exception as e:
                 logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
                 wl_metrics.track_error("transcription")
-                time.sleep(0.01)
+                time.sleep(self.ERROR_BACKOFF_S)
 
     def transcribe_audio(self):
         raise NotImplementedError
@@ -303,8 +320,34 @@ class ServeClientBase(object):
             )
             for seg in segments:
                 wl_metrics.track_segment_emitted(completed=seg.get("completed", False))
+        except ConnectionClosed:
+            # the client hung up while this batch was on its way out, which is
+            # what a normal disconnect looks like from here
+            logging.info("Client gone before the last segments were sent")
         except Exception as e:
             logging.error(f"[ERROR]: Sending data to client: {e}")
+
+    def finalize(self):
+        """
+        Run the optional end-of-stream finalizer and send its result, if any.
+
+        Called once when the audio stream ends and the socket is still open. If
+        ``transcript_finalizer`` is set, it receives the accumulated transcript and
+        may return a dict that is sent to the client (merged with the client uid).
+        """
+        if self.transcript_finalizer is None:
+            return
+        try:
+            payload = self.transcript_finalizer(self.transcript)
+        except Exception as e:
+            logging.error(f"[ERROR]: transcript_finalizer failed: {e}")
+            return
+        if not payload:
+            return
+        try:
+            self.websocket.send(json.dumps({"uid": self.client_uid, **payload}))
+        except Exception as e:
+            logging.error(f"[ERROR]: Sending finalizer result to client: {e}")
 
     def disconnect(self):
         """

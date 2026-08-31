@@ -14,7 +14,11 @@ from whisper_live.backend.base import ServeClientBase
 class ServeClientFasterWhisper(ServeClientBase):
     SINGLE_MODEL = None
     SINGLE_MODEL_LOCK = threading.Lock()
+    BATCH_WAIT_TIMEOUT_SECONDS = 30
     BATCH_WORKER = None
+    BATCH_WORKER_LOCK = threading.Lock()
+    # the batched GPU path encodes one 30 s window, longer requests fall back to serial transcribe
+    BATCH_MAX_CHUNK_S = 30
 
     def __init__(
         self,
@@ -99,10 +103,11 @@ class ServeClientFasterWhisper(ServeClientBase):
         try:
             if single_model:
                 if ServeClientFasterWhisper.SINGLE_MODEL is None:
-                    self.create_model(device)
-                    ServeClientFasterWhisper.SINGLE_MODEL = self.transcriber
-                else:
-                    self.transcriber = ServeClientFasterWhisper.SINGLE_MODEL
+                    with ServeClientFasterWhisper.SINGLE_MODEL_LOCK:
+                        if ServeClientFasterWhisper.SINGLE_MODEL is None:
+                            self.create_model(device)
+                            ServeClientFasterWhisper.SINGLE_MODEL = self.transcriber
+                self.transcriber = ServeClientFasterWhisper.SINGLE_MODEL
             else:
                 self.create_model(device)
         except Exception as e:
@@ -193,6 +198,12 @@ class ServeClientFasterWhisper(ServeClientBase):
             self.websocket.send(json.dumps(
                 {"uid": self.client_uid, "language": self.language, "language_prob": info.language_probability}))
 
+    def get_audio_chunk_for_processing(self):
+        input_bytes, duration = super().get_audio_chunk_for_processing()
+        if ServeClientFasterWhisper.BATCH_WORKER is None or duration <= self.BATCH_MAX_CHUNK_S:
+            return input_bytes, duration
+        return input_bytes[: self.BATCH_MAX_CHUNK_S * self.RATE], float(self.BATCH_MAX_CHUNK_S)
+
     def transcribe_audio(self, input_sample):
         """
         Transcribes the provided audio sample using the configured transcriber instance.
@@ -211,7 +222,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         """
         # Batch inference path: submit to central queue and wait
         if ServeClientFasterWhisper.BATCH_WORKER is not None:
-            from whisper_live.batch_inference import BatchRequest
+            from whisper_live.batch_inference import BatchRequest, prepare_features
             request = BatchRequest(
                 audio=input_sample,
                 language=self.language,
@@ -220,10 +231,17 @@ class ServeClientFasterWhisper(ServeClientBase):
                 use_vad=self.use_vad,
                 vad_parameters=self.vad_parameters if self.use_vad else None,
                 word_timestamps=self.word_timestamps,
+                hotwords=self.hotwords,
                 client_uid=self.client_uid,
             )
+            if not request.word_timestamps:
+                prepare_features(self.transcriber, request)
             ServeClientFasterWhisper.BATCH_WORKER.submit(request)
-            request.future.wait(timeout=30)
+            if not request.future.wait(timeout=self.BATCH_WAIT_TIMEOUT_SECONDS):
+                request.abandoned = True
+                raise TimeoutError(
+                    f"batch inference gave no result within {self.BATCH_WAIT_TIMEOUT_SECONDS}s"
+                )
             if request.error:
                 raise request.error
             if self.language is None and request.info is not None:

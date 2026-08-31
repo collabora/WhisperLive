@@ -40,12 +40,17 @@ from faster_whisper.vad import (
     get_speech_timestamps,
 )
 
+from whisper_live import metrics as wl_metrics
 from whisper_live.transcriber.transcriber_faster_whisper import (
     Segment,
     TranscriptionInfo,
     get_compression_ratio,
     get_suppressed_tokens,
+    restore_speech_timestamps,
 )
+
+
+FALLBACK_TEMPERATURES = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
 
 
 @dataclass
@@ -63,10 +68,21 @@ class BatchRequest:
         initial_prompt: Optional prompt for Whisper conditioning.
         use_vad: Whether to apply Voice Activity Detection.
         vad_parameters: Parameters forwarded to ``VadOptions``.
+        hotwords: Optional phrases to bias decoding toward.
+        word_timestamps: Whether to compute per-word timings; such requests
+            take the single path, the batched path has no word alignment.
         future: Event signaled when the result is ready.
         result: List of ``Segment`` objects (filled by worker).
         info: ``TranscriptionInfo`` metadata (filled by worker).
         error: Exception instance if processing failed.
+        abandoned: Set by the session thread when it stopped waiting; the
+            worker skips such requests instead of spending GPU time on them.
+        features: Mel spectrogram, filled by ``prepare_features``.
+        speech_chunks: VAD speech timestamps, filled by ``prepare_features``.
+        speech_duration: Seconds of audio left after VAD, filled by
+            ``prepare_features``.  ``None`` means the request has not been
+            preprocessed yet, ``0.0`` means VAD found no speech.
+        submitted_at: ``time.monotonic()`` stamp set by ``submit()``.
     """
     audio: np.ndarray
     language: Optional[str] = None
@@ -75,13 +91,50 @@ class BatchRequest:
     use_vad: bool = True
     vad_parameters: Optional[Dict] = None
     word_timestamps: bool = False
+    hotwords: Optional[str] = None
     client_uid: Optional[str] = None
     # Signaling
     future: threading.Event = field(default_factory=threading.Event)
+    # Preprocessing (filled by prepare_features, in the session thread or the worker)
+    features: Optional[np.ndarray] = None
+    speech_chunks: Optional[list] = None
+    speech_duration: Optional[float] = None
+    submitted_at: float = 0.0
     # Results (filled by batch worker)
     result: Optional[Any] = None
     info: Optional[Any] = None
     error: Optional[Exception] = None
+    abandoned: bool = False
+
+
+def prepare_features(transcriber, request: BatchRequest):
+    """Run VAD and mel extraction for one request and store them on it.
+
+    Called from the session thread so the batch worker only does GPU work.
+    ``feature_extractor`` is stateless numpy and the silero VAD runs through
+    one thread safe onnxruntime session, so parallel calls are fine.
+    """
+    sampling_rate = transcriber.feature_extractor.sampling_rate
+    audio = request.audio
+    speech_chunks = None
+
+    if request.use_vad:
+        vad_params = request.vad_parameters or {}
+        vad_opts = VadOptions(**vad_params) if isinstance(vad_params, dict) else vad_params
+        speech_chunks = get_speech_timestamps(audio, vad_opts)
+        if speech_chunks:
+            audio_chunks, _ = collect_chunks(audio, speech_chunks)
+            audio = np.concatenate(audio_chunks, axis=0) if audio_chunks else audio
+
+    request.speech_chunks = speech_chunks
+
+    if audio.shape[0] == 0:
+        request.speech_duration = 0.0
+        return
+
+    request.speech_duration = audio.shape[0] / sampling_rate
+    features = transcriber.feature_extractor(audio)
+    request.features = pad_or_trim(features)  # -> [n_mels, 3000]
 
 
 class BatchInferenceWorker:
@@ -108,17 +161,36 @@ class BatchInferenceWorker:
         max_batch_size: Maximum number of requests per batch.
         batch_window_ms: Maximum time (ms) to wait for the batch to fill
             after the first request arrives.
+        beam_size: Beam width for the first (temperature 0) decode of every
+            item on both paths. Greedy (1) decodes about 2.5x faster than 5.
+            Fallback decodes at higher temperatures sample with a beam of 1.
+        temperature_fallback: Re-decode items that fail the compression ratio
+            or log probability check at rising temperatures, like
+            ``transcriber.transcribe``. Each extra pass costs about as much as
+            the first, which halves throughput at beam 1. Off keeps the
+            temperature 0 result.
+        max_queue_wait_s: Measured queue wait above which ``overloaded()``
+            reports True so the server can turn new clients away.
     """
+
+    QUEUE_WAIT_EMA_ALPHA = 0.2
 
     def __init__(
         self,
         transcriber,
-        max_batch_size: int = 8,
+        max_batch_size: int = 16,
         batch_window_ms: int = 50,
+        max_queue_wait_s: float = 2.0,
+        beam_size: int = 1,
+        temperature_fallback: bool = False,
     ):
         self.transcriber = transcriber
+        self.beam_size = beam_size
+        self.temperature_fallback = temperature_fallback
         self.max_batch_size = max_batch_size
         self.batch_window_ms = batch_window_ms
+        self.max_queue_wait_s = max_queue_wait_s
+        self.queue_wait_s = 0.0
         self._queue: queue.Queue = queue.Queue()
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -146,7 +218,19 @@ class BatchInferenceWorker:
                 then call ``request.future.wait()`` to block until the
                 result is ready.
         """
+        request.submitted_at = time.monotonic()
         self._queue.put(request)
+
+    def overloaded(self) -> bool:
+        """Whether requests are waiting longer in the queue than allowed."""
+        return self.queue_wait_s > self.max_queue_wait_s
+
+    def _record_queue_wait(self, request: BatchRequest):
+        waited = time.monotonic() - request.submitted_at
+        self.queue_wait_s = (
+            self.QUEUE_WAIT_EMA_ALPHA * waited
+            + (1 - self.QUEUE_WAIT_EMA_ALPHA) * self.queue_wait_s
+        )
 
     # -------------------------------------------------------------------------
     # Worker loop
@@ -160,9 +244,11 @@ class BatchInferenceWorker:
             # Block until first request arrives
             try:
                 first = self._queue.get(timeout=0.5)
-                batch.append(first)
             except queue.Empty:
+                self.queue_wait_s = 0.0
                 continue
+            self._record_queue_wait(first)
+            batch.append(first)
 
             # Collect more requests within the batch window
             deadline = time.monotonic() + (self.batch_window_ms / 1000.0)
@@ -172,9 +258,14 @@ class BatchInferenceWorker:
                     break
                 try:
                     item = self._queue.get(timeout=remaining)
-                    batch.append(item)
                 except queue.Empty:
                     break
+                self._record_queue_wait(item)
+                batch.append(item)
+
+            batch = [req for req in batch if not req.abandoned]
+            if not batch:
+                continue
 
             # Process the collected batch
             try:
@@ -191,13 +282,32 @@ class BatchInferenceWorker:
     # -------------------------------------------------------------------------
 
     def _process_batch(self, batch: List[BatchRequest]):
-        """Dispatch to single or multi-item processing."""
+        """Dispatch to single or multi-item processing.
+
+        The multi-item path encodes a single 30s mel window per item and has
+        no word alignment, so audio longer than 30s and requests wanting word
+        timestamps go through ``transcriber.transcribe`` one at a time.
+        """
         if len(batch) == 1:
             self._process_single(batch[0])
             return
 
-        logging.info(f"[BatchInference] Processing batch of {len(batch)}")
-        self._process_multi(batch)
+        window_samples = 30 * self.transcriber.feature_extractor.sampling_rate
+
+        def needs_single_path(req):
+            return req.audio.shape[0] > window_samples or req.word_timestamps
+
+        single_items = [r for r in batch if needs_single_path(r)]
+        short_items = [r for r in batch if not needs_single_path(r)]
+
+        for req in single_items:
+            self._process_single(req)
+
+        if len(short_items) == 1:
+            self._process_single(short_items[0])
+        elif short_items:
+            logging.info(f"[BatchInference] Processing batch of {len(short_items)}")
+            self._process_multi(short_items)
 
     def _process_single(self, req: BatchRequest):
         """Process a single request using standard ``transcriber.transcribe()``.
@@ -213,6 +323,9 @@ class BatchInferenceWorker:
                 initial_prompt=req.initial_prompt,
                 vad_filter=req.use_vad,
                 vad_parameters=req.vad_parameters if req.use_vad else None,
+                hotwords=req.hotwords,
+                word_timestamps=req.word_timestamps,
+                beam_size=self.beam_size,
             )
             # Materialize the generator into a list
             req.result = list(result) if result is not None else []
@@ -226,38 +339,32 @@ class BatchInferenceWorker:
         """Batched GPU path: encode + generate for multiple sessions at once.
 
         Pipeline:
-            1. Per-item CPU preprocessing (VAD filtering + mel feature extraction)
+            1. Per-item CPU preprocessing, unless the session thread already
+               ran ``prepare_features``
             2. Batch GPU encode — single ``transcriber.encode()`` call
             3. Per-item prompt construction (handles different languages/tasks)
             4. Batch GPU generate — single ``transcriber.model.generate()`` call
             5. Per-item segment parsing and result dispatch
         """
         # Step 1: Per-item CPU preprocessing (VAD + feature extraction)
+        sampling_rate = self.transcriber.feature_extractor.sampling_rate
         preprocessed = []
         for req in batch:
             try:
-                audio = req.audio
-                speech_chunks = None
+                if req.speech_duration is None:
+                    prepare_features(self.transcriber, req)
 
-                if req.use_vad:
-                    vad_params = req.vad_parameters or {}
-                    vad_opts = VadOptions(**vad_params) if isinstance(vad_params, dict) else vad_params
-                    speech_chunks = get_speech_timestamps(audio, vad_opts)
-                    if speech_chunks:
-                        audio_chunks, _ = collect_chunks(audio, speech_chunks)
-                        audio = np.concatenate(audio_chunks, axis=0) if audio_chunks else audio
-
-                if audio.shape[0] == 0:
+                if req.speech_duration == 0:
                     # No speech detected — return empty result immediately
                     req.result = []
                     req.info = self._make_info(req, 0.0, 0.0)
                     req.future.set()
                     continue
 
-                duration = audio.shape[0] / self.transcriber.feature_extractor.sampling_rate
-                features = self.transcriber.feature_extractor(audio)
-                features = pad_or_trim(features)  # -> [n_mels, 3000]
-                preprocessed.append((req, features, audio, duration, speech_chunks))
+                full_duration = req.audio.shape[0] / sampling_rate
+                preprocessed.append(
+                    (req, req.features, req.speech_duration, full_duration, req.speech_chunks)
+                )
             except Exception as e:
                 req.error = e
                 req.future.set()
@@ -275,7 +382,7 @@ class BatchInferenceWorker:
             prompts = []
             resolved_languages = []
 
-            for i, (req, features, audio, duration, speech_chunks) in enumerate(preprocessed):
+            for i, (req, *_) in enumerate(preprocessed):
                 lang = req.language
                 # If language unknown, detect from encoder output
                 if lang is None:
@@ -305,6 +412,7 @@ class BatchInferenceWorker:
                     tokenizer,
                     previous_tokens=previous_tokens,
                     without_timestamps=False,
+                    hotwords=req.hotwords,
                 )
                 tokenizers_list.append(tokenizer)
                 prompts.append(prompt)
@@ -315,13 +423,13 @@ class BatchInferenceWorker:
             # only failed items are re-decoded at the next temperature.
             suppress_tokens = get_suppressed_tokens(tokenizers_list[0], [-1])
 
-            temperatures = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+            temperatures = FALLBACK_TEMPERATURES if self.temperature_fallback else [0.0]
             comp_thresh = 2.4
             logprob_thresh = -1.0
             no_speech_thresh = 0.6
 
             n = len(preprocessed)
-            final_results = [None] * n  # tuples of (gen_result, avg_logprob, used_temp)
+            final_results = [None] * n  # tuples of (gen_result, avg_logprob, used_temp, is_silence)
             pending_indices = list(range(n))
 
             for temp in temperatures:
@@ -340,7 +448,7 @@ class BatchInferenceWorker:
                 sub_prompts = [prompts[i] for i in pending_indices]
 
                 gen_kwargs = dict(
-                    beam_size=5 if temp == 0.0 else 1,
+                    beam_size=self.beam_size if temp == 0.0 else 1,
                     patience=1,
                     length_penalty=1,
                     max_length=self.transcriber.max_length,
@@ -377,19 +485,21 @@ class BatchInferenceWorker:
                     )
 
                     if not bad or is_silence or temp == temperatures[-1]:
-                        final_results[idx] = (gen_result, avg_logprob, temp)
+                        final_results[idx] = (gen_result, avg_logprob, temp, is_silence)
                     else:
                         next_pending.append(idx)
 
+                if next_pending:
+                    wl_metrics.track_batch_fallback(len(next_pending))
                 pending_indices = next_pending
 
             # Step 5: Per-item segment parsing and result dispatch
-            for i, (req, features, audio, duration, speech_chunks) in enumerate(preprocessed):
+            for i, (req, features, duration, full_duration, speech_chunks) in enumerate(preprocessed):
                 try:
                     tokenizer = tokenizers_list[i]
-                    gen_result, avg_logprob, used_temp = final_results[i]
+                    gen_result, avg_logprob, used_temp, is_silence = final_results[i]
 
-                    tokens = gen_result.sequences_ids[0]
+                    tokens = [] if is_silence else gen_result.sequences_ids[0]
                     segment_size = int(ceil(duration) * self.transcriber.frames_per_second)
 
                     subsegments, _, _ = self.transcriber._split_segments_by_timestamps(
@@ -420,9 +530,12 @@ class BatchInferenceWorker:
                             temperature=used_temp,
                         ))
 
+                    if speech_chunks:
+                        segments = list(restore_speech_timestamps(segments, speech_chunks, sampling_rate))
+
                     req.result = segments
                     req.info = self._make_info(
-                        req, duration, duration,
+                        req, full_duration, duration,
                         language=resolved_languages[i],
                     )
                 except Exception as e:

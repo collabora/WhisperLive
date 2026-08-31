@@ -181,8 +181,29 @@ class BackendType(Enum):
         return self == BackendType.OPENVINO
 
 
+class AdmissionRateLimiter:
+    """Token bucket that admits at most ``per_second`` clients per second."""
+
+    def __init__(self, per_second):
+        self.per_second = per_second
+        self.tokens = per_second
+        self.refilled_at = time.monotonic()
+        self.lock = threading.Lock()
+
+    def allow(self):
+        with self.lock:
+            now = time.monotonic()
+            self.tokens = min(self.per_second, self.tokens + (now - self.refilled_at) * self.per_second)
+            self.refilled_at = now
+            if self.tokens < 1:
+                return False
+            self.tokens -= 1
+            return True
+
+
 class TranscriptionServer:
     RATE = 16000
+    SECONDS_PER_MINUTE = 60
 
     def __init__(self):
         self.client_manager = None
@@ -190,9 +211,11 @@ class TranscriptionServer:
         self.use_vad = True
         self.single_model = False
         self.batch_config = None
+        self.admission_limiter = None
         self.raw_pcm_input = False
         self.audio_formats = {}
         self.segment_post_processor = None
+        self.transcript_finalizer = None
 
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
@@ -317,15 +340,16 @@ class TranscriptionServer:
 
                 # Start batch inference worker on first client (after model is loaded)
                 if (self.batch_config is not None
-                        and ServeClientFasterWhisper.BATCH_WORKER is None
                         and ServeClientFasterWhisper.SINGLE_MODEL is not None):
-                    from whisper_live.batch_inference import BatchInferenceWorker
-                    worker = BatchInferenceWorker(
-                        transcriber=ServeClientFasterWhisper.SINGLE_MODEL,
-                        **self.batch_config,
-                    )
-                    worker.start()
-                    ServeClientFasterWhisper.BATCH_WORKER = worker
+                    with ServeClientFasterWhisper.BATCH_WORKER_LOCK:
+                        if ServeClientFasterWhisper.BATCH_WORKER is None:
+                            from whisper_live.batch_inference import BatchInferenceWorker
+                            worker = BatchInferenceWorker(
+                                transcriber=ServeClientFasterWhisper.SINGLE_MODEL,
+                                **self.batch_config,
+                            )
+                            worker.start()
+                            ServeClientFasterWhisper.BATCH_WORKER = worker
         except Exception as e:
             logging.error(e)
             return
@@ -336,6 +360,10 @@ class TranscriptionServer:
         # Attach segment post-processor if configured
         if self.segment_post_processor is not None:
             client.segment_post_processor = self.segment_post_processor
+
+        # Attach end-of-stream finalizer if configured
+        if self.transcript_finalizer is not None:
+            client.transcript_finalizer = self.transcript_finalizer
 
         if translation_client:
             client.translation_client = translation_client
@@ -384,6 +412,30 @@ class TranscriptionServer:
             return audio_np.astype(np.float32) / 32768.0
         return np.frombuffer(frame_data, dtype=np.float32)
 
+    def batch_admission_refusal(self, websocket, options):
+        """Why a new client is turned away in batch mode, None when it may connect.
+
+        Refused clients get a WAIT carrying minutes, matching ``ClientManager.is_server_full``.
+        """
+        from whisper_live.backend.faster_whisper_backend import ServeClientFasterWhisper
+
+        worker = ServeClientFasterWhisper.BATCH_WORKER
+        if worker is None:
+            return None
+        if worker.overloaded():
+            reason = "overloaded"
+        elif self.admission_limiter is not None and not self.admission_limiter.allow():
+            reason = "rate_limited"
+        else:
+            return None
+        response = {
+            "uid": options["uid"],
+            "status": "WAIT",
+            "message": worker.queue_wait_s / self.SECONDS_PER_MINUTE,
+        }
+        websocket.send(json.dumps(response))
+        return reason
+
     def handle_new_connection(self, websocket, faster_whisper_custom_model_path,
                               whisper_tensorrt_path, trt_multilingual, trt_py_session=False):
         try:
@@ -396,6 +448,11 @@ class TranscriptionServer:
                 wl_metrics.track_connection_rejected(reason="full")
                 websocket.close()
                 return False  # Indicates that the connection should not continue
+            refusal = self.batch_admission_refusal(websocket, options)
+            if refusal:
+                wl_metrics.track_connection_rejected(reason=refusal)
+                websocket.close()
+                return False
             audio_format = options.get("audio_format", "float32")
             if audio_format not in {"float32", "int16", "uint8"}:
                 raise ValueError(f"Unsupported audio_format: {audio_format}")
@@ -476,6 +533,11 @@ class TranscriptionServer:
             while not self.client_manager.is_client_timeout(websocket):
                 if not self.process_audio_frames(websocket):
                     break
+            # stream ended normally (END_OF_AUDIO or timeout); socket still open,
+            # so run any end-of-stream finalizer before cleanup closes it.
+            client = self.client_manager.get_client(websocket)
+            if client:
+                client.finalize()
         except ConnectionClosed:
             logging.info("Connection closed by client")
         except Exception as e:
@@ -613,13 +675,18 @@ class TranscriptionServer:
             enable_rest=False,
             cors_origins: Optional[str] = None,
             batch_enabled=False,
-            batch_max_size=8,
+            batch_max_size=16,
             batch_window_ms=50,
+            batch_max_queue_wait_s=0.5,
+            batch_max_admissions_per_s=5.0,
+            batch_beam_size=1,
+            batch_temperature_fallback=False,
             raw_pcm_input=False,
             metrics_port: int = 0,
             api_key: Optional[str] = None,
             rate_limit_rpm: int = 0,
-            segment_post_processor=None):
+            segment_post_processor=None,
+            transcript_finalizer=None):
         """
         Run the transcription server.
 
@@ -631,15 +698,32 @@ class TranscriptionServer:
                 forced to True and a ``BatchInferenceWorker`` is started after
                 the first client connects. Defaults to False.
             batch_max_size (int): Maximum number of requests per GPU batch.
-                Defaults to 8.
+                Defaults to 16.
             batch_window_ms (int): Maximum time in milliseconds to wait for
                 the batch to fill after the first request arrives. Defaults
                 to 50.
+            batch_max_queue_wait_s (float): Measured batch queue wait in
+                seconds above which new clients are turned away with a WAIT
+                message. Defaults to 0.5.
+            batch_max_admissions_per_s (float): Most new clients admitted per
+                second in batch mode, the rest get a WAIT. Bounds the burst
+                that gets in before the queue wait reflects it. Defaults to 5.
+            batch_beam_size (int): Beam width for batched decoding. The
+                default 1 is greedy, 5 matches ``transcriber.transcribe`` at
+                about 2.5x the decode time.
+            batch_temperature_fallback (bool): Re-decode batched items that
+                fail the quality check at higher temperatures. Each fallback
+                pass costs about as much as the first. Defaults to False.
             segment_post_processor (callable, optional): A callable that receives
                 a transcription segment dict and returns a modified segment dict.
                 Applied to every segment before sending to the client. Useful for
                 plugging in custom post-processing (e.g. formatting, redaction).
                 Defaults to None.
+            transcript_finalizer (callable, optional): A callable that receives the
+                accumulated transcript (list of segment dicts) once the stream ends,
+                while the socket is still open, and may return a dict sent to the
+                client as a final message. Useful for cross-segment results (e.g.
+                paragraph grouping). Defaults to None.
         """
         self.cache_path = cache_path
         self.raw_pcm_input = raw_pcm_input
@@ -652,8 +736,15 @@ class TranscriptionServer:
             raise ValueError(f"batch_max_size must be >= 1, got {batch_max_size}")
         if batch_enabled and batch_window_ms < 0:
             raise ValueError(f"batch_window_ms must be >= 0, got {batch_window_ms}")
+        if batch_enabled and batch_max_queue_wait_s <= 0:
+            raise ValueError(f"batch_max_queue_wait_s must be > 0, got {batch_max_queue_wait_s}")
+        if batch_enabled and batch_max_admissions_per_s <= 0:
+            raise ValueError(f"batch_max_admissions_per_s must be > 0, got {batch_max_admissions_per_s}")
+        if batch_enabled and batch_beam_size < 1:
+            raise ValueError(f"batch_beam_size must be >= 1, got {batch_beam_size}")
 
         self.segment_post_processor = segment_post_processor
+        self.transcript_finalizer = transcript_finalizer
         self.client_manager = ClientManager(max_clients, max_connection_time)
         if faster_whisper_custom_model_path is not None and not os.path.exists(faster_whisper_custom_model_path):
             if "/" not in faster_whisper_custom_model_path:
@@ -667,7 +758,11 @@ class TranscriptionServer:
             self.batch_config = {
                 'max_batch_size': batch_max_size,
                 'batch_window_ms': batch_window_ms,
+                'max_queue_wait_s': batch_max_queue_wait_s,
+                'beam_size': batch_beam_size,
+                'temperature_fallback': batch_temperature_fallback,
             }
+            self.admission_limiter = AdmissionRateLimiter(batch_max_admissions_per_s)
             logging.info(f"Batch inference enabled (max_batch={batch_max_size}, window={batch_window_ms}ms)")
         else:
             self.batch_config = None
