@@ -323,9 +323,10 @@ class TestClientReconnect(unittest.TestCase):
 class TestClientReconnectOnlyOnUnexpectedClose(unittest.TestCase):
     """Only closes the client did not ask for should trigger a reconnect."""
 
-    @patch("whisper_live.client.websocket.WebSocketApp")
-    @patch("whisper_live.client.pyaudio.PyAudio")
-    def setUp(self, mock_pyaudio, mock_websocket):
+    def setUp(self):
+        patch("whisper_live.client.websocket.WebSocketApp").start()
+        mock_pyaudio = patch("whisper_live.client.pyaudio.PyAudio").start()
+        self.addCleanup(patch.stopall)
         mock_pyaudio.return_value.open.return_value = MagicMock()
         self.client = Client(host="localhost", port=9090, lang="en", max_retries=2, retry_delay=0)
 
