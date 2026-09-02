@@ -758,6 +758,21 @@ class TestWebSocketAuth(unittest.TestCase):
         result = handler("/?token=wrong", {})
         self.assertEqual(result[0], 401)
 
+    def test_valid_bearer_subprotocol_token(self):
+        handler = self._make_auth_handler("my-secret")
+        result = handler("/", {"Sec-WebSocket-Protocol": "bearer, my-secret"})
+        self.assertIsNone(result)
+
+    def test_invalid_bearer_subprotocol_token(self):
+        handler = self._make_auth_handler("my-secret")
+        result = handler("/", {"Sec-WebSocket-Protocol": "bearer, wrong"})
+        self.assertEqual(result[0], 401)
+
+    def test_subprotocol_token_without_bearer_marker(self):
+        handler = self._make_auth_handler("my-secret")
+        result = handler("/", {"Sec-WebSocket-Protocol": "my-secret"})
+        self.assertEqual(result[0], 401)
+
 
 class TestBearerSubprotocolSelection(unittest.TestCase):
     """Tests for the select_subprotocol callback passed to serve()."""

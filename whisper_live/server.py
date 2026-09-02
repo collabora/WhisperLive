@@ -70,13 +70,20 @@ def _all_websocket_checks(checks, connection, request):
     return None
 
 
+def _offered_subprotocols(request):
+    header = request.headers.get("Sec-WebSocket-Protocol", "")
+    return [name.strip() for name in header.split(",") if name.strip()]
+
+
 def _websocket_auth(api_key, connection, request):
     auth = request.headers.get("Authorization", "")
     token_param = None
     if "?" in request.path:
         parsed = urlparse(request.path)
         token_param = parse_qs(parsed.query).get("token", [None])[0]
-    if auth == f"Bearer {api_key}" or token_param == api_key:
+    offered = _offered_subprotocols(request)
+    bearer_subprotocol_token = BEARER_SUBPROTOCOL in offered and api_key in offered
+    if auth == f"Bearer {api_key}" or token_param == api_key or bearer_subprotocol_token:
         return None
     return connection.respond(HTTPStatus.UNAUTHORIZED, "Unauthorized\n")
 
