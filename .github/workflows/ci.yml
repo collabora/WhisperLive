@@ -97,7 +97,7 @@ jobs:
         run: |
           python -m venv smoke-test-venv
           source smoke-test-venv/bin/activate
-          pip install dist/*.whl
+          pip install --timeout 120 dist/*.whl
           python -c "import whisper_live.client; import whisper_live.server"
 
   build-and-push-docker-cpu:
