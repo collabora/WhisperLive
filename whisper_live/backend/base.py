@@ -159,7 +159,7 @@ class ServeClientBase(object):
                 wl_metrics.track_error("transcription")
                 time.sleep(self.ERROR_BACKOFF_S)
 
-    def transcribe_audio(self):
+    def transcribe_audio(self, input_sample):
         raise NotImplementedError
 
     def handle_transcription_output(self, result, duration):
