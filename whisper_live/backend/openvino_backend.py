@@ -21,6 +21,7 @@ class ServeClientOpenVINO(ServeClientBase):
         client_uid=None,
         model="small.en",
         initial_prompt=None,
+        hotwords=None,
         vad_parameters=None,
         use_vad=True,
         single_model=False,
@@ -43,6 +44,7 @@ class ServeClientOpenVINO(ServeClientBase):
             client_uid (str, optional): A unique identifier for the client. Defaults to None.
             model (str, optional): Huggingface model_id for a valid OpenVINO model.
             initial_prompt (str, optional): Prompt for whisper inference. Defaults to None.
+            hotwords (str, optional): Hotwords to boost recognition of specific terms. Defaults to None.
             single_model (bool, optional): Whether to instantiate a new model for each client connection. Defaults to False.
             send_last_n_segments (int, optional): Number of most recent segments to send to the client. Defaults to 10.
             no_speech_thresh (float, optional): Segments with no speech probability above this threshold will be discarded. Defaults to 0.45.
@@ -62,6 +64,8 @@ class ServeClientOpenVINO(ServeClientBase):
             self.language = f"<|{self.language}|>"
 
         self.task = "transcribe" if task is None else task
+        self.initial_prompt = initial_prompt
+        self.hotwords = hotwords
 
         self.clip_audio = True
 
@@ -104,7 +108,9 @@ class ServeClientOpenVINO(ServeClientBase):
             model_id,
             device=self.device,
             language=self.language,
-            task=self.task
+            task=self.task,
+            initial_prompt=self.initial_prompt,
+            hotwords=self.hotwords,
         )
 
     def transcribe_audio(self, input_sample):

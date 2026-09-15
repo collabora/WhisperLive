@@ -341,6 +341,8 @@ class TranscriptionServer:
                     task=options["task"],
                     client_uid=options["uid"],
                     model=options["model"],
+                    initial_prompt=options.get("initial_prompt"),
+                    hotwords=options.get("hotwords"),
                     single_model=self.single_model,
                     send_last_n_segments=options.get("send_last_n_segments", 10),
                     no_speech_thresh=options.get("no_speech_thresh", 0.45),
