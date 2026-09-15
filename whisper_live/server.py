@@ -346,6 +346,8 @@ class TranscriptionServer:
                     no_speech_thresh=options.get("no_speech_thresh", 0.45),
                     clip_audio=options.get("clip_audio", False),
                     same_output_threshold=options.get("same_output_threshold", 10),
+                    diarization=self._create_diarizer(options),
+                    translation_queue=translation_queue,
                 )
                 logging.info("Running OpenVINO backend.")
             except Exception as e:

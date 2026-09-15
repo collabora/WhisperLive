@@ -28,6 +28,8 @@ class ServeClientOpenVINO(ServeClientBase):
         no_speech_thresh=0.45,
         clip_audio=False,
         same_output_threshold=10,
+        diarization=None,
+        translation_queue=None,
     ):
         """
         Initialize a ServeClient instance.
@@ -48,6 +50,10 @@ class ServeClientOpenVINO(ServeClientBase):
             no_speech_thresh (float, optional): Segments with no speech probability above this threshold will be discarded. Defaults to 0.45.
             clip_audio (bool, optional): Whether to clip audio with no valid segments. Defaults to False.
             same_output_threshold (int, optional): Number of repeated outputs before considering it as a valid segment. Defaults to 10.
+            diarization (SpeakerDiarizer, optional): Diarizer used to label completed segments with a
+                speaker. Defaults to None (diarization disabled).
+            translation_queue (queue.Queue, optional): Queue that completed segments are pushed to for a
+                separate translation thread to consume. Defaults to None (translation disabled).
         """
         super().__init__(
             client_uid,
@@ -56,6 +62,8 @@ class ServeClientOpenVINO(ServeClientBase):
             no_speech_thresh,
             clip_audio,
             same_output_threshold,
+            translation_queue=translation_queue,
+            diarization=diarization,
         )
         self.language = "en" if language is None else language
         if not self.language.startswith("<|"):
