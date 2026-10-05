@@ -21,7 +21,6 @@ class ServeClientOpenVINO(ServeClientBase):
         client_uid=None,
         model="small.en",
         initial_prompt=None,
-        hotwords=None,
         vad_parameters=None,
         use_vad=True,
         single_model=False,
@@ -29,6 +28,7 @@ class ServeClientOpenVINO(ServeClientBase):
         no_speech_thresh=0.45,
         clip_audio=False,
         same_output_threshold=10,
+        hotwords=None,
     ):
         """
         Initialize a ServeClient instance.
@@ -108,9 +108,7 @@ class ServeClientOpenVINO(ServeClientBase):
             model_id,
             device=self.device,
             language=self.language,
-            task=self.task,
-            initial_prompt=self.initial_prompt,
-            hotwords=self.hotwords,
+            task=self.task
         )
 
     def transcribe_audio(self, input_sample):
@@ -131,7 +129,11 @@ class ServeClientOpenVINO(ServeClientBase):
         """
         if ServeClientOpenVINO.SINGLE_MODEL:
             ServeClientOpenVINO.SINGLE_MODEL_LOCK.acquire()
-        result = self.transcriber.transcribe(input_sample)
+        result = self.transcriber.transcribe(
+            input_sample,
+            initial_prompt=self.initial_prompt,
+            hotwords=self.hotwords,
+        )
         if ServeClientOpenVINO.SINGLE_MODEL:
             ServeClientOpenVINO.SINGLE_MODEL_LOCK.release()
         return result
