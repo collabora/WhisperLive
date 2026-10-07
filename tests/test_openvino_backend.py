@@ -42,7 +42,10 @@ class TestWhisperOpenVINOInitialPromptHotwords(unittest.TestCase):
     to generate()."""
 
     def _make_transcriber(self, **kwargs):
+        # Patch the pipeline too: where openvino_genai is really installed (CI),
+        # constructing a real WhisperPipeline from a fake path would fail.
         with patch("whisper_live.transcriber.transcriber_openvino.hf_hub"), \
+             patch("whisper_live.transcriber.transcriber_openvino.ov_genai"), \
              patch("os.path.exists", return_value=True):
             return WhisperOpenVINO(**kwargs)
 
