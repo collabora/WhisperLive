@@ -215,7 +215,7 @@ class ServeClientBase(object):
                 self.frames_offset += float(self.BUFFER_TRIM_DURATION_S)
                 self.frames_np = self.frames_np[int(self.BUFFER_TRIM_DURATION_S*self.RATE):]
                 # check timestamp offset(should be >= self.frame_offset)
-                # this basically means that there is no speech as timestamp offset hasnt updated
+                # this basically means that there is no speech as timestamp offset hasn't updated
                 # and is less than frame_offset
                 if self.timestamp_offset < self.frames_offset:
                     self.timestamp_offset = self.frames_offset
@@ -487,8 +487,8 @@ class ServeClientBase(object):
         if self.current_out.strip() == self.prev_out.strip() and self.current_out != '':
             self.same_output_count += 1
 
-            # if we remove the audio because of same output on the nth reptition we might remove the 
-            # audio thats not yet transcribed so, capturing the time when it was repeated for the first time
+            # if we remove the audio because of same output on the nth repetition we might remove the
+            # audio that's not yet transcribed so, capturing the time when it was repeated for the first time
             if self.end_time_for_same_output is None:
                 self.end_time_for_same_output = self.get_segment_end(segments[-1])
             time.sleep(0.1)  # wait briefly for any new voice activity
