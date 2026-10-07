@@ -688,9 +688,24 @@ class TranscriptionServer:
                 self.rest_models[model_name] = transcriber
             return transcriber
 
-    def _stream_transcription(self, file, language, prompt, temperature,
-                              timestamp_granularities,
-                              requested_model=None):
+    def _stream_transcription(
+        self,
+        file,
+        language,
+        prompt,
+        temperature,
+        timestamp_granularities,
+        requested_model=None,
+        vad_filter=False,
+        vad_threshold=0.6,
+        vad_min_speech_duration_ms=500,
+        vad_min_silence_duration_ms=800,
+        vad_speech_pad_ms=200,
+        condition_on_previous_text=False,
+        no_speech_threshold=0.6,
+        log_prob_threshold=-1.0,
+        repetition_penalty=1.0,
+    ):
         """Return a StreamingResponse that yields SSE events per segment.
 
         The first event carries the detected language and its probability, then
@@ -711,7 +726,17 @@ class TranscriptionServer:
                     language=language,
                     initial_prompt=prompt,
                     temperature=temperature,
-                    vad_filter=False,
+                    vad_filter=vad_filter,
+                    vad_parameters={
+                        "threshold": vad_threshold,
+                        "min_speech_duration_ms": vad_min_speech_duration_ms,
+                        "min_silence_duration_ms": vad_min_silence_duration_ms,
+                        "speech_pad_ms": vad_speech_pad_ms,
+                    } if vad_filter else None,
+                    condition_on_previous_text=condition_on_previous_text,
+                    no_speech_threshold=no_speech_threshold,
+                    log_prob_threshold=log_prob_threshold,
+                    repetition_penalty=repetition_penalty,
                     word_timestamps=(timestamp_granularities and "word" in timestamp_granularities),
                 )
 
@@ -891,12 +916,30 @@ class TranscriptionServer:
             known_speaker_references: Optional[List[UploadFile]] = File(default=None),
             stream: bool = Form(default=False),
             hotwords: Optional[str] = Form(default=None),
+            vad_filter: bool = Form(default=False),
+            vad_threshold: float = Form(default=0.6),
+            vad_min_speech_duration_ms: int = Form(default=500),
+            vad_min_silence_duration_ms: int = Form(default=800),
+            vad_speech_pad_ms: int = Form(default=200),
+            condition_on_previous_text: bool = Form(default=False),
+            no_speech_threshold: float = Form(default=0.6),
+            log_prob_threshold: float = Form(default=-1.0),
+            repetition_penalty: float = Form(default=1.0),
         ):
             if stream:
                 return self._stream_transcription(
                     file, language, prompt, temperature,
                     timestamp_granularities,
                     model,
+                    vad_filter,
+                    vad_threshold=vad_threshold,
+                    vad_min_speech_duration_ms=vad_min_speech_duration_ms,
+                    vad_min_silence_duration_ms=vad_min_silence_duration_ms,
+                    vad_speech_pad_ms=vad_speech_pad_ms,
+                    condition_on_previous_text=condition_on_previous_text,
+                    no_speech_threshold=no_speech_threshold,
+                    repetition_penalty=repetition_penalty,
+                    log_prob_threshold=log_prob_threshold,
                 )
 
             ignored_params = []
@@ -927,7 +970,17 @@ class TranscriptionServer:
                     language=language,
                     initial_prompt=prompt,
                     temperature=temperature,
-                    vad_filter=False,
+                    vad_filter=vad_filter,
+                    vad_parameters={
+                        "threshold": vad_threshold,
+                        "min_speech_duration_ms": vad_min_speech_duration_ms,
+                        "min_silence_duration_ms": vad_min_silence_duration_ms,
+                        "speech_pad_ms": vad_speech_pad_ms,
+                    } if vad_filter else None,
+                    condition_on_previous_text=condition_on_previous_text,
+                    no_speech_threshold=no_speech_threshold,
+                    log_prob_threshold=log_prob_threshold,
+                    repetition_penalty=repetition_penalty,
                     word_timestamps=(timestamp_granularities and "word" in timestamp_granularities),
                     hotwords=hotwords,
                 )
