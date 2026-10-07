@@ -26,6 +26,10 @@ class TestFormatTime(unittest.TestCase):
     def test_millisecond_precision(self):
         self.assertEqual(format_time(0.001), "00:00:00,001")
 
+    def test_tenth_of_a_second(self):
+        self.assertEqual(format_time(1.2), "00:00:01,200")
+        self.assertEqual(format_time(2.3), "00:00:02,300")
+
     def test_large_value(self):
         # float precision: int((86399.999 - 86399) * 1000) may be 998 or 999
         result = format_time(86399.999)
