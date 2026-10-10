@@ -11,8 +11,8 @@ jiwer
 evaluate
 numpy>=1.26.4,<2.5
 openai-whisper==20250625
-tokenizers==0.20.3
-transformers[torch]
+tokenizers>=0.20.3,<0.23
+transformers[torch]<5
 sentencepiece
 
 # openvino
