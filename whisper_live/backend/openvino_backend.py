@@ -28,6 +28,7 @@ class ServeClientOpenVINO(ServeClientBase):
         no_speech_thresh=0.45,
         clip_audio=False,
         same_output_threshold=10,
+        hotwords=None,
     ):
         """
         Initialize a ServeClient instance.
@@ -43,6 +44,7 @@ class ServeClientOpenVINO(ServeClientBase):
             client_uid (str, optional): A unique identifier for the client. Defaults to None.
             model (str, optional): Huggingface model_id for a valid OpenVINO model.
             initial_prompt (str, optional): Prompt for whisper inference. Defaults to None.
+            hotwords (str, optional): Hotwords to boost recognition of specific terms. Defaults to None.
             single_model (bool, optional): Whether to instantiate a new model for each client connection. Defaults to False.
             send_last_n_segments (int, optional): Number of most recent segments to send to the client. Defaults to 10.
             no_speech_thresh (float, optional): Segments with no speech probability above this threshold will be discarded. Defaults to 0.45.
@@ -62,6 +64,8 @@ class ServeClientOpenVINO(ServeClientBase):
             self.language = f"<|{self.language}|>"
 
         self.task = "transcribe" if task is None else task
+        self.initial_prompt = initial_prompt
+        self.hotwords = hotwords
 
         self.clip_audio = True
 
@@ -125,7 +129,11 @@ class ServeClientOpenVINO(ServeClientBase):
         """
         if ServeClientOpenVINO.SINGLE_MODEL:
             ServeClientOpenVINO.SINGLE_MODEL_LOCK.acquire()
-        result = self.transcriber.transcribe(input_sample)
+        result = self.transcriber.transcribe(
+            input_sample,
+            initial_prompt=self.initial_prompt,
+            hotwords=self.hotwords,
+        )
         if ServeClientOpenVINO.SINGLE_MODEL:
             ServeClientOpenVINO.SINGLE_MODEL_LOCK.release()
         return result

@@ -6,7 +6,13 @@ import huggingface_hub as hf_hub
 
 
 class WhisperOpenVINO(object):
-    def __init__(self, model_id="OpenVINO/whisper-tiny-fp16-ov", device="CPU", language="en", task="transcribe"):
+    def __init__(
+        self,
+        model_id="OpenVINO/whisper-tiny-fp16-ov",
+        device="CPU",
+        language="en",
+        task="transcribe",
+    ):
         model_path = model_id.split('/')[-1]
         cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "openvino_whisper_models")
         os.makedirs(cache_dir, exist_ok=True)
@@ -17,7 +23,16 @@ class WhisperOpenVINO(object):
         self.language = language
         self.task = task
 
-    def transcribe(self, input_audio):
-        outputs = self.model.generate(input_audio, return_timestamps=True, language=self.language, task=self.task)
+    def transcribe(self, input_audio, initial_prompt=None, hotwords=None):
+        # Passed per call (not stored on the instance) so clients sharing one
+        # transcriber under single_model=True each get their own options.
+        outputs = self.model.generate(
+            input_audio,
+            return_timestamps=True,
+            language=self.language,
+            task=self.task,
+            initial_prompt=initial_prompt,
+            hotwords=hotwords,
+        )
         outputs = [seg for seg in outputs.chunks]
         return outputs
