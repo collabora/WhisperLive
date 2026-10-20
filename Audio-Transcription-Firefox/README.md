@@ -32,7 +32,7 @@ When using the Audio Transcription extension, you have the following options:
 ### Getting Started
 - Make sure the transcription server is running properly. To know more about how to start the server, see the [documentation here](https://github.com/collabora/whisper-live).
 - Just click on the Firefox Extension which should show 2 options
-  - **Start Capture** : Starts capturing the audio in the current tab and sends the captured audio to the server for transcription. This also creates an element to show the transcriptions recieved from the server on the current tab.
+  - **Start Capture** : Starts capturing the audio in the current tab and sends the captured audio to the server for transcription. This also creates an element to show the transcriptions received from the server on the current tab.
   - **Stop Capture** - Stops capturing the audio.
 
 
