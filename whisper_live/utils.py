@@ -40,7 +40,17 @@ def format_time(s):
     hours = int(s // 3600)
     minutes = int((s % 3600) // 60)
     seconds = int(s % 60)
-    milliseconds = int((s - int(s)) * 1000)
+    # 1.2 sits just under 200 ms in float, so a bare int() drops that millisecond.
+    milliseconds = int((s - int(s)) * 1000 + 1e-6)
+    if milliseconds >= 1000:
+        milliseconds = 0
+        seconds += 1
+        if seconds >= 60:
+            seconds = 0
+            minutes += 1
+            if minutes >= 60:
+                minutes = 0
+                hours += 1
     return f"{hours:02}:{minutes:02}:{seconds:02},{milliseconds:03}"
 
 
