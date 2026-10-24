@@ -229,6 +229,24 @@ class TestBatchInferenceWorker(unittest.TestCase):
             self.assertEqual(req.info.duration, 2.0)
             self.assertEqual(req.info.duration_after_vad, 1.0)
 
+    @mock.patch('whisper_live.batch_inference.get_speech_timestamps', return_value=[])
+    @mock.patch('whisper_live.batch_inference.get_suppressed_tokens', return_value=[-1])
+    @mock.patch('whisper_live.batch_inference.Tokenizer')
+    def test_vad_without_speech_skips_decoding(self, mock_tokenizer_cls, mock_suppress, mock_vad):
+        """When VAD finds no speech the audio is not decoded, like transcriber.transcribe."""
+        self._mock_multi_path(mock_tokenizer_cls, n_items=2)
+
+        requests = [
+            BatchRequest(audio=self._make_audio(), language="en", use_vad=True)
+            for _ in range(2)
+        ]
+        self._run_batch(requests)
+
+        self.mock_transcriber.encode.assert_not_called()
+        for req in requests:
+            self.assertEqual(req.result, [])
+            self.assertEqual(req.info.duration_after_vad, 0.0)
+
     @mock.patch('whisper_live.batch_inference.get_suppressed_tokens', return_value=[-1])
     @mock.patch('whisper_live.batch_inference.Tokenizer')
     def test_silence_yields_no_segments(self, mock_tokenizer_cls, mock_suppress):
