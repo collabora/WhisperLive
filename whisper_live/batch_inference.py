@@ -122,9 +122,8 @@ def prepare_features(transcriber, request: BatchRequest):
         vad_params = request.vad_parameters or {}
         vad_opts = VadOptions(**vad_params) if isinstance(vad_params, dict) else vad_params
         speech_chunks = get_speech_timestamps(audio, vad_opts)
-        if speech_chunks:
-            audio_chunks, _ = collect_chunks(audio, speech_chunks)
-            audio = np.concatenate(audio_chunks, axis=0) if audio_chunks else audio
+        audio_chunks, _ = collect_chunks(audio, speech_chunks)
+        audio = np.concatenate(audio_chunks, axis=0)
 
     request.speech_chunks = speech_chunks
 
