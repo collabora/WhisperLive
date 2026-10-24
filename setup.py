@@ -46,7 +46,8 @@ setup(
     ),
     install_requires=[
         "PyAudio",
-        "av",
+        # PyAV 19 dropped the metadata_errors argument that faster-whisper's decode_audio passes
+        "av<19",
         "faster-whisper==1.2.0",
         "torch",
         "torchaudio",
