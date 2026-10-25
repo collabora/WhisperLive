@@ -519,7 +519,10 @@ class TranscriptionTeeClient:
             self.process_hls_stream(hls_url, save_file)
         elif audio is not None:
             resampled_file = utils.resample(audio)
-            self.play_file(resampled_file)
+            try:
+                self.play_file(resampled_file)
+            finally:
+                os.remove(resampled_file)
         elif rtsp_url is not None:
             self.process_rtsp_stream(rtsp_url)
         else:
