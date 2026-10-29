@@ -3,6 +3,9 @@ import time
 import unittest
 from unittest.mock import patch, MagicMock, PropertyMock
 
+import numpy as np
+import pyaudio
+
 from whisper_live.client import Client, TranscriptionClient, TranscriptionTeeClient
 
 
@@ -270,6 +273,48 @@ class TestTeeClientEdgeCases(unittest.TestCase):
     def test_empty_clients_raises(self):
         with self.assertRaises(Exception):
             TranscriptionTeeClient([])
+
+
+class TestRecordMicrophoneRate(unittest.TestCase):
+    def setUp(self):
+        self.mock_pyaudio = patch("whisper_live.client.pyaudio.PyAudio").start()
+        self.addCleanup(patch.stopall)
+        self.audio = self.mock_pyaudio.return_value
+        self.audio.get_default_input_device_info.return_value = {"defaultSampleRate": 48000.0}
+        self.stream = MagicMock()
+        self.client = MagicMock(recording=True)
+        self.tee = TranscriptionTeeClient([self.client])
+
+    def _record_chunks(self, n_chunks):
+        audio_packets = []
+
+        def send_packet_to_server(packet):
+            audio_packets.append(packet)
+            if len(audio_packets) == n_chunks:
+                self.client.recording = False
+
+        self.client.send_packet_to_server.side_effect = send_packet_to_server
+        self.stream.read.side_effect = lambda n_frames, exception_on_overflow: np.zeros(n_frames, dtype=np.int16).tobytes()
+        self.tee.record()
+        return sum(len(packet) for packet in audio_packets) // np.dtype(np.float32).itemsize
+
+    def test_16khz_microphone_is_sent_unchanged(self):
+        self.audio.open.return_value = self.stream
+        sent_samples = self._record_chunks(3)
+        self.assertEqual(self.audio.open.call_args.kwargs["rate"], 16000)
+        self.assertEqual(sent_samples, 3 * self.tee.chunk)
+
+    def test_invalid_sample_rate_falls_back_to_device_rate(self):
+        self.audio.open.side_effect = [OSError(pyaudio.paInvalidSampleRate, "Invalid sample rate"), self.stream]
+        sent_samples = self._record_chunks(3)
+        self.assertEqual(self.audio.open.call_args.kwargs["rate"], 48000)
+        # 48 kHz to 16 kHz keeps a third of the samples, minus the resampler's filter delay
+        self.assertAlmostEqual(sent_samples, self.tee.chunk, delta=64)
+
+    def test_other_microphone_errors_are_raised(self):
+        self.audio.open.side_effect = OSError(pyaudio.paDeviceUnavailable, "Device unavailable")
+        with self.assertRaises(OSError):
+            self.tee.record()
 
 
 class TestClientReconnect(unittest.TestCase):
