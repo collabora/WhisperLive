@@ -100,6 +100,21 @@ class TestSpeakerDiarizer(unittest.TestCase):
         speaker = d.identify_speaker(audio)
         self.assertEqual(speaker, "Alice")
 
+    def test_new_speaker_does_not_take_enrolled_name(self):
+        d = self._make_diarizer(speaker_names=["Alice", "Bob"])
+        audio = np.zeros(16000, dtype=np.float32)
+        self._set_embedding(d, [1.0, 0.0, 0.0])
+        self.assertTrue(d.enroll_speaker("Alice", audio))
+        self._set_embedding(d, [0.0, 1.0, 0.0])
+        self.assertTrue(d.enroll_speaker("Bob", audio))
+
+        self._set_embedding(d, [0.0, 0.0, 1.0])
+        self.assertEqual(d.identify_speaker(audio), "SPEAKER_02")
+        np.testing.assert_allclose(d.speakers["Alice"], [1.0, 0.0, 0.0])
+
+        self._set_embedding(d, [1.0, 0.0, 0.0])
+        self.assertEqual(d.identify_speaker(audio), "Alice")
+
     def test_import_error_without_pyannote(self):
         from whisper_live.diarization import SpeakerDiarizer
 
