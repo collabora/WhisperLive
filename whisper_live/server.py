@@ -987,7 +987,8 @@ class TranscriptionServer:
                     wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
                     return verbose
                 elif response_format in ["srt", "vtt"]:
-                    output = []
+                    # a WebVTT file must start with the WEBVTT header
+                    output = ["WEBVTT\n"] if response_format == "vtt" else []
                     for i, seg in enumerate(segments, 1):
                         start = f"{int(seg.start // 3600):02}:{int((seg.start % 3600) // 60):02}:{seg.start % 60:06.3f}"
                         end = f"{int(seg.end // 3600):02}:{int((seg.end % 3600) // 60):02}:{seg.end % 60:06.3f}"
