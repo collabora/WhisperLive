@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 from starlette.responses import PlainTextResponse, StreamingResponse
 import uvicorn
 from faster_whisper import WhisperModel
+from faster_whisper.utils import format_timestamp
 import torch
 
 from enum import Enum
@@ -989,11 +990,12 @@ class TranscriptionServer:
                 elif response_format in ["srt", "vtt"]:
                     # a WebVTT file must start with the WEBVTT header
                     output = ["WEBVTT\n"] if response_format == "vtt" else []
+                    decimal_marker = "," if response_format == "srt" else "."
                     for i, seg in enumerate(segments, 1):
-                        start = f"{int(seg.start // 3600):02}:{int((seg.start % 3600) // 60):02}:{seg.start % 60:06.3f}"
-                        end = f"{int(seg.end // 3600):02}:{int((seg.end % 3600) // 60):02}:{seg.end % 60:06.3f}"
+                        start = format_timestamp(seg.start, always_include_hours=True, decimal_marker=decimal_marker)
+                        end = format_timestamp(seg.end, always_include_hours=True, decimal_marker=decimal_marker)
                         if response_format == "srt":
-                            output.append(f"{i}\n{start.replace('.', ',')} --> {end.replace('.', ',')}\n{seg.text.strip()}\n")
+                            output.append(f"{i}\n{start} --> {end}\n{seg.text.strip()}\n")
                         else:  # vtt
                             output.append(f"{start} --> {end}\n{seg.text.strip()}\n")
                     wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
