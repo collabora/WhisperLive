@@ -1,4 +1,8 @@
+import os
+import shutil
+import tempfile
 import unittest
+import urllib.error
 from unittest.mock import patch, MagicMock
 
 import numpy as np
@@ -62,29 +66,46 @@ class TestVoiceActivityDetectionStateReset(unittest.TestCase):
         self.assertEqual(self.vad._state.shape, (2, 1, 128))
 
 
+def _write_model(url, filename):
+    with open(filename, "wb") as model_file:
+        model_file.write(b"onnx model")
+
+
 class TestVoiceActivityDetectionDownload(unittest.TestCase):
     """Tests for the model download function."""
 
-    @patch("os.path.exists", return_value=True)
-    def test_skips_download_if_exists(self, mock_exists):
-        path = VoiceActivityDetection.download()
-        self.assertTrue(path.endswith("silero_vad.onnx"))
+    def setUp(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home)
+        patch.dict(os.environ, {"HOME": home, "USERPROFILE": home}).start()
+        self.addCleanup(patch.stopall)
+        self.model_path = os.path.join(home, ".cache", "whisper-live", "silero_vad.onnx")
 
-    @patch("os.path.exists", return_value=False)
-    @patch("subprocess.run")
-    @patch("os.makedirs")
-    def test_downloads_if_missing(self, mock_makedirs, mock_run, mock_exists):
-        path = VoiceActivityDetection.download()
-        mock_run.assert_called_once()
-        self.assertIn("silero_vad.onnx", path)
+    @patch("urllib.request.urlretrieve")
+    def test_skips_download_if_exists(self, mock_urlretrieve):
+        os.makedirs(os.path.dirname(self.model_path))
+        _write_model(None, self.model_path)
+        self.assertEqual(VoiceActivityDetection.download(), self.model_path)
+        mock_urlretrieve.assert_not_called()
 
-    @patch("os.path.exists", return_value=False)
-    @patch("subprocess.run", side_effect=Exception("wget not found"))
-    @patch("os.makedirs")
-    def test_handles_download_failure(self, mock_makedirs, mock_run, mock_exists):
-        # should not raise, just prints an error
-        with self.assertRaises(Exception):
+    @patch("urllib.request.urlretrieve", side_effect=_write_model)
+    def test_downloads_if_missing(self, mock_urlretrieve):
+        path = VoiceActivityDetection.download()
+        self.assertEqual(path, self.model_path)
+        with open(path, "rb") as model_file:
+            self.assertEqual(model_file.read(), b"onnx model")
+
+    @patch("urllib.request.urlretrieve")
+    def test_failed_download_raises_and_leaves_no_model(self, mock_urlretrieve):
+        def interrupted_download(url, filename):
+            with open(filename, "wb") as model_file:
+                model_file.write(b"onn")
+            raise urllib.error.URLError("connection reset")
+
+        mock_urlretrieve.side_effect = interrupted_download
+        with self.assertRaises(urllib.error.URLError):
             VoiceActivityDetection.download()
+        self.assertFalse(os.path.exists(self.model_path))
 
 
 class TestVoiceActivityDetectorThreshold(unittest.TestCase):
