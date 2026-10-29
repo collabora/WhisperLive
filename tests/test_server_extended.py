@@ -1015,12 +1015,12 @@ class TestRestTranscribeModelAndLanguage(unittest.TestCase):
         self.server = TranscriptionServer()
         self.server.client_manager = ClientManager(max_clients=2, max_connection_time=60)
 
-    def _post(self, mock_model_cls, **fields):
+    def _post(self, mock_model_cls, segment=None, **fields):
         import io
         from fastapi.testclient import TestClient
 
         transcriber = MagicMock()
-        transcriber.transcribe.return_value = (iter([_make_segment()]), _make_transcription_info())
+        transcriber.transcribe.return_value = (iter([segment or _make_segment()]), _make_transcription_info())
         mock_model_cls.return_value = transcriber
         self.transcriber = transcriber
 
@@ -1091,6 +1091,18 @@ class TestRestTranscribeModelAndLanguage(unittest.TestCase):
         resp = self._post(mock_model_cls, response_format="srt")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.text, "1\n00:00:00,000 --> 00:00:01,000\nhello\n")
+
+    @patch("whisper_live.server.WhisperModel")
+    def test_srt_timestamp_rounds_into_the_next_minute(self, mock_model_cls):
+        segment = _make_segment(start=59.9996, end=61.0)
+        resp = self._post(mock_model_cls, segment=segment, response_format="srt")
+        self.assertIn("00:01:00,000 --> 00:01:01,000", resp.text)
+
+    @patch("whisper_live.server.WhisperModel")
+    def test_vtt_timestamp_rounds_into_the_next_minute(self, mock_model_cls):
+        segment = _make_segment(start=59.9996, end=61.0)
+        resp = self._post(mock_model_cls, segment=segment, response_format="vtt")
+        self.assertIn("00:01:00.000 --> 00:01:01.000", resp.text)
 
 
 class TestStreamLanguageEvent(unittest.TestCase):
