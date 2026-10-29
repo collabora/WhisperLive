@@ -479,17 +479,7 @@ class TranscriptionTeeClient:
         self.mute_audio_playback = mute_audio_playback
         self.frames = b""
         self.p = pyaudio.PyAudio()
-        try:
-            self.stream = self.p.open(
-                format=self.format,
-                channels=self.channels,
-                rate=self.rate,
-                input=True,
-                frames_per_buffer=self.chunk,
-            )
-        except OSError as error:
-            print(f"[WARN]: Unable to access microphone. {error}")
-            self.stream = None
+        self.stream = None
 
     def __call__(self, audio=None, rtsp_url=None, hls_url=None, save_file=None):
         """
@@ -738,16 +728,20 @@ class TranscriptionTeeClient:
         The recording process can be interrupted by sending a KeyboardInterrupt (e.g., pressing Ctrl+C). After recording,
         the method combines all the saved audio chunks into the specified `out_file`.
         """
+        self.stream, microphone_rate = self.open_microphone()
+        # one resampler for the whole recording, so chunk boundaries don't click
+        resampler = av.AudioResampler(format="s16", layout="mono", rate=self.rate)
         n_audio_file = 0
         if self.save_output_recording:
             if os.path.exists("chunks"):
                 shutil.rmtree("chunks")
             os.makedirs("chunks")
         try:
-            for _ in range(0, int(self.rate / self.chunk * self.record_seconds)):
+            for _ in range(0, int(microphone_rate / self.chunk * self.record_seconds)):
                 if not any(client.recording for client in self.clients):
                     break
                 data = self.stream.read(self.chunk, exception_on_overflow=False)
+                data = self.resample_microphone_chunk(resampler, data, microphone_rate)
                 self.frames += data
 
                 audio_array = self.bytes_to_float_array(data)
@@ -760,10 +754,29 @@ class TranscriptionTeeClient:
                         self.save_chunk(n_audio_file)
                         n_audio_file += 1
                     self.frames = b""
+            self.stream.close()
             self.write_all_clients_srt()
 
         except KeyboardInterrupt:
             self.finalize_recording(n_audio_file)
+
+    def open_microphone(self):
+        stream_options = dict(format=self.format, channels=self.channels, input=True, frames_per_buffer=self.chunk)
+        try:
+            return self.p.open(rate=self.rate, **stream_options), self.rate
+        except OSError as error:
+            if error.errno != pyaudio.paInvalidSampleRate:
+                raise
+        device_rate = int(self.p.get_default_input_device_info()["defaultSampleRate"])
+        print(f"[WARN]: Microphone does not support {self.rate} Hz, recording at {device_rate} Hz and resampling.")
+        return self.p.open(rate=device_rate, **stream_options), device_rate
+
+    @staticmethod
+    def resample_microphone_chunk(resampler, data, microphone_rate):
+        samples = np.frombuffer(data, dtype=np.int16).reshape(1, -1)
+        frame = av.AudioFrame.from_ndarray(samples, format="s16", layout="mono")
+        frame.sample_rate = microphone_rate
+        return b"".join(resampled.to_ndarray().tobytes() for resampled in resampler.resample(frame))
 
     def write_audio_frames_to_file(self, frames, file_name):
         """
