@@ -1,5 +1,5 @@
 import os
-import subprocess
+import urllib.request
 import torch
 import numpy as np
 import onnxruntime
@@ -120,11 +120,10 @@ class VoiceActivityDetection():
 
         # Check if the model file already exists
         if not os.path.exists(model_filename):
-            # If it doesn't exist, download the model using wget
-            try:
-                subprocess.run(["wget", "-O", model_filename, model_url], check=True)
-            except subprocess.CalledProcessError:
-                print("Failed to download the model using wget.")
+            # download under another name so an interrupted download isn't taken for the model next time
+            partial_filename = model_filename + ".part"
+            urllib.request.urlretrieve(model_url, partial_filename)
+            os.replace(partial_filename, model_filename)
         return model_filename
 
 
