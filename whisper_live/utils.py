@@ -74,7 +74,6 @@ def resample(file: str, sr: int = 16000):
     with tempfile.NamedTemporaryFile(prefix='whisperlive_', suffix='_resampled.wav', delete=False) as temp:
         resampled_file = temp.name
 
-    completed = False
     try:
         with av.open(file) as container, av.open(resampled_file, mode='w') as output_container:
             resampler = av.AudioResampler(format='s16', layout='mono', rate=sr)
@@ -92,8 +91,7 @@ def resample(file: str, sr: int = 16000):
             for packet in output_stream.encode(None):
                 output_container.mux(packet)
 
-        completed = True
-        return resampled_file
-    finally:
-        if not completed:
-            Path(resampled_file).unlink(missing_ok=True)
+    except BaseException:
+        Path(resampled_file).unlink(missing_ok=True)
+        raise
+    return resampled_file

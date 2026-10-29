@@ -39,15 +39,16 @@ def test_resampling_preserves_existing_files_and_uses_distinct_outputs(audio):
                 path.unlink(missing_ok=True)
 
 
-def test_failed_conversion_removes_only_its_partial_output(audio, monkeypatch):
+@pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
+def test_failed_conversion_removes_only_its_partial_output(audio, monkeypatch, error_type):
     before = set(audio.parent.iterdir())
 
     class FailingResampler:
         def resample(self, frame):
-            raise RuntimeError("conversion failed")
+            raise error_type("conversion failed")
 
     monkeypatch.setattr(utils.av, "AudioResampler", lambda **kwargs: FailingResampler())
-    with pytest.raises(RuntimeError, match="conversion failed"):
+    with pytest.raises(error_type, match="conversion failed"):
         utils.resample(str(audio))
     assert set(audio.parent.iterdir()) == before
 
