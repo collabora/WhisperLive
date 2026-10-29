@@ -72,9 +72,15 @@ class SpeakerDiarizer:
         self._hf_token = hf_token
 
     def _next_speaker_id(self):
-        if self._speaker_count < len(self.speaker_names):
-            return self.speaker_names[self._speaker_count]
-        return f"SPEAKER_{self._speaker_count:02d}"
+        while True:
+            if self._speaker_count < len(self.speaker_names):
+                speaker_id = self.speaker_names[self._speaker_count]
+            else:
+                speaker_id = f"SPEAKER_{self._speaker_count:02d}"
+            # an enrolled speaker already owns this name
+            if speaker_id not in self.speakers:
+                return speaker_id
+            self._speaker_count += 1
 
     def _load_model(self):
         """Lazy-load the embedding model on first use."""
