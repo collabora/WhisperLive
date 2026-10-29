@@ -1080,6 +1080,18 @@ class TestRestTranscribeModelAndLanguage(unittest.TestCase):
         self.assertEqual(body["language"], "en")
         self.assertAlmostEqual(body["language_probability"], 0.97)
 
+    @patch("whisper_live.server.WhisperModel")
+    def test_vtt_response_starts_with_webvtt_header(self, mock_model_cls):
+        resp = self._post(mock_model_cls, response_format="vtt")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.text, "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nhello\n")
+
+    @patch("whisper_live.server.WhisperModel")
+    def test_srt_response_has_no_webvtt_header(self, mock_model_cls):
+        resp = self._post(mock_model_cls, response_format="srt")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.text, "1\n00:00:00,000 --> 00:00:01,000\nhello\n")
+
 
 class TestStreamLanguageEvent(unittest.TestCase):
     """The SSE stream must announce the detected language before any segment."""
