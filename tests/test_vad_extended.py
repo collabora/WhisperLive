@@ -77,7 +77,7 @@ class TestVoiceActivityDetectionDownload(unittest.TestCase):
     def setUp(self):
         home = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, home)
-        patch.dict(os.environ, {"HOME": home}).start()
+        patch.dict(os.environ, {"HOME": home, "USERPROFILE": home}).start()
         self.addCleanup(patch.stopall)
         self.model_path = os.path.join(home, ".cache", "whisper-live", "silero_vad.onnx")
 
