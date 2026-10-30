@@ -730,3 +730,83 @@ class TestSendTranscriptionToClient(unittest.TestCase):
         with self.assertLogs(level="ERROR") as captured:
             self.client.send_transcription_to_client(self.segments)
         self.assertTrue(any("socket exploded" in line for line in captured.output))
+
+class TestTranscriptReset(unittest.TestCase):
+    """Tests for the client-requested transcript reset."""
+
+    def _make_client(self, translation_queue=None):
+        ws = MagicMock()
+        client = ConcreteServeClient(
+            client_uid="reset-uid",
+            websocket=ws,
+            translation_queue=translation_queue,
+        )
+        return client, ws
+
+    def test_request_transcript_reset_sets_flag_only(self):
+        client, ws = self._make_client()
+        client.transcript = [{"text": "old"}]
+
+        client.request_transcript_reset()
+
+        self.assertTrue(client.reset_requested.is_set())
+        # The receive thread must not clear anything itself.
+        self.assertEqual(client.transcript, [{"text": "old"}])
+        ws.send.assert_not_called()
+
+    def test_apply_pending_reset_clears_state_and_acknowledges(self):
+        q = queue.Queue()
+        q.put({"text": "old"})
+        client, ws = self._make_client(translation_queue=q)
+        client.transcript = [{"text": "old"}]
+        client.text = ["old"]
+        client.current_out = "old"
+        client.prev_out = "old"
+        client.same_output_count = 2
+        client.end_time_for_same_output = 1.0
+        client.frames = b"abc"
+        client.frames_np = np.zeros(100, dtype=np.float32)
+        client.frames_offset = 4.0
+        client.timestamp_offset = 5.0
+        client.translation_client = MagicMock()
+        client.translation_client.translated_segments = [{"text": "old translation"}]
+
+        client.request_transcript_reset()
+        applied = client.apply_pending_reset()
+
+        self.assertTrue(applied)
+        self.assertFalse(client.reset_requested.is_set())
+        self.assertEqual(client.transcript, [])
+        self.assertEqual(client.text, [])
+        self.assertEqual(client.current_out, "")
+        self.assertEqual(client.prev_out, "")
+        self.assertEqual(client.same_output_count, 0)
+        self.assertIsNone(client.end_time_for_same_output)
+        self.assertEqual(client.frames, b"")
+        self.assertIsNone(client.frames_np)
+        self.assertEqual(client.frames_offset, 0.0)
+        self.assertEqual(client.timestamp_offset, 0.0)
+        self.assertTrue(q.empty())
+        self.assertEqual(client.translation_client.translated_segments, [])
+        client.translation_client.reset_requested.set.assert_called_once()
+        ack = json.loads(ws.send.call_args[0][0])
+        self.assertEqual(ack["uid"], "reset-uid")
+        self.assertEqual(ack["message"], ServeClientBase.TRANSCRIPT_RESET)
+
+    def test_apply_pending_reset_noop_without_request(self):
+        client, ws = self._make_client()
+        client.transcript = [{"text": "keep"}]
+
+        self.assertFalse(client.apply_pending_reset())
+
+        self.assertEqual(client.transcript, [{"text": "keep"}])
+        ws.send.assert_not_called()
+
+    def test_reset_transcript_survives_send_failure(self):
+        client, ws = self._make_client()
+        ws.send.side_effect = RuntimeError("socket closed")
+        client.transcript = [{"text": "old"}]
+
+        client.reset_transcript()
+
+        self.assertEqual(client.transcript, [])
