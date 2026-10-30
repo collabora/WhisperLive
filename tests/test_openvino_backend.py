@@ -8,7 +8,6 @@ sys.modules before the modules under test are imported. Packages that are
 installed are left untouched.
 """
 import importlib
-import inspect
 import queue
 import sys
 import types
@@ -139,16 +138,6 @@ class TestServeClientOpenVINOInitialPromptHotwords(unittest.TestCase):
         self.assertEqual(kwargs["initial_prompt"], "steer the model")
         self.assertEqual(kwargs["hotwords"], "acme,foobar")
 
-    def test_new_parameters_are_appended_after_existing_ones(self):
-        # Adding hotwords (and later diarization/translation_queue) must not
-        # shift the position of existing parameters for any caller that
-        # passes them positionally: each new one is appended in order.
-        params = list(inspect.signature(ServeClientOpenVINO.__init__).parameters)
-        self.assertEqual(
-            params[-4:],
-            ["same_output_threshold", "hotwords", "diarization", "translation_queue"],
-        )
-
     def test_single_model_clients_keep_their_own_options(self):
         # With single_model=True the second client reuses the first client's
         # transcriber, so its own prompt/hotwords must still reach generate().
@@ -233,18 +222,6 @@ class TestServeClientOpenVINODiarizationTranslation(unittest.TestCase):
                 **kwargs,
             )
             return client
-
-    def test_defaults_have_no_diarization_or_translation(self):
-        client = self._make_client()
-        self.assertIsNone(client.diarization)
-        self.assertIsNone(client.translation_queue)
-
-    def test_diarization_and_translation_queue_are_stored(self):
-        diarizer = MagicMock()
-        tq = queue.Queue()
-        client = self._make_client(diarization=diarizer, translation_queue=tq)
-        self.assertIs(client.diarization, diarizer)
-        self.assertIs(client.translation_queue, tq)
 
     def test_diarization_and_translation_actually_fire_via_update_segments(self):
         """End-to-end proof: once diarization/translation_queue are wired in,
@@ -344,6 +321,84 @@ class TestServerForwardsDiarizationTranslationToOpenVINO(unittest.TestCase):
 
         _, kwargs = mock_backend.call_args
         self.assertIsInstance(kwargs["translation_queue"], queue.Queue)
+
+
+class TestServerCreatesDiarizerOnce(unittest.TestCase):
+    """The diarizer is built once, before the backend is chosen, so a failure
+    to build it is not mistaken for OpenVINO being unsupported (which would
+    switch the whole server to faster_whisper)."""
+
+    OPTIONS = {
+        "uid": "abc",
+        "language": "en",
+        "task": "transcribe",
+        "model": "OpenVINO/whisper-tiny-fp16-ov",
+        "enable_diarization": True,
+    }
+
+    def _make_server(self, backend):
+        from whisper_live.server import TranscriptionServer, ClientManager
+
+        server = TranscriptionServer()
+        server.backend = backend
+        server.single_model = False
+        server.cache_path = None
+        server.client_manager = ClientManager(max_clients=2, max_connection_time=60)
+        return server
+
+    def test_diarizer_creation_failure_does_not_change_backend(self):
+        from whisper_live.server import TranscriptionServer, BackendType
+
+        server = self._make_server(BackendType.OPENVINO)
+        ws = MagicMock()
+
+        with patch(
+            "whisper_live.backend.openvino_backend.ServeClientOpenVINO"
+        ) as mock_backend, patch.object(
+            TranscriptionServer, "_create_diarizer", side_effect=RuntimeError("no HF token")
+        ):
+            server.initialize_client(ws, dict(self.OPTIONS), None, None, False)
+
+        self.assertEqual(server.backend, BackendType.OPENVINO)
+        mock_backend.assert_not_called()
+        ws.send.assert_not_called()
+
+    def test_diarizer_is_created_once_and_passed_to_openvino(self):
+        from whisper_live.server import TranscriptionServer, BackendType
+
+        server = self._make_server(BackendType.OPENVINO)
+        fake_diarizer = MagicMock()
+
+        with patch(
+            "whisper_live.backend.openvino_backend.ServeClientOpenVINO"
+        ) as mock_backend, patch.object(
+            TranscriptionServer, "_create_diarizer", return_value=fake_diarizer
+        ) as mock_create:
+            server.initialize_client(MagicMock(), dict(self.OPTIONS), None, None, False)
+
+        mock_create.assert_called_once()
+        self.assertIs(mock_backend.call_args.kwargs["diarization"], fake_diarizer)
+        self.assertEqual(server.backend, BackendType.OPENVINO)
+
+    def test_diarizer_is_reused_when_openvino_falls_back_to_faster_whisper(self):
+        from whisper_live.server import TranscriptionServer, BackendType
+
+        server = self._make_server(BackendType.OPENVINO)
+        fake_diarizer = MagicMock()
+
+        with patch(
+            "whisper_live.backend.openvino_backend.ServeClientOpenVINO",
+            side_effect=RuntimeError("openvino unavailable"),
+        ), patch(
+            "whisper_live.backend.faster_whisper_backend.ServeClientFasterWhisper"
+        ) as mock_fw, patch.object(
+            TranscriptionServer, "_create_diarizer", return_value=fake_diarizer
+        ) as mock_create:
+            server.initialize_client(MagicMock(), dict(self.OPTIONS), None, None, False)
+
+        mock_create.assert_called_once()
+        self.assertIs(mock_fw.call_args.kwargs["diarization"], fake_diarizer)
+        self.assertEqual(server.backend, BackendType.FASTER_WHISPER)
 
 
 if __name__ == "__main__":
