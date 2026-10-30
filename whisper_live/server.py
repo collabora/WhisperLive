@@ -494,6 +494,10 @@ class TranscriptionServer:
             A numpy array containing the audio.
         """
         frame_data = websocket.recv()
+        if isinstance(frame_data, str):
+            # Audio always arrives as binary frames; text frames carry control messages.
+            self.handle_control_message(websocket, frame_data)
+            return None
         if frame_data == b"END_OF_AUDIO":
             return False
         audio_format = self.audio_formats.get(websocket)
@@ -504,6 +508,29 @@ class TranscriptionServer:
             audio_np = np.frombuffer(frame_data, dtype=np.int16)
             return audio_np.astype(np.float32) / 32768.0
         return np.frombuffer(frame_data, dtype=np.float32)
+
+    def handle_control_message(self, websocket, frame_data):
+        """
+        Handle a text (control) frame sent by the client.
+
+        Args:
+            websocket: The websocket the frame arrived on.
+            frame_data (str): The text frame.
+
+        Returns:
+            bool: True when a control message was understood.
+        """
+        try:
+            message = json.loads(frame_data)
+        except (TypeError, ValueError):
+            logging.warning(f"Ignoring malformed control message: {frame_data!r}")
+            return False
+        if message.get("reset_transcript"):
+            client = self.client_manager.get_client(websocket)
+            if client is not None:
+                client.request_transcript_reset()
+                return True
+        return False
 
     def batch_admission_refusal(self, websocket, options):
         """Why a new client is turned away in batch mode, None when it may connect.
@@ -569,6 +596,9 @@ class TranscriptionServer:
 
     def process_audio_frames(self, websocket):
         frame_np = self.get_audio_from_websocket(websocket)
+        if frame_np is None:
+            # Control frame (e.g. a transcript reset request), no audio to process.
+            return True
         client = self.client_manager.get_client(websocket)
         if frame_np is False:
             if self.backend.is_tensorrt():

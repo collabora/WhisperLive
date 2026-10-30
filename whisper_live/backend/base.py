@@ -15,6 +15,7 @@ class ServeClientBase(object):
     RATE = 16000
     SERVER_READY = "SERVER_READY"
     DISCONNECT = "DISCONNECT"
+    TRANSCRIPT_RESET = "TRANSCRIPT_RESET"
 
     MAX_BUFFER_DURATION_S = 45
     """Maximum audio buffer duration in seconds before trimming."""
@@ -103,6 +104,10 @@ class ServeClientBase(object):
         # threading
         self.lock = threading.Lock()
         self.frames_ready = threading.Event()
+        # Set by the receive thread when the client asks for a fresh transcript;
+        # applied by speech_to_text so an in-flight transcription cannot leak
+        # old segments into the new transcript.
+        self.reset_requested = threading.Event()
 
     def speech_to_text(self):
         """
@@ -124,6 +129,9 @@ class ServeClientBase(object):
             if self.exit:
                 logging.info("Exiting speech to text thread")
                 break
+
+            if self.apply_pending_reset():
+                continue
 
             if self.frames_np is None:
                 while self.frames_np is None and not self.exit:
@@ -160,6 +168,70 @@ class ServeClientBase(object):
                 logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
                 wl_metrics.track_error("transcription")
                 time.sleep(self.ERROR_BACKOFF_S)
+
+    def request_transcript_reset(self):
+        """
+        Ask for a transcript reset from another thread.
+
+        The receive thread only sets the flag; :meth:`speech_to_text` applies
+        the reset at the top of its loop.
+        """
+        self.reset_requested.set()
+
+    def apply_pending_reset(self):
+        """
+        Apply a transcript reset requested with :meth:`request_transcript_reset`.
+
+        Returns:
+            bool: True when a pending reset was applied.
+        """
+        if not self.reset_requested.is_set():
+            return False
+        self.reset_requested.clear()
+        self.reset_transcript()
+        return True
+
+    def reset_transcript(self):
+        """
+        Clear the accumulated transcript and audio state, then acknowledge the reset.
+
+        Must run on the transcription thread (see :meth:`apply_pending_reset`), never
+        from the receive thread, so a transcription in progress cannot add old
+        segments to the new transcript.
+        """
+        with self.lock:
+            self.transcript = []
+            self.text = []
+            self.frames = b""
+            self.frames_np = None
+            self.frames_offset = 0.0
+            self.timestamp_offset = 0.0
+            self.current_out = ""
+            self.prev_out = ""
+            self.same_output_count = 0
+            self.end_time_for_same_output = None
+        self.frames_ready.clear()
+
+        if self.translation_queue is not None:
+            while True:
+                try:
+                    self.translation_queue.get_nowait()
+                except queue.Empty:
+                    break
+        translation_client = getattr(self, "translation_client", None)
+        if translation_client is not None:
+            translation_client.translated_segments.clear()
+            # Let the translation thread drop a segment it may already be
+            # holding before it reaches the client after the reset.
+            translation_client.reset_requested.set()
+
+        try:
+            self.websocket.send(json.dumps({
+                "uid": self.client_uid,
+                "message": self.TRANSCRIPT_RESET,
+            }))
+        except Exception as e:
+            logging.error(f"[ERROR]: Sending transcript reset ack to client: {e}")
 
     def transcribe_audio(self, input_sample):
         raise NotImplementedError

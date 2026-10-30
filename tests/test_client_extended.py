@@ -396,3 +396,58 @@ class TestClientKnownSpeakers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestClientResetTranscript(unittest.TestCase):
+    """Tests for the client side of the transcript reset."""
+
+    @patch("whisper_live.client.websocket.WebSocketApp")
+    @patch("whisper_live.client.pyaudio.PyAudio")
+    def setUp(self, mock_pyaudio, mock_websocket):
+        mock_pyaudio.return_value.open.return_value = MagicMock()
+        self.client = Client(host="localhost", port=9090, lang="en")
+
+    def tearDown(self):
+        self.client.close_websocket()
+
+    def test_reset_transcript_sends_text_control_frame(self):
+        self.client.recording = True
+
+        self.assertTrue(self.client.reset_transcript())
+
+        sent = self.client.client_socket.send.call_args[0][0]
+        self.assertEqual(json.loads(sent), {"reset_transcript": True})
+
+    def test_reset_transcript_requires_ready_connection(self):
+        self.client.recording = False
+
+        self.assertFalse(self.client.reset_transcript())
+
+        self.client.client_socket.send.assert_not_called()
+
+    def test_transcript_reset_ack_clears_local_state(self):
+        self.client.server_backend = "faster_whisper"
+        self.client.recording = True
+        self.client.transcript = [{"start": "0", "end": "1", "text": "old", "completed": True}]
+        self.client.translated_transcript = [{"start": "0", "end": "1", "text": "ancien", "completed": True}]
+        self.client.last_segment = {"text": "old"}
+        self.client.last_received_segment = "old"
+
+        self.client.on_message(MagicMock(), json.dumps({
+            "uid": self.client.uid,
+            "message": "TRANSCRIPT_RESET",
+        }))
+
+        self.assertEqual(self.client.transcript, [])
+        self.assertEqual(self.client.translated_transcript, [])
+        self.assertIsNone(self.client.last_segment)
+        self.assertIsNone(self.client.last_received_segment)
+
+    def test_tee_client_resets_every_client(self):
+        tee = TranscriptionTeeClient.__new__(TranscriptionTeeClient)
+        first, second = MagicMock(), MagicMock()
+        tee.clients = [first, second]
+
+        tee.reset_transcripts()
+
+        first.reset_transcript.assert_called_once()
+        second.reset_transcript.assert_called_once()
