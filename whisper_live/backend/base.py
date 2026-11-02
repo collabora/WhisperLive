@@ -15,6 +15,7 @@ class ServeClientBase(object):
     RATE = 16000
     SERVER_READY = "SERVER_READY"
     DISCONNECT = "DISCONNECT"
+    TRANSCRIPT_RESET = "TRANSCRIPT_RESET"
 
     MAX_BUFFER_DURATION_S = 45
     """Maximum audio buffer duration in seconds before trimming."""
@@ -103,6 +104,13 @@ class ServeClientBase(object):
         # threading
         self.lock = threading.Lock()
         self.frames_ready = threading.Event()
+        # Set by the receive thread when the client asks for a fresh transcript;
+        # applied by speech_to_text so an in-flight transcription cannot leak
+        # old segments into the new transcript. Audio that arrives while the
+        # reset is pending must not be dropped: add_frames parks it here and
+        # reset_transcript swaps it in as the new frames_np.
+        self.reset_requested = threading.Event()
+        self.pending_reset_frames = None
 
     def speech_to_text(self):
         """
@@ -125,8 +133,22 @@ class ServeClientBase(object):
                 logging.info("Exiting speech to text thread")
                 break
 
+            if self.apply_pending_reset():
+                continue
+
             if self.frames_np is None:
-                while self.frames_np is None and not self.exit:
+                # Wait for the first audio frame, but keep reapplying a pending
+                # transcript reset while doing so: once a reset is requested,
+                # add_frames parks new audio in pending_reset_frames instead of
+                # frames_np, so only apply_pending_reset() above can make this
+                # buffer non-None. Without the reset_requested check, a second
+                # reset while idle parks every later frame and this loop waits
+                # forever.
+                while (
+                    self.frames_np is None
+                    and not self.reset_requested.is_set()
+                    and not self.exit
+                ):
                     self.frames_ready.wait(timeout=self.FIRST_FRAME_WAIT_TIMEOUT_S)
                 continue
 
@@ -160,6 +182,80 @@ class ServeClientBase(object):
                 logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
                 wl_metrics.track_error("transcription")
                 time.sleep(self.ERROR_BACKOFF_S)
+
+    def request_transcript_reset(self):
+        """
+        Ask for a transcript reset from another thread.
+
+        The receive thread only sets the flag; :meth:`speech_to_text` applies
+        the reset at the top of its loop.
+        """
+        self.reset_requested.set()
+
+    def apply_pending_reset(self):
+        """
+        Apply a transcript reset requested with :meth:`request_transcript_reset`.
+
+        Returns:
+            bool: True when a pending reset was applied.
+        """
+        if not self.reset_requested.is_set():
+            return False
+        self.reset_transcript()
+        return True
+
+    def reset_transcript(self):
+        """
+        Clear the accumulated transcript and audio state, then acknowledge the reset.
+
+        Must run on the transcription thread (see :meth:`apply_pending_reset`), never
+        from the receive thread, so a transcription in progress cannot add old
+        segments to the new transcript.
+        """
+        with self.lock:
+            # Frames that arrived after the reset request were parked by
+            # add_frames; they belong to the new transcript, so swap them in
+            # while clearing the flag under the same lock.
+            pending_frames = self.pending_reset_frames
+            self.pending_reset_frames = None
+            self.reset_requested.clear()
+            self.transcript = []
+            self.text = []
+            self.frames = b""
+            self.frames_np = pending_frames
+            self.frames_offset = 0.0
+            self.timestamp_offset = 0.0
+            self.current_out = ""
+            self.prev_out = ""
+            self.same_output_count = 0
+            self.end_time_for_same_output = None
+            if pending_frames is None:
+                self.frames_ready.clear()
+            else:
+                # There is already audio to process: keep the wake-up that a
+                # clear() would drop.
+                self.frames_ready.set()
+
+        if self.translation_queue is not None:
+            while True:
+                try:
+                    self.translation_queue.get_nowait()
+                except queue.Empty:
+                    break
+        translation_client = getattr(self, "translation_client", None)
+        if translation_client is not None:
+            translation_client.translated_segments.clear()
+            # Let the translation thread drop a segment it may already be
+            # holding before it reaches the client after the reset.
+            translation_client.reset_requested.set()
+
+        try:
+            self.websocket.send(json.dumps({
+                "uid": self.client_uid,
+                "message": self.TRANSCRIPT_RESET,
+            }))
+        except Exception as e:
+            logging.error(f"[ERROR]: Sending transcript reset ack to client: {e}")
 
     def transcribe_audio(self, input_sample):
         raise NotImplementedError
@@ -213,6 +309,17 @@ class ServeClientBase(object):
 
         """
         with self.lock:
+            if self.reset_requested.is_set():
+                # The transcript thread will clear frames_np when it reaches
+                # apply_pending_reset; park this audio so it is not dropped
+                # with the old buffer.
+                if self.pending_reset_frames is None:
+                    self.pending_reset_frames = frame_np.copy()
+                else:
+                    self.pending_reset_frames = np.concatenate(
+                        (self.pending_reset_frames, frame_np), axis=0)
+                self.frames_ready.set()
+                return
             if self.frames_np is not None and self.frames_np.shape[0] > self.MAX_BUFFER_DURATION_S*self.RATE:
                 self.frames_offset += float(self.BUFFER_TRIM_DURATION_S)
                 self.frames_np = self.frames_np[int(self.BUFFER_TRIM_DURATION_S*self.RATE):]

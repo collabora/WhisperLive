@@ -49,12 +49,18 @@ class TestServerConnection(unittest.TestCase):
 
     @mock.patch('websockets.WebSocketCommonProtocol')
     def test_connection(self, mock_websocket):
-        mock_websocket.recv.return_value = json.dumps({
-            'uid': 'test_client',
-            'language': 'en',
-            'task': 'transcribe',
-            'model': 'tiny.en'
-        })
+        # The first frame is the client handshake; the audio loop then receives
+        # END_OF_AUDIO so the connection finishes instead of replaying the same
+        # text frame forever (text frames are control messages now, not audio).
+        mock_websocket.recv.side_effect = [
+            json.dumps({
+                'uid': 'test_client',
+                'language': 'en',
+                'task': 'transcribe',
+                'model': 'tiny.en'
+            }),
+            b"END_OF_AUDIO",
+        ]
         self.server.recv_audio(mock_websocket, BackendType("faster_whisper"))
 
     @mock.patch('websockets.WebSocketCommonProtocol')

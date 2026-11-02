@@ -369,6 +369,35 @@ class TestSpeechToTextWaitingBehavior(unittest.TestCase):
         self.assertTrue(self.client.exit)
         self.client.transcribe_audio.assert_not_called()
 
+    def test_reset_while_waiting_for_first_frame_is_applied(self):
+        self.client.transcribe_audio = MagicMock(side_effect=self._transcribe_once)
+        self._start_speech_thread()
+        self.assertTrue(self.client.frames_ready.wait_started.wait(timeout=1.0))
+
+        # A reset requested while idle parks the next audio frame; the first
+        # frame wait must re-check the reset flag, apply it, and transcribe the
+        # parked audio instead of waiting forever.
+        self.client.request_transcript_reset()
+        self.client.add_frames(np.zeros(self.client.RATE, dtype=np.float32))
+
+        self.assertTrue(self.transcribe_called.wait(timeout=1.0))
+        self.assertTrue(self._join_speech_thread())
+
+    def test_second_reset_while_idle_still_transcribes_next_audio(self):
+        self.client.transcribe_audio = MagicMock(side_effect=self._transcribe_once)
+        self._start_speech_thread()
+        self.assertTrue(self.client.frames_ready.wait_started.wait(timeout=1.0))
+
+        # Two resets in a row with no audio between them: each parks the
+        # following audio, so the first-frame wait must keep re-checking the
+        # reset flag, apply both, and transcribe the audio of the second.
+        self.client.request_transcript_reset()
+        self.client.request_transcript_reset()
+        self.client.add_frames(np.zeros(self.client.RATE, dtype=np.float32))
+
+        self.assertTrue(self.transcribe_called.wait(timeout=1.0))
+        self.assertTrue(self._join_speech_thread())
+
     def test_exit_flag_unblocks_waiting_thread_without_signal(self):
         self.client.transcribe_audio = MagicMock()
         self._start_speech_thread()
@@ -730,3 +759,126 @@ class TestSendTranscriptionToClient(unittest.TestCase):
         with self.assertLogs(level="ERROR") as captured:
             self.client.send_transcription_to_client(self.segments)
         self.assertTrue(any("socket exploded" in line for line in captured.output))
+
+class TestTranscriptReset(unittest.TestCase):
+    """Tests for the client-requested transcript reset."""
+
+    def _make_client(self, translation_queue=None):
+        ws = MagicMock()
+        client = ConcreteServeClient(
+            client_uid="reset-uid",
+            websocket=ws,
+            translation_queue=translation_queue,
+        )
+        return client, ws
+
+    def test_request_transcript_reset_sets_flag_only(self):
+        client, ws = self._make_client()
+        client.transcript = [{"text": "old"}]
+
+        client.request_transcript_reset()
+
+        self.assertTrue(client.reset_requested.is_set())
+        # The receive thread must not clear anything itself.
+        self.assertEqual(client.transcript, [{"text": "old"}])
+        ws.send.assert_not_called()
+
+    def test_apply_pending_reset_clears_state_and_acknowledges(self):
+        q = queue.Queue()
+        q.put({"text": "old"})
+        client, ws = self._make_client(translation_queue=q)
+        client.transcript = [{"text": "old"}]
+        client.text = ["old"]
+        client.current_out = "old"
+        client.prev_out = "old"
+        client.same_output_count = 2
+        client.end_time_for_same_output = 1.0
+        client.frames = b"abc"
+        client.frames_np = np.zeros(100, dtype=np.float32)
+        client.frames_offset = 4.0
+        client.timestamp_offset = 5.0
+        client.translation_client = MagicMock()
+        client.translation_client.translated_segments = [{"text": "old translation"}]
+
+        client.request_transcript_reset()
+        applied = client.apply_pending_reset()
+
+        self.assertTrue(applied)
+        self.assertFalse(client.reset_requested.is_set())
+        self.assertEqual(client.transcript, [])
+        self.assertEqual(client.text, [])
+        self.assertEqual(client.current_out, "")
+        self.assertEqual(client.prev_out, "")
+        self.assertEqual(client.same_output_count, 0)
+        self.assertIsNone(client.end_time_for_same_output)
+        self.assertEqual(client.frames, b"")
+        self.assertIsNone(client.frames_np)
+        self.assertEqual(client.frames_offset, 0.0)
+        self.assertEqual(client.timestamp_offset, 0.0)
+        self.assertTrue(q.empty())
+        self.assertEqual(client.translation_client.translated_segments, [])
+        client.translation_client.reset_requested.set.assert_called_once()
+        ack = json.loads(ws.send.call_args[0][0])
+        self.assertEqual(ack["uid"], "reset-uid")
+        self.assertEqual(ack["message"], ServeClientBase.TRANSCRIPT_RESET)
+
+    def test_apply_pending_reset_noop_without_request(self):
+        client, ws = self._make_client()
+        client.transcript = [{"text": "keep"}]
+
+        self.assertFalse(client.apply_pending_reset())
+
+        self.assertEqual(client.transcript, [{"text": "keep"}])
+        ws.send.assert_not_called()
+
+    def test_reset_transcript_survives_send_failure(self):
+        client, ws = self._make_client()
+        ws.send.side_effect = RuntimeError("socket closed")
+        client.transcript = [{"text": "old"}]
+
+        client.reset_transcript()
+
+        self.assertEqual(client.transcript, [])
+
+    def test_audio_arriving_after_reset_request_is_kept_for_the_new_transcript(self):
+        client, ws = self._make_client()
+        client.frames_np = np.zeros(100, dtype=np.float32)
+        client.frames_offset = 2.0
+        client.timestamp_offset = 3.0
+
+        client.request_transcript_reset()
+        new_audio = np.ones(5, dtype=np.float32)
+        client.add_frames(new_audio)
+
+        # The frames must not be dropped together with the old buffer.
+        self.assertTrue(client.frames_ready.is_set())
+        self.assertTrue(client.apply_pending_reset())
+        self.assertIsNotNone(client.frames_np)
+        self.assertTrue(np.array_equal(client.frames_np, new_audio))
+        self.assertEqual(client.frames_offset, 0.0)
+        self.assertEqual(client.timestamp_offset, 0.0)
+        # Audio already arrived, so the transcription loop must wake up for it.
+        self.assertTrue(client.frames_ready.is_set())
+
+    def test_frames_arriving_while_reset_pending_are_concatenated(self):
+        client, ws = self._make_client()
+        client.request_transcript_reset()
+        client.add_frames(np.ones(3, dtype=np.float32))
+        client.add_frames(np.ones(4, dtype=np.float32) * 2)
+
+        client.apply_pending_reset()
+
+        self.assertIsNotNone(client.frames_np)
+        self.assertEqual(client.frames_np.shape[0], 7)
+        self.assertTrue(np.array_equal(
+            client.frames_np[-4:], np.ones(4, dtype=np.float32) * 2))
+
+    def test_reset_without_new_audio_clears_the_wake_up(self):
+        client, ws = self._make_client()
+        client.frames_ready.set()
+        client.request_transcript_reset()
+
+        client.apply_pending_reset()
+
+        self.assertIsNone(client.frames_np)
+        self.assertFalse(client.frames_ready.is_set())

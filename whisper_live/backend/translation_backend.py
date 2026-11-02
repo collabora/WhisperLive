@@ -107,6 +107,13 @@ class ServeClientTranslation(ServeClientBase):
         logging.info(f"Starting translation processing for client {self.client_uid}")
         
         while not self.exit:
+            if self.reset_requested.is_set():
+                # A transcript reset happened on the transcription thread: drop
+                # translations that belong to the previous transcript.
+                self.reset_requested.clear()
+                self.translated_segments.clear()
+                continue
+
             try:
                 # Get segment from queue with timeout
                 segment = self.translation_queue.get(timeout=1.0)
@@ -134,6 +141,14 @@ class ServeClientTranslation(ServeClientBase):
                     "target_language": self.target_language
                 }
                 
+                if self.reset_requested.is_set():
+                    # Reset arrived while this segment was being translated:
+                    # drop it instead of sending text from the old transcript.
+                    self.reset_requested.clear()
+                    self.translated_segments.clear()
+                    self.translation_queue.task_done()
+                    continue
+
                 self.translated_segments.append(translated_segment)
                 segments_to_send = self.prepare_translated_segments()
                 self.send_translation_to_client(segments_to_send)
