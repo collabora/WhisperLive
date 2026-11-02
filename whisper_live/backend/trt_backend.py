@@ -191,6 +191,12 @@ class ServeClientTensorRT(ServeClientBase):
                 logging.info("Exiting speech to text thread")
                 break
 
+            # A pending transcript reset parks incoming audio in
+            # pending_reset_frames, so this loop must apply it — otherwise
+            # frames_np stays None and the stream freezes after a reset.
+            if self.apply_pending_reset():
+                continue
+
             if self.frames_np is None:
                 time.sleep(0.02)    # wait for any audio to arrive
                 continue
