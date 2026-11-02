@@ -137,7 +137,18 @@ class ServeClientBase(object):
                 continue
 
             if self.frames_np is None:
-                while self.frames_np is None and not self.exit:
+                # Wait for the first audio frame, but keep reapplying a pending
+                # transcript reset while doing so: once a reset is requested,
+                # add_frames parks new audio in pending_reset_frames instead of
+                # frames_np, so only apply_pending_reset() above can make this
+                # buffer non-None. Without the reset_requested check, a second
+                # reset while idle parks every later frame and this loop waits
+                # forever.
+                while (
+                    self.frames_np is None
+                    and not self.reset_requested.is_set()
+                    and not self.exit
+                ):
                     self.frames_ready.wait(timeout=self.FIRST_FRAME_WAIT_TIMEOUT_S)
                 continue
 

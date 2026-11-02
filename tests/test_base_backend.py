@@ -369,6 +369,20 @@ class TestSpeechToTextWaitingBehavior(unittest.TestCase):
         self.assertTrue(self.client.exit)
         self.client.transcribe_audio.assert_not_called()
 
+    def test_reset_while_waiting_for_first_frame_is_applied(self):
+        self.client.transcribe_audio = MagicMock(side_effect=self._transcribe_once)
+        self._start_speech_thread()
+        self.assertTrue(self.client.frames_ready.wait_started.wait(timeout=1.0))
+
+        # A reset requested while idle parks the next audio frame; the first
+        # frame wait must re-check the reset flag, apply it, and transcribe the
+        # parked audio instead of waiting forever.
+        self.client.request_transcript_reset()
+        self.client.add_frames(np.zeros(self.client.RATE, dtype=np.float32))
+
+        self.assertTrue(self.transcribe_called.wait(timeout=1.0))
+        self.assertTrue(self._join_speech_thread())
+
     def test_exit_flag_unblocks_waiting_thread_without_signal(self):
         self.client.transcribe_audio = MagicMock()
         self._start_speech_thread()
