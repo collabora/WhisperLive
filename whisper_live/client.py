@@ -1155,7 +1155,9 @@ class StreamingTranscriptionClient:
             raise ValueError("Expected mono (1-D) array.")
         if np.issubdtype(samples.dtype, np.integer):
             info = np.iinfo(samples.dtype)
-            samples = samples.astype(np.float32) / max(abs(info.min), info.max)
+            samples = np.divide(
+                samples.astype(np.float32), max(abs(info.min), info.max), dtype=np.float32
+            )
         elif samples.dtype != np.float32:
             samples = samples.astype(np.float32)
         self._client.send_packet_to_server(samples.tobytes())
