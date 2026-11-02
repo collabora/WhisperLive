@@ -1,5 +1,6 @@
 import os
 import shutil
+import tempfile
 import textwrap
 import scipy
 import numpy as np
@@ -68,32 +69,29 @@ def resample(file: str, sr: int = 16000):
         sr (int): The sample rate to resample the audio if necessary
 
     Returns:
-        resampled_file (str): The resampled audio file
+        resampled_file (str): A temporary WAV file. The caller must remove it after use.
     """
-    container = av.open(file)
-    stream = next(s for s in container.streams if s.type == 'audio')
+    with tempfile.NamedTemporaryFile(prefix='whisperlive_', suffix='_resampled.wav', delete=False) as temp:
+        resampled_file = temp.name
 
-    resampler = av.AudioResampler(
-        format='s16',
-        layout='mono',
-        rate=sr,
-    )
+    try:
+        with av.open(file) as container, av.open(resampled_file, mode='w') as output_container:
+            resampler = av.AudioResampler(format='s16', layout='mono', rate=sr)
+            output_stream = output_container.add_stream('pcm_s16le', rate=sr)
+            output_stream.layout = 'mono'
 
-    resampled_file = Path(file).stem + "_resampled.wav"
-    output_container = av.open(resampled_file, mode='w')
-    output_stream = output_container.add_stream('pcm_s16le', rate=sr)
-    output_stream.layout = 'mono'
+            for frame in container.decode(audio=0):
+                frame.pts = None
+                resampled_frames = resampler.resample(frame)
+                if resampled_frames is not None:
+                    for resampled_frame in resampled_frames:
+                        for packet in output_stream.encode(resampled_frame):
+                            output_container.mux(packet)
 
-    for frame in container.decode(audio=0):
-        frame.pts = None
-        resampled_frames = resampler.resample(frame)
-        if resampled_frames is not None:
-            for resampled_frame in resampled_frames:
-                for packet in output_stream.encode(resampled_frame):
-                    output_container.mux(packet)
+            for packet in output_stream.encode(None):
+                output_container.mux(packet)
 
-    for packet in output_stream.encode(None):
-        output_container.mux(packet)
-
-    output_container.close()
+    except BaseException:
+        Path(resampled_file).unlink(missing_ok=True)
+        raise
     return resampled_file
