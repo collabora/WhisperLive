@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 import numpy as np
+import websocket
 
 from whisper_live.client import Client, StreamingTranscriptionClient
 
@@ -82,10 +83,22 @@ class TestPcmFormatConversion(StreamingClientTestCase):
             self.client.send(b"\x00\x00", pcm_format="int16")
 
     def test_send_array_normalizes_integers(self):
-        with patch.object(self._inner, 'send_packet_to_server') as mock_send:
-            self.client.send_array(np.array([0, 16384, -32768], dtype=np.int16))
-        sent = np.frombuffer(mock_send.call_args[0][0], dtype=np.float32)
-        np.testing.assert_allclose(sent, [0.0, 0.5, -1.0], atol=1e-4)
+        self._server_ready()
+        for dtype in (np.int16, np.int32, np.int64):
+            with self.subTest(dtype=dtype):
+                minimum = np.iinfo(dtype).min
+                samples = np.array([0, -minimum // 2, minimum], dtype=dtype)
+                original = samples.copy()
+                self.mock_ws_app.send.reset_mock()
+
+                self.client.send_array(samples)
+
+                payload = self.mock_ws_app.send.call_args[0][0]
+                self.mock_ws_app.send.assert_called_once_with(payload, websocket.ABNF.OPCODE_BINARY)
+                self.assertEqual(len(payload), samples.size * 4)
+                sent = np.frombuffer(payload, dtype=np.float32)
+                np.testing.assert_array_equal(sent, [0.0, 0.5, -1.0])
+                np.testing.assert_array_equal(samples, original)
 
 
 class TestTranscriptDispatch(StreamingClientTestCase):
