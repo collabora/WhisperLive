@@ -1165,6 +1165,25 @@ class TestStreamLanguageEvent(unittest.TestCase):
         )
         self.assertEqual(mock_model_cls.call_args[0][0], "large-v3")
 
+    @patch("whisper_live.server.WhisperModel")
+    def test_stream_passes_hotwords(self, mock_model_cls):
+        import io
+        from fastapi.testclient import TestClient
+
+        transcriber = MagicMock()
+        transcriber.transcribe.return_value = (iter([]), _make_transcription_info())
+        mock_model_cls.return_value = transcriber
+
+        server = TranscriptionServer()
+        server.client_manager = ClientManager(max_clients=2, max_connection_time=60)
+        client = TestClient(server.build_rest_app("faster_whisper"))
+        client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("test.wav", io.BytesIO(b"\x00" * 100), "audio/wav")},
+            data={"stream": "true", "hotwords": "WhisperLive,Collabora"},
+        )
+        self.assertEqual(transcriber.transcribe.call_args.kwargs["hotwords"], "WhisperLive,Collabora")
+
 
 class TestAudioPreprocessor(unittest.TestCase):
     """Tests for the optional audio_preprocessor hook."""
