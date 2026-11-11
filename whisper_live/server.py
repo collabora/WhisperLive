@@ -726,7 +726,7 @@ class TranscriptionServer:
 
     def _stream_transcription(self, file, language, prompt, temperature,
                               timestamp_granularities,
-                              requested_model=None):
+                              requested_model=None, hotwords=None):
         """Return a StreamingResponse that yields SSE events per segment.
 
         The first event carries the detected language and its probability, then
@@ -749,6 +749,7 @@ class TranscriptionServer:
                     temperature=temperature,
                     vad_filter=False,
                     word_timestamps=(timestamp_granularities and "word" in timestamp_granularities),
+                    hotwords=hotwords,
                 )
 
                 metadata = {
@@ -933,6 +934,7 @@ class TranscriptionServer:
                     file, language, prompt, temperature,
                     timestamp_granularities,
                     model,
+                    hotwords,
                 )
 
             ignored_params = []
