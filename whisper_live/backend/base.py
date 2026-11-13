@@ -25,6 +25,7 @@ class ServeClientBase(object):
     """Duration threshold in seconds for clipping audio with no valid segments."""
     CLIP_TAIL_DURATION_S = 5
     """Duration in seconds of audio to keep after clipping."""
+    MIN_AUDIO_CHUNK_S = 1.0
     FIRST_FRAME_WAIT_TIMEOUT_S = 0.1
     AUDIO_WAIT_TIMEOUT_S = 0.1
     VOICE_WAIT_TIMEOUT_S = 0.25
@@ -76,6 +77,7 @@ class ServeClientBase(object):
         self.current_out = ""
         self.prev_out = ""
         self.exit = False
+        self.stream_ended = False
         self.same_output_count = 0
         self.transcript = []
         self.end_time_for_same_output = None
@@ -156,7 +158,7 @@ class ServeClientBase(object):
                 self.clip_audio_if_no_valid_segment()
 
             input_bytes, duration = self.get_audio_chunk_for_processing()
-            if duration < 1.0:
+            if duration < self.MIN_AUDIO_CHUNK_S:
                 self.frames_ready.clear()
                 self.frames_ready.wait(timeout=self.AUDIO_WAIT_TIMEOUT_S)
                 continue
@@ -442,6 +444,20 @@ class ServeClientBase(object):
         except Exception as e:
             logging.error(f"[ERROR]: Sending data to client: {e}")
 
+    def finish_stream(self):
+        self.exit = True
+        self.frames_ready.set()
+        self.trans_thread.join()
+        self.stream_ended = True
+        if self.frames_np is None:
+            return
+        input_bytes, duration = self.get_audio_chunk_for_processing()
+        if duration < self.MIN_AUDIO_CHUNK_S:
+            return
+        result = self.transcribe_audio(input_bytes)
+        if result is not None and self.language is not None:
+            self.handle_transcription_output(result, duration)
+
     def finalize(self):
         """
         Run the optional end-of-stream finalizer and send its result, if any.
@@ -576,33 +592,37 @@ class ServeClientBase(object):
         last_segment = None
         segments = self._split_last_segment_at_final_word(segments)
 
-        # Process complete segments only if there are more than one
-        # and if the last segment's no_speech_prob is below the threshold.
-        if len(segments) > 1 and self.get_segment_no_speech_prob(segments[-1]) <= self.no_speech_thresh:
-            for s in segments[:-1]:
-                text_ = s.text
-                self.text.append(text_)
-                with self.lock:
-                    start = self.timestamp_offset + self.get_segment_start(s)
-                    end = self.timestamp_offset + min(duration, self.get_segment_end(s))
-                if start >= end:
-                    continue
-                if self.get_segment_no_speech_prob(s) > self.no_speech_thresh:
-                    continue
-                speaker = self._identify_speaker(s)
-                words = self._extract_words(s, self.timestamp_offset)
-                completed_segment = self.format_segment(start, end, text_, completed=True, speaker=speaker, words=words)
-                self.transcript.append(completed_segment)
+        # whisper may still revise the last segment while audio keeps arriving
+        if self.stream_ended:
+            completed_segments = segments
+        elif len(segments) > 1 and self.get_segment_no_speech_prob(segments[-1]) <= self.no_speech_thresh:
+            completed_segments = segments[:-1]
+        else:
+            completed_segments = []
+        for s in completed_segments:
+            text_ = s.text
+            self.text.append(text_)
+            with self.lock:
+                start = self.timestamp_offset + self.get_segment_start(s)
+                end = self.timestamp_offset + min(duration, self.get_segment_end(s))
+            if start >= end:
+                continue
+            if self.get_segment_no_speech_prob(s) > self.no_speech_thresh:
+                continue
+            speaker = self._identify_speaker(s)
+            words = self._extract_words(s, self.timestamp_offset)
+            completed_segment = self.format_segment(start, end, text_, completed=True, speaker=speaker, words=words)
+            self.transcript.append(completed_segment)
 
-                if self.translation_queue:
-                    try:
-                        self.translation_queue.put(completed_segment.copy(), timeout=0.1)
-                    except queue.Full:
-                        logging.warning("Translation queue is full, skipping segment")
-                offset = min(duration, self.get_segment_end(s))
+            if self.translation_queue:
+                try:
+                    self.translation_queue.put(completed_segment.copy(), timeout=0.1)
+                except queue.Full:
+                    logging.warning("Translation queue is full, skipping segment")
+            offset = min(duration, self.get_segment_end(s))
 
         # Process the last segment if its no_speech_prob is acceptable.
-        if self.get_segment_no_speech_prob(segments[-1]) <= self.no_speech_thresh:
+        if not self.stream_ended and self.get_segment_no_speech_prob(segments[-1]) <= self.no_speech_thresh:
             self.current_out += segments[-1].text
             words = self._extract_words(segments[-1], self.timestamp_offset)
             with self.lock:

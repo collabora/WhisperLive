@@ -535,6 +535,62 @@ class TestUpdateSegments(unittest.TestCase):
         self.assertGreater(self.client.timestamp_offset, 0.0)
 
 
+class TestFinishStream(unittest.TestCase):
+    class ScriptedServeClient(ConcreteServeClient):
+        def __init__(self, results, **kwargs):
+            super().__init__(**kwargs)
+            self.results = results
+
+        def transcribe_audio(self, input_sample):
+            return self.results.pop(0) if len(self.results) > 1 else self.results[0]
+
+        def handle_transcription_output(self, result, duration):
+            last_segment = self.update_segments(result, duration)
+            self.send_transcription_to_client(self.prepare_segments(last_segment))
+
+    @staticmethod
+    def _segment(start, end, text):
+        return MagicMock(start=start, end=end, text=text, no_speech_prob=0.0)
+
+    def test_pending_last_segment_is_completed_and_sent(self):
+        results = [
+            [self._segment(0.0, 1.0, " first"), self._segment(1.0, 2.0, " second")],
+            [self._segment(0.0, 1.0, " second")],
+        ]
+        ws = MagicMock()
+        client = self.ScriptedServeClient(
+            results, client_uid="uid", websocket=ws, same_output_threshold=1000
+        )
+        client.add_frames(np.zeros(16000 * 3, dtype=np.float32))
+        client.trans_thread = threading.Thread(target=client.speech_to_text, daemon=True)
+        client.trans_thread.start()
+        self.addCleanup(setattr, client, "exit", True)
+        deadline = time.time() + 5
+        while not client.transcript and time.time() < deadline:
+            time.sleep(0.01)
+
+        client.finish_stream()
+
+        self.assertEqual([s["text"] for s in client.transcript], [" first", " second"])
+        last_message = json.loads(ws.send.call_args[0][0])
+        self.assertEqual(
+            [(s["text"], s["completed"]) for s in last_message["segments"]],
+            [(" first", True), (" second", True)],
+        )
+
+    def test_stream_without_audio_sends_nothing(self):
+        ws = MagicMock()
+        client = self.ScriptedServeClient([[]], client_uid="uid", websocket=ws)
+        client.trans_thread = threading.Thread(target=client.speech_to_text, daemon=True)
+        client.trans_thread.start()
+        self.addCleanup(setattr, client, "exit", True)
+
+        client.finish_stream()
+
+        self.assertFalse(client.trans_thread.is_alive())
+        ws.send.assert_not_called()
+
+
 class TestGetSegmentHelpers(unittest.TestCase):
     def setUp(self):
         self.ws = MagicMock()
