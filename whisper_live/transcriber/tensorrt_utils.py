@@ -57,11 +57,14 @@ def load_audio(file: str, sr: int = 16000):
     """
     resampled_file = resample(file, sr)
 
-    with wave.open(resampled_file, "rb") as wav_file:
-        num_frames = wav_file.getnframes()
-        raw_data = wav_file.readframes(num_frames)
+    try:
+        with wave.open(resampled_file, "rb") as wav_file:
+            num_frames = wav_file.getnframes()
+            raw_data = wav_file.readframes(num_frames)
 
-        audio_data = np.frombuffer(raw_data, dtype=np.int16)
+            audio_data = np.frombuffer(raw_data, dtype=np.int16)
+    finally:
+        os.remove(resampled_file)
 
     audio_data = audio_data.astype(np.float32) / 32768.0
 
