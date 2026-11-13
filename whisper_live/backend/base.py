@@ -11,6 +11,17 @@ from websockets.exceptions import ConnectionClosed
 from whisper_live import metrics as wl_metrics
 
 
+def apply_segment_post_processor(post_processor, segment):
+    if post_processor is None:
+        return segment
+    try:
+        result = post_processor(segment)
+    except Exception as e:
+        logging.error(f"[ERROR]: segment_post_processor failed: {e}")
+        return segment
+    return result if result is not None else segment
+
+
 class ServeClientBase(object):
     RATE = 16000
     SERVER_READY = "SERVER_READY"
@@ -415,16 +426,9 @@ class ServeClientBase(object):
         Returns:
             segments (list): A list of transcription segments to be sent to the client.
         """
-        if self.segment_post_processor is not None:
-            processed = []
-            for seg in segments:
-                try:
-                    result = self.segment_post_processor(seg)
-                    processed.append(result if result is not None else seg)
-                except Exception as e:
-                    logging.error(f"[ERROR]: segment_post_processor failed: {e}")
-                    processed.append(seg)
-            segments = processed
+        segments = [
+            apply_segment_post_processor(self.segment_post_processor, seg) for seg in segments
+        ]
 
         try:
             self.websocket.send(

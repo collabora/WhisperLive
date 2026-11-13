@@ -29,7 +29,7 @@ from whisper_live import metrics as wl_metrics
 from websockets.sync.server import serve
 from websockets.exceptions import ConnectionClosed
 from whisper_live.vad import VoiceActivityDetector
-from whisper_live.backend.base import ServeClientBase
+from whisper_live.backend.base import ServeClientBase, apply_segment_post_processor
 
 logging.basicConfig(level=logging.INFO)
 
@@ -771,6 +771,7 @@ class TranscriptionServer:
                             {"word": w.word, "start": w.start, "end": w.end, "probability": w.probability}
                             for w in seg.words
                         ]
+                    seg_dict = apply_segment_post_processor(self.segment_post_processor, seg_dict)
                     yield f"data: {json.dumps(seg_dict)}\n\n"
 
                 yield "data: [DONE]\n\n"
@@ -970,8 +971,16 @@ class TranscriptionServer:
                     hotwords=hotwords,
                 )
                 segments = list(segments)
-
-                text = " ".join([s.text.strip() for s in segments])
+                plain_segments = []
+                if response_format != "verbose_json":
+                    plain_segments = [
+                        apply_segment_post_processor(
+                            self.segment_post_processor,
+                            {"id": seg.id, "start": seg.start, "end": seg.end, "text": seg.text.strip()},
+                        )
+                        for seg in segments
+                    ]
+                text = " ".join(seg["text"] for seg in plain_segments)
 
                 if response_format == "text":
                     wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
@@ -989,7 +998,6 @@ class TranscriptionServer:
                         "language": info.language,
                         "language_probability": info.language_probability,
                         "duration": info.duration,
-                        "text": text,
                         "segments": []
                     }
                     speaker_labels = {}
@@ -1019,20 +1027,23 @@ class TranscriptionServer:
                             seg_dict["speaker"] = speaker_labels[index]
                         if timestamp_granularities and "word" in timestamp_granularities:
                             seg_dict["words"] = [{"word": w.word, "start": w.start, "end": w.end, "probability": w.probability} for w in seg.words]
-                        verbose["segments"].append(seg_dict)
+                        verbose["segments"].append(
+                            apply_segment_post_processor(self.segment_post_processor, seg_dict)
+                        )
+                    verbose["text"] = " ".join(seg["text"] for seg in verbose["segments"])
                     wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
                     return verbose
                 elif response_format in ["srt", "vtt"]:
                     # a WebVTT file must start with the WEBVTT header
                     output = ["WEBVTT\n"] if response_format == "vtt" else []
                     decimal_marker = "," if response_format == "srt" else "."
-                    for i, seg in enumerate(segments, 1):
-                        start = format_timestamp(seg.start, always_include_hours=True, decimal_marker=decimal_marker)
-                        end = format_timestamp(seg.end, always_include_hours=True, decimal_marker=decimal_marker)
+                    for i, seg in enumerate(plain_segments, 1):
+                        start = format_timestamp(seg["start"], always_include_hours=True, decimal_marker=decimal_marker)
+                        end = format_timestamp(seg["end"], always_include_hours=True, decimal_marker=decimal_marker)
                         if response_format == "srt":
-                            output.append(f"{i}\n{start} --> {end}\n{seg.text.strip()}\n")
+                            output.append(f"{i}\n{start} --> {end}\n{seg['text']}\n")
                         else:  # vtt
-                            output.append(f"{start} --> {end}\n{seg.text.strip()}\n")
+                            output.append(f"{start} --> {end}\n{seg['text']}\n")
                     wl_metrics.track_rest_request(endpoint="transcriptions", status=200)
                     return PlainTextResponse("\n".join(output))
             except Exception as e:
@@ -1105,7 +1116,8 @@ class TranscriptionServer:
                 pass costs about as much as the first. Defaults to False.
             segment_post_processor (callable, optional): A callable that receives
                 a transcription segment dict and returns a modified segment dict.
-                Applied to every segment before sending to the client. Useful for
+                Applied to every segment before sending to the client, over the
+                websocket and the REST API, including SSE streaming. Useful for
                 plugging in custom post-processing (e.g. formatting, redaction).
                 Defaults to None.
             transcript_finalizer (callable, optional): A callable that receives the

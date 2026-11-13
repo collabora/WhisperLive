@@ -1440,3 +1440,66 @@ class TestHandleControlMessage(unittest.TestCase):
             self.websocket, json.dumps({"reset_transcript": True})))
 
         client.request_transcript_reset.assert_called_once()
+
+
+class TestRESTSegmentPostProcessor(unittest.TestCase):
+    def setUp(self):
+        from types import SimpleNamespace
+        from fastapi.testclient import TestClient
+
+        segments = [
+            SimpleNamespace(
+                id=index, seek=0, start=float(index), end=float(index + 1), text=text,
+                tokens=[], temperature=0.0, avg_logprob=0.0, compression_ratio=1.0,
+                no_speech_prob=0.0, words=[],
+            )
+            for index, text in enumerate([" deploy to cube ernestes ", " today "])
+        ]
+        info = SimpleNamespace(language="en", language_probability=0.9, duration=2.0)
+        model = MagicMock()
+        model.transcribe.side_effect = lambda *args, **kwargs: (iter(segments), info)
+        patcher = patch("whisper_live.server.WhisperModel", return_value=model)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        self.server = TranscriptionServer()
+        self.server.segment_post_processor = lambda segment: {
+            **segment, "text": segment["text"].replace("cube ernestes", "Kubernetes")
+        }
+        self.client = TestClient(self.server.build_rest_app("faster_whisper"))
+
+    def _post(self, **fields):
+        import io
+        return self.client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("test.wav", io.BytesIO(b"\x00" * 100), "audio/wav")},
+            data=fields,
+        )
+
+    def test_json_text_is_post_processed(self):
+        self.assertEqual(self._post().json()["text"], "deploy to Kubernetes today")
+
+    def test_plain_text_is_post_processed(self):
+        self.assertEqual(self._post(response_format="text").text, "deploy to Kubernetes today")
+
+    def test_srt_is_post_processed(self):
+        body = self._post(response_format="srt").text
+        self.assertIn("deploy to Kubernetes", body)
+        self.assertNotIn("cube ernestes", body)
+
+    def test_verbose_json_segments_and_text_are_post_processed(self):
+        body = self._post(response_format="verbose_json").json()
+        self.assertEqual(body["segments"][0]["text"], "deploy to Kubernetes")
+        self.assertEqual(body["text"], "deploy to Kubernetes today")
+
+    def test_stream_events_are_post_processed(self):
+        body = self._post(stream="true").text
+        self.assertIn('"text": "deploy to Kubernetes"', body)
+        self.assertNotIn("cube ernestes", body)
+
+    def test_failing_post_processor_returns_raw_segment(self):
+        def fail(segment):
+            raise RuntimeError("plugin broke")
+
+        self.server.segment_post_processor = fail
+        self.assertEqual(self._post().json()["text"], "deploy to cube ernestes today")
