@@ -333,6 +333,20 @@ class TranscriptionServer:
                 }))
                 self.backend = BackendType.FASTER_WHISPER
         
+        # Create the diarizer once, outside the per-backend try blocks, and share
+        # it with whichever backend ends up serving the client. Creation can fail
+        # (missing HF token, download failure, ...) and that must not be mistaken
+        # for the backend being unsupported, which would flip ``self.backend`` for
+        # every later client. A TensorRT client has already been built above and
+        # does not take a diarizer, so skip it in that case.
+        diarizer = None
+        if client is None:
+            try:
+                diarizer = self._create_diarizer(options)
+            except Exception as e:
+                logging.error(e)
+                return
+
         if self.backend.is_openvino():
             try:
                 from whisper_live.backend.openvino_backend import ServeClientOpenVINO
@@ -349,6 +363,8 @@ class TranscriptionServer:
                     no_speech_thresh=options.get("no_speech_thresh", 0.45),
                     clip_audio=options.get("clip_audio", False),
                     same_output_threshold=options.get("same_output_threshold", 10),
+                    diarization=diarizer,
+                    translation_queue=translation_queue,
                 )
                 logging.info("Running OpenVINO backend.")
             except Exception as e:
@@ -386,7 +402,7 @@ class TranscriptionServer:
                     cache_path=self.cache_path,
                     translation_queue=translation_queue,
                     hotwords=options.get("hotwords"),
-                    diarization=self._create_diarizer(options),
+                    diarization=diarizer,
                     word_timestamps=options.get("word_timestamps", False),
                 )
 
