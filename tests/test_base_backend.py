@@ -578,6 +578,42 @@ class TestFinishStream(unittest.TestCase):
             [(" first", True), (" second", True)],
         )
 
+    def _finish_without_worker(self, client):
+        client.trans_thread = threading.Thread(target=lambda: None)
+        client.trans_thread.start()
+        client.finish_stream()
+
+    def test_final_audio_shorter_than_one_second_is_completed(self):
+        client = self.ScriptedServeClient(
+            [[self._segment(0.0, 0.5, " yes")]], client_uid="uid", websocket=MagicMock()
+        )
+        client.add_frames(np.zeros(8000, dtype=np.float32))
+
+        self._finish_without_worker(client)
+
+        self.assertEqual([s["text"] for s in client.transcript], [" yes"])
+
+    def test_pending_reset_is_applied_before_final_pass(self):
+        transcribed_lengths = []
+
+        def transcribe(input_sample):
+            transcribed_lengths.append(len(input_sample))
+            return [self._segment(0.0, 1.0, " after reset")]
+
+        ws = MagicMock()
+        client = self.ScriptedServeClient([], client_uid="uid", websocket=ws)
+        client.transcribe_audio = transcribe
+        client.add_frames(np.zeros(16000 * 3, dtype=np.float32))
+        client.request_transcript_reset()
+        client.add_frames(np.zeros(16000, dtype=np.float32))
+
+        self._finish_without_worker(client)
+
+        self.assertEqual(transcribed_lengths, [16000])
+        self.assertEqual([s["text"] for s in client.transcript], [" after reset"])
+        sent_messages = [json.loads(c[0][0]).get("message") for c in ws.send.call_args_list]
+        self.assertIn(client.TRANSCRIPT_RESET, sent_messages)
+
     def test_stream_without_audio_sends_nothing(self):
         ws = MagicMock()
         client = self.ScriptedServeClient([[]], client_uid="uid", websocket=ws)

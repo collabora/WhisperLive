@@ -671,8 +671,10 @@ class TranscriptionServer:
             # so run any end-of-stream finalizer before cleanup closes it.
             client = self.client_manager.get_client(websocket)
             if client:
-                client.finish_stream()
-                client.finalize()
+                try:
+                    client.finish_stream()
+                finally:
+                    client.finalize()
         except ConnectionClosed:
             logging.info("Connection closed by client")
         except Exception as e:

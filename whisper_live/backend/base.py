@@ -25,7 +25,6 @@ class ServeClientBase(object):
     """Duration threshold in seconds for clipping audio with no valid segments."""
     CLIP_TAIL_DURATION_S = 5
     """Duration in seconds of audio to keep after clipping."""
-    MIN_AUDIO_CHUNK_S = 1.0
     FIRST_FRAME_WAIT_TIMEOUT_S = 0.1
     AUDIO_WAIT_TIMEOUT_S = 0.1
     VOICE_WAIT_TIMEOUT_S = 0.25
@@ -158,7 +157,7 @@ class ServeClientBase(object):
                 self.clip_audio_if_no_valid_segment()
 
             input_bytes, duration = self.get_audio_chunk_for_processing()
-            if duration < self.MIN_AUDIO_CHUNK_S:
+            if duration < 1.0:
                 self.frames_ready.clear()
                 self.frames_ready.wait(timeout=self.AUDIO_WAIT_TIMEOUT_S)
                 continue
@@ -448,11 +447,12 @@ class ServeClientBase(object):
         self.exit = True
         self.frames_ready.set()
         self.trans_thread.join()
+        self.apply_pending_reset()
         self.stream_ended = True
         if self.frames_np is None:
             return
         input_bytes, duration = self.get_audio_chunk_for_processing()
-        if duration < self.MIN_AUDIO_CHUNK_S:
+        if duration == 0:
             return
         result = self.transcribe_audio(input_bytes)
         if result is not None and self.language is not None:
