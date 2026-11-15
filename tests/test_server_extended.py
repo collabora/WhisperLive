@@ -2,12 +2,14 @@ import json
 import time
 import threading
 import collections
+import queue
 import unittest
 from http import HTTPStatus
 from unittest import mock
 from unittest.mock import MagicMock, patch
 from websockets.http11 import Request
 
+from whisper_live.backend.translation_backend import ServeClientTranslation
 from whisper_live.server import (
     BEARER_SUBPROTOCOL,
     TranscriptionServer,
@@ -400,6 +402,46 @@ class TestTranscriptionServerCleanup(unittest.TestCase):
         self.server.cleanup(ws)
         self.assertNotIn(ws, self.server.client_manager.clients)
         client.cleanup.assert_called_once()
+
+
+class TestEndOfAudioTranslation(unittest.TestCase):
+    def test_segments_queued_at_end_of_audio_are_translated_and_sent(self):
+        server = TranscriptionServer()
+        server.client_manager = ClientManager(max_clients=4, max_connection_time=600)
+        ws = MagicMock()
+        translation_queue = queue.Queue()
+        with patch.object(ServeClientTranslation, "load_translation_model"):
+            translation_client = ServeClientTranslation("uid", ws, translation_queue)
+        translation_started = threading.Event()
+
+        def slow_translate(text):
+            translation_started.set()
+            time.sleep(0.2)
+            return text.upper()
+
+        translation_client.translate_text = slow_translate
+        client = MagicMock()
+        client.translation_client = translation_client
+        client.translation_thread = threading.Thread(target=translation_client.speech_to_text, daemon=True)
+        client.translation_thread.start()
+        for start, text in [(0.0, "one"), (1.0, "two")]:
+            translation_queue.put({"start": start, "end": start + 1.0, "text": text, "completed": True})
+        self.assertTrue(translation_started.wait(timeout=1.0))
+
+        def connect(websocket, *args, **kwargs):
+            server.client_manager.add_client(websocket, client)
+            return True
+
+        with patch.object(server, "handle_new_connection", side_effect=connect), \
+                patch.object(server, "process_audio_frames", return_value=False):
+            server.recv_audio(ws)
+
+        translation_messages = [
+            json.loads(c[0][0]) for c in ws.send.call_args_list if "translated_segments" in c[0][0]
+        ]
+        self.assertEqual(
+            [s["text"] for s in translation_messages[-1]["translated_segments"]], ["ONE", "TWO"]
+        )
 
 
 class TestStreamTranscription(unittest.TestCase):
