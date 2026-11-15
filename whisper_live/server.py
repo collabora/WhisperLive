@@ -675,6 +675,10 @@ class TranscriptionServer:
                     client.finish_stream()
                 finally:
                     client.finalize()
+                translation_client = getattr(client, "translation_client", None)
+                if translation_client is not None:
+                    translation_client.translation_queue.put(None)
+                    client.translation_thread.join()
         except ConnectionClosed:
             logging.info("Connection closed by client")
         except Exception as e:
