@@ -8,6 +8,7 @@ sys.modules before the modules under test are imported. Packages that are
 installed are left untouched.
 """
 import importlib
+import json
 import queue
 import sys
 import types
@@ -361,7 +362,27 @@ class TestServerCreatesDiarizerOnce(unittest.TestCase):
 
         self.assertEqual(server.backend, BackendType.OPENVINO)
         mock_backend.assert_not_called()
-        ws.send.assert_not_called()
+        ws.send.assert_called_once()
+        self.assertEqual(json.loads(ws.send.call_args.args[0])["status"], "ERROR")
+        ws.close.assert_called_once()
+
+    def test_diarizer_creation_failure_stops_translation(self):
+        import whisper_live.backend.translation_backend  # noqa: F401 (registers submodule for patch())
+        from whisper_live.server import TranscriptionServer, BackendType
+
+        server = self._make_server(BackendType.OPENVINO)
+        options = dict(self.OPTIONS, enable_translation=True)
+
+        with patch(
+            "whisper_live.backend.translation_backend.ServeClientTranslation"
+        ) as mock_translation, patch(
+            "whisper_live.server.threading.Thread"
+        ), patch.object(
+            TranscriptionServer, "_create_diarizer", side_effect=RuntimeError("no HF token")
+        ):
+            server.initialize_client(MagicMock(), options, None, None, False)
+
+        mock_translation.return_value.cleanup.assert_called_once()
 
     def test_diarizer_is_created_once_and_passed_to_openvino(self):
         from whisper_live.server import TranscriptionServer, BackendType
