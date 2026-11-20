@@ -268,6 +268,18 @@ class TranscriptionServer:
         self.rest_models = {}
         self.rest_models_lock = threading.Lock()
 
+    @staticmethod
+    def _abort_client_setup(websocket, client_uid, translation_client, error):
+        logging.error(error)
+        if translation_client is not None:
+            translation_client.cleanup()
+        websocket.send(json.dumps({
+            "uid": client_uid,
+            "status": "ERROR",
+            "message": f"Failed to initialize client: {error}",
+        }))
+        websocket.close()
+
     def initialize_client(
         self, websocket, options, faster_whisper_custom_model_path,
         whisper_tensorrt_path, trt_multilingual, trt_py_session=False,
@@ -344,7 +356,7 @@ class TranscriptionServer:
             try:
                 diarizer = self._create_diarizer(options)
             except Exception as e:
-                logging.error(e)
+                self._abort_client_setup(websocket, options["uid"], translation_client, e)
                 return
 
         if self.backend.is_openvino():
@@ -421,7 +433,7 @@ class TranscriptionServer:
                             worker.start()
                             ServeClientFasterWhisper.BATCH_WORKER = worker
         except Exception as e:
-            logging.error(e)
+            self._abort_client_setup(websocket, options["uid"], translation_client, e)
             return
 
         if client is None:
