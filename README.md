@@ -249,6 +249,8 @@ When enabled, completed segments include a `speaker` field:
 ```
 Diarization uses online cosine-similarity clustering of speaker embeddings. If `pyannote.audio` is not installed, the server logs a warning and continues without diarization.
 
+Diarization is supported on the `faster_whisper` and `openvino` backends; the `tensorrt` backend does not support it.
+
 The OpenAI-compatible REST endpoint also accepts `known_speaker_names` and uploaded `known_speaker_references` multipart fields. When speaker fields are supplied with `response_format="verbose_json"`, segments include a `speaker` field.
 
 #### Batch Inference
