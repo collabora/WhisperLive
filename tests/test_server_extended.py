@@ -1146,6 +1146,19 @@ class TestRestTranscribeModelAndLanguage(unittest.TestCase):
         resp = self._post(mock_model_cls, segment=segment, response_format="vtt")
         self.assertIn("00:01:00.000 --> 00:01:01.000", resp.text)
 
+    @patch("whisper_live.server.WhisperModel")
+    def test_word_timestamp_granularity_returns_words(self, mock_model_cls):
+        # The OpenAI SDK sends array fields as "timestamp_granularities[]"
+        for field in ("timestamp_granularities", "timestamp_granularities[]"):
+            with self.subTest(field=field):
+                self.setUp()  # a fresh server, so the new mock model is loaded
+                resp = self._post(
+                    mock_model_cls, response_format="verbose_json", **{field: ["word", "segment"]}
+                )
+                self.assertEqual(resp.status_code, 200)
+                self.assertTrue(self.transcriber.transcribe.call_args.kwargs["word_timestamps"])
+                self.assertIn("words", resp.json()["segments"][0])
+
 
 class TestStreamLanguageEvent(unittest.TestCase):
     """The SSE stream must announce the detected language before any segment."""

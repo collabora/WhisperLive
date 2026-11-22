@@ -945,6 +945,10 @@ class TranscriptionServer:
             response_format: str = Form(default="json"),
             temperature: float = Form(default=0.0),
             timestamp_granularities: Optional[List[str]] = Form(default=None),
+            # The OpenAI SDK sends list fields with a "[]" suffix
+            timestamp_granularities_brackets: Optional[List[str]] = Form(
+                default=None, alias="timestamp_granularities[]"
+            ),
             # Stubs for unsupported OpenAI params
             chunking_strategy: Optional[str] = Form(default=None),
             include: Optional[List[str]] = Form(default=None),
@@ -953,6 +957,7 @@ class TranscriptionServer:
             stream: bool = Form(default=False),
             hotwords: Optional[str] = Form(default=None),
         ):
+            timestamp_granularities = timestamp_granularities or timestamp_granularities_brackets
             if stream:
                 return self._stream_transcription(
                     file, language, prompt, temperature,
