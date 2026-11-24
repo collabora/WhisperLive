@@ -6,7 +6,6 @@ import urllib.error
 from unittest.mock import patch, MagicMock
 
 import numpy as np
-import torch
 
 from whisper_live.vad import VoiceActivityDetection, VoiceActivityDetector
 
@@ -20,28 +19,28 @@ class TestVoiceActivityDetectionValidation(unittest.TestCase):
         self.vad.sample_rates = [8000, 16000]
 
     def test_1d_input_unsqueezed(self):
-        x = torch.randn(512)
+        x = np.random.randn(512).astype(np.float32)
         x_out, sr_out = self.vad._validate_input(x, 16000)
-        self.assertEqual(x_out.dim(), 2)
+        self.assertEqual(x_out.ndim, 2)
         self.assertEqual(sr_out, 16000)
 
     def test_3d_input_raises(self):
-        x = torch.randn(1, 1, 512)
+        x = np.random.randn(1, 1, 512).astype(np.float32)
         with self.assertRaises(ValueError):
             self.vad._validate_input(x, 16000)
 
     def test_unsupported_sample_rate_raises(self):
-        x = torch.randn(1, 512)
+        x = np.random.randn(1, 512).astype(np.float32)
         with self.assertRaises(ValueError):
             self.vad._validate_input(x, 44100)
 
     def test_too_short_audio_raises(self):
-        x = torch.randn(1, 1)
+        x = np.random.randn(1, 1).astype(np.float32)
         with self.assertRaises(ValueError):
             self.vad._validate_input(x, 16000)
 
     def test_downsample_multiple_of_16k(self):
-        x = torch.randn(1, 512 * 3)
+        x = np.random.randn(1, 512 * 3).astype(np.float32)
         x_out, sr_out = self.vad._validate_input(x, 48000)
         self.assertEqual(sr_out, 16000)
         self.assertEqual(x_out.shape[1], 512)
@@ -118,7 +117,7 @@ class TestVoiceActivityDetectorThreshold(unittest.TestCase):
         detector.threshold = 0.5
         detector.frame_rate = 16000
 
-        mock_probs = torch.tensor([[0.9, 0.8, 0.7]])
+        mock_probs = np.array([[0.9, 0.8, 0.7]])
         with patch.object(detector.model, "audio_forward", return_value=mock_probs):
             result = detector(np.random.randn(16000).astype(np.float32))
         self.assertTrue(result)
@@ -130,7 +129,7 @@ class TestVoiceActivityDetectorThreshold(unittest.TestCase):
         detector.threshold = 0.5
         detector.frame_rate = 16000
 
-        mock_probs = torch.tensor([[0.1, 0.2, 0.3]])
+        mock_probs = np.array([[0.1, 0.2, 0.3]])
         with patch.object(detector.model, "audio_forward", return_value=mock_probs):
             result = detector(np.random.randn(16000).astype(np.float32))
         self.assertFalse(result)
@@ -142,7 +141,7 @@ class TestVoiceActivityDetectorThreshold(unittest.TestCase):
         detector.threshold = 0.95
         detector.frame_rate = 16000
 
-        mock_probs = torch.tensor([[0.9]])
+        mock_probs = np.array([[0.9]])
         with patch.object(detector.model, "audio_forward", return_value=mock_probs):
             result = detector(np.random.randn(16000).astype(np.float32))
         self.assertFalse(result)

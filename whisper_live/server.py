@@ -20,7 +20,6 @@ from starlette.responses import PlainTextResponse, StreamingResponse
 import uvicorn
 from faster_whisper import WhisperModel
 from faster_whisper.utils import format_timestamp
-import torch
 
 from enum import Enum
 
@@ -752,8 +751,8 @@ class TranscriptionServer:
         with self.rest_models_lock:
             transcriber = self.rest_models.get(model_name)
             if transcriber is None:
-                device = "cuda" if torch.cuda.is_available() else "cpu"
-                compute_type = "float16" if device == "cuda" else "int8"
+                from whisper_live.backend.faster_whisper_backend import select_device_and_compute_type
+                device, compute_type = select_device_and_compute_type()
                 logging.info(f"Loading REST model '{model_name}' on {device}")
                 transcriber = WhisperModel(model_name, device=device, compute_type=compute_type)
                 self.rest_models[model_name] = transcriber

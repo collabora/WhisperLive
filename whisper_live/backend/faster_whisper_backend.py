@@ -3,12 +3,19 @@ import json
 import logging
 import threading
 import time
-import torch
 import ctranslate2
 from huggingface_hub import snapshot_download
 
 from whisper_live.transcriber.transcriber_faster_whisper import WhisperModel
 from whisper_live.backend.base import ServeClientBase
+
+
+def select_device_and_compute_type():
+    if ctranslate2.get_cuda_device_count() == 0:
+        return "cpu", "int8"
+    if "float16" in ctranslate2.get_supported_compute_types("cuda"):
+        return "cuda", "float16"
+    return "cuda", "float32"
 
 
 class ServeClientFasterWhisper(ServeClientBase):
@@ -89,12 +96,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         self.vad_parameters = vad_parameters or {"threshold": 0.5}
         self.hotwords = hotwords
 
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        if device == "cuda":
-            major, _ = torch.cuda.get_device_capability(device)
-            self.compute_type = "float16" if major >= 7 else "float32"
-        else:
-            self.compute_type = "int8"
+        device, self.compute_type = select_device_and_compute_type()
 
         if self.model_size_or_path is None:
             return
