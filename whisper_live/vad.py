@@ -1,6 +1,5 @@
 import os
 import urllib.request
-import torch
 import numpy as np
 import onnxruntime
 import warnings
@@ -30,10 +29,10 @@ class VoiceActivityDetection():
             self.sample_rates = [8000, 16000]
 
     def _validate_input(self, x, sr: int):
-        if x.dim() == 1:
-            x = x.unsqueeze(0)
-        if x.dim() > 2:
-            raise ValueError(f"Too many dimensions for input audio chunk {x.dim()}")
+        if x.ndim == 1:
+            x = x[np.newaxis, :]
+        if x.ndim > 2:
+            raise ValueError(f"Too many dimensions for input audio chunk {x.ndim}")
 
         if sr != 16000 and (sr % 16000 == 0):
             step = sr // 16000
@@ -48,8 +47,8 @@ class VoiceActivityDetection():
         return x, sr
 
     def reset_states(self, batch_size=1):
-        self._state = torch.zeros((2, batch_size, 128)).float()
-        self._context = torch.zeros(0)
+        self._state = np.zeros((2, batch_size, 128), dtype=np.float32)
+        self._context = np.zeros(0, dtype=np.float32)
         self._last_sr = 0
         self._last_batch_size = 0
 
@@ -72,14 +71,14 @@ class VoiceActivityDetection():
             self.reset_states(batch_size)
 
         if not len(self._context):
-            self._context = torch.zeros(batch_size, context_size)
+            self._context = np.zeros((batch_size, context_size), dtype=np.float32)
 
-        x = torch.cat([self._context, x], dim=1)
+        x = np.concatenate([self._context, x], axis=1)
         if sr in [8000, 16000]:
-            ort_inputs = {'input': x.numpy(), 'state': self._state.numpy(), 'sr': np.array(sr, dtype='int64')}
+            ort_inputs = {'input': x, 'state': self._state, 'sr': np.array(sr, dtype='int64')}
             ort_outs = self.session.run(None, ort_inputs)
             out, state = ort_outs
-            self._state = torch.from_numpy(state)
+            self._state = state
         else:
             raise ValueError()
 
@@ -87,7 +86,6 @@ class VoiceActivityDetection():
         self._last_sr = sr
         self._last_batch_size = batch_size
 
-        out = torch.from_numpy(out)
         return out
 
     def audio_forward(self, x, sr: int):
@@ -98,15 +96,14 @@ class VoiceActivityDetection():
 
         if x.shape[1] % num_samples:
             pad_num = num_samples - (x.shape[1] % num_samples)
-            x = torch.nn.functional.pad(x, (0, pad_num), 'constant', value=0.0)
+            x = np.pad(x, ((0, 0), (0, pad_num)))
 
         for i in range(0, x.shape[1], num_samples):
             wavs_batch = x[:, i:i+num_samples]
             out_chunk = self.__call__(wavs_batch, sr)
             outs.append(out_chunk)
 
-        stacked = torch.cat(outs, dim=1)
-        return stacked.cpu()
+        return np.concatenate(outs, axis=1)
 
     @staticmethod
     def download(model_url="https://github.com/snakers4/silero-vad/raw/v5.0/files/silero_vad.onnx"):
@@ -152,5 +149,5 @@ class VoiceActivityDetector:
             bool: True if the speech probability exceeds the threshold, indicating the presence of voice activity;
                   False otherwise.
         """
-        speech_probs = self.model.audio_forward(torch.from_numpy(audio_frame.copy()), self.frame_rate)[0]
-        return torch.any(speech_probs > self.threshold).item()
+        speech_probs = self.model.audio_forward(audio_frame, self.frame_rate)[0]
+        return bool(np.any(speech_probs > self.threshold))

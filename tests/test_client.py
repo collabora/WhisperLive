@@ -1,6 +1,6 @@
 import json
 import os
-import scipy
+import wave
 import websocket
 import copy
 import unittest
@@ -111,7 +111,8 @@ class TestAudioResampling(unittest.TestCase):
         expected_sr = 16000
         resampled_audio = resample(original_audio, expected_sr)
 
-        sr, _ = scipy.io.wavfile.read(resampled_audio)
+        with wave.open(resampled_audio) as wav_file:
+            sr = wav_file.getframerate()
         self.assertEqual(sr, expected_sr)
 
         os.remove(resampled_audio)
