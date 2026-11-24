@@ -10,6 +10,14 @@ from whisper_live.transcriber.transcriber_faster_whisper import WhisperModel
 from whisper_live.backend.base import ServeClientBase
 
 
+def select_device_and_compute_type():
+    if ctranslate2.get_cuda_device_count() == 0:
+        return "cpu", "int8"
+    if "float16" in ctranslate2.get_supported_compute_types("cuda"):
+        return "cuda", "float16"
+    return "cuda", "float32"
+
+
 class ServeClientFasterWhisper(ServeClientBase):
     SINGLE_MODEL = None
     SINGLE_MODEL_LOCK = threading.Lock()
@@ -88,12 +96,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         self.vad_parameters = vad_parameters or {"threshold": 0.5}
         self.hotwords = hotwords
 
-        device = "cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu"
-        if device == "cuda":
-            cuda_compute_types = ctranslate2.get_supported_compute_types("cuda")
-            self.compute_type = "float16" if "float16" in cuda_compute_types else "float32"
-        else:
-            self.compute_type = "int8"
+        device, self.compute_type = select_device_and_compute_type()
 
         if self.model_size_or_path is None:
             return
