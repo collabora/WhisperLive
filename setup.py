@@ -56,6 +56,7 @@ setup(
         "onnxruntime>=1.20.0,<2; python_version >= '3.10'",
         "websocket-client",
         "numba",
+        "openai-whisper==20250625",
         "kaldialign",
         "soundfile",
         "transformers[torch]<5",
