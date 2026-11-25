@@ -240,6 +240,16 @@ class TestClientSrtWriting(unittest.TestCase):
         self.client.write_srt_file("test_out.srt")
         self.assertEqual(len(self.client.transcript), 1)
 
+    def test_write_srt_skips_partial_that_was_completed(self):
+        for segments in (
+            [{"start": "0.000", "end": "1.000", "text": " Hello wor", "completed": False}],
+            [{"start": "0.000", "end": "1.200", "text": " Hello world.", "completed": True}],
+        ):
+            self.client.on_message(MagicMock(), json.dumps({"uid": self.client.uid, "segments": segments}))
+        self.assertIsNone(self.client.last_segment)
+        self.client.write_srt_file("test_out.srt")
+        self.assertEqual([seg["text"] for seg in self.client.transcript], [" Hello world."])
+
 
 class TestWaitBeforeDisconnect(unittest.TestCase):
     """Tests for Client.wait_before_disconnect()."""
