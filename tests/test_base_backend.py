@@ -674,6 +674,25 @@ class TestFinishStream(unittest.TestCase):
             [(" first", True), (" second", True)],
         )
 
+    def test_pending_segment_is_completed_when_final_pass_times_out(self):
+        ws = MagicMock()
+        client = self.ScriptedServeClient([None], client_uid="uid", websocket=ws)
+        client.add_frames(np.zeros(16000 * 3, dtype=np.float32))
+        client.handle_transcription_output(
+            [self._segment(0.0, 1.0, " first"), self._segment(1.0, 2.0, " second")], 3.0
+        )
+        client.transcribe_audio = MagicMock(side_effect=TimeoutError("batch inference gave no result"))
+
+        with self.assertRaises(TimeoutError):
+            self._finish_without_worker(client)
+
+        self.assertEqual([s["text"] for s in client.transcript], [" first", " second"])
+        last_message = json.loads(ws.send.call_args[0][0])
+        self.assertEqual(
+            [(s["text"], s["completed"]) for s in last_message["segments"]],
+            [(" first", True), (" second", True)],
+        )
+
     def test_stream_without_audio_sends_nothing(self):
         ws = MagicMock()
         client = self.ScriptedServeClient([[]], client_uid="uid", websocket=ws)

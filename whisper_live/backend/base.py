@@ -479,12 +479,14 @@ class ServeClientBase(object):
         if self.frames_np is None:
             return
         input_bytes, duration = self.get_audio_chunk_for_processing()
-        if duration > 0:
-            result = self.transcribe_audio(input_bytes)
-            if result is not None and self.language is not None:
-                self.handle_transcription_output(result, duration)
-        if self.pending_segment is not None:
-            self.complete_pending_segment()
+        try:
+            if duration > 0:
+                result = self.transcribe_audio(input_bytes)
+                if result is not None and self.language is not None:
+                    self.handle_transcription_output(result, duration)
+        finally:
+            if self.pending_segment is not None:
+                self.complete_pending_segment()
 
     def finalize(self):
         """
