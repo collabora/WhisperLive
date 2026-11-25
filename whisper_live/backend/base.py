@@ -707,7 +707,8 @@ class ServeClientBase(object):
             with self.lock:
                 self.timestamp_offset += offset
 
-        self.pending_segment = last_segment
+        if last_segment is not None or offset is not None:
+            self.pending_segment = last_segment
         self._trim_transcript()
         return last_segment
 
