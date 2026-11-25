@@ -458,8 +458,10 @@ class ServeClientBase(object):
         completed_segment = {**self.pending_segment, "completed": True}
         self.pending_segment = None
         self.text.append(completed_segment["text"])
-        self.transcript.append(completed_segment)
-        if self.translation_queue:
+        has_audio = float(completed_segment["start"]) < float(completed_segment["end"])
+        if has_audio:
+            self.transcript.append(completed_segment)
+        if has_audio and self.translation_queue:
             try:
                 self.translation_queue.put(completed_segment.copy(), timeout=0.1)
             except queue.Full:
