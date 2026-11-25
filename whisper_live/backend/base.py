@@ -86,6 +86,7 @@ class ServeClientBase(object):
         self.text = []
         self.current_out = ""
         self.prev_out = ""
+        self.pending_segment = None
         self.exit = False
         self.stream_ended = False
         self.same_output_count = 0
@@ -178,7 +179,7 @@ class ServeClientBase(object):
                 result = self.transcribe_audio(input_sample)
 
                 if result is None or self.language is None:
-                    self.timestamp_offset += duration
+                    self.skip_audio(duration)
                     self.frames_ready.clear()
                     self.frames_ready.wait(timeout=self.VOICE_WAIT_TIMEOUT_S)
                     continue
@@ -189,7 +190,7 @@ class ServeClientBase(object):
             except TimeoutError as e:
                 logging.error(f"[ERROR]: Dropping {duration:.1f}s of audio: {e}")
                 wl_metrics.track_error("transcription")
-                self.timestamp_offset += duration
+                self.skip_audio(duration)
             except Exception as e:
                 logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
                 wl_metrics.track_error("transcription")
@@ -239,6 +240,7 @@ class ServeClientBase(object):
             self.timestamp_offset = 0.0
             self.current_out = ""
             self.prev_out = ""
+            self.pending_segment = None
             self.same_output_count = 0
             self.end_time_for_same_output = None
             if pending_frames is None:
@@ -447,6 +449,29 @@ class ServeClientBase(object):
         except Exception as e:
             logging.error(f"[ERROR]: Sending data to client: {e}")
 
+    def skip_audio(self, duration):
+        if self.pending_segment is not None:
+            self.complete_pending_segment()
+        self.timestamp_offset += duration
+
+    def complete_pending_segment(self):
+        completed_segment = {**self.pending_segment, "completed": True}
+        self.pending_segment = None
+        self.text.append(completed_segment["text"])
+        has_audio = float(completed_segment["start"]) < float(completed_segment["end"])
+        if has_audio:
+            self.transcript.append(completed_segment)
+        if has_audio and self.translation_queue:
+            try:
+                self.translation_queue.put(completed_segment.copy(), timeout=0.1)
+            except queue.Full:
+                logging.warning("Translation queue is full, skipping segment")
+        self.current_out = ""
+        self.prev_out = ""
+        self.same_output_count = 0
+        self.end_time_for_same_output = None
+        self.send_transcription_to_client(self.prepare_segments())
+
     def finish_stream(self):
         self.exit = True
         self.frames_ready.set()
@@ -456,11 +481,14 @@ class ServeClientBase(object):
         if self.frames_np is None:
             return
         input_bytes, duration = self.get_audio_chunk_for_processing()
-        if duration == 0:
-            return
-        result = self.transcribe_audio(input_bytes)
-        if result is not None and self.language is not None:
-            self.handle_transcription_output(result, duration)
+        try:
+            if duration > 0:
+                result = self.transcribe_audio(input_bytes)
+                if result is not None and self.language is not None:
+                    self.handle_transcription_output(result, duration)
+        finally:
+            if self.pending_segment is not None:
+                self.complete_pending_segment()
 
     def finalize(self):
         """
@@ -683,6 +711,8 @@ class ServeClientBase(object):
             with self.lock:
                 self.timestamp_offset += offset
 
+        if last_segment is not None or offset is not None:
+            self.pending_segment = last_segment
         self._trim_transcript()
         return last_segment
 

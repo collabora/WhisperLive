@@ -614,6 +614,106 @@ class TestFinishStream(unittest.TestCase):
         sent_messages = [json.loads(c[0][0]).get("message") for c in ws.send.call_args_list]
         self.assertIn(client.TRANSCRIPT_RESET, sent_messages)
 
+    def test_pending_segment_is_completed_when_vad_finds_no_speech(self):
+        results = [
+            [self._segment(0.0, 1.0, " first"), self._segment(1.0, 2.0, " second")],
+            None,
+        ]
+        ws = MagicMock()
+        client = self.ScriptedServeClient(results, client_uid="uid", websocket=ws)
+        client.add_frames(np.zeros(16000 * 3, dtype=np.float32))
+        client.trans_thread = threading.Thread(target=client.speech_to_text, daemon=True)
+        client.trans_thread.start()
+        self.addCleanup(setattr, client, "exit", True)
+        deadline = time.time() + 5
+        while len(client.transcript) < 2 and time.time() < deadline:
+            time.sleep(0.01)
+        client.exit = True
+        client.frames_ready.set()
+        client.trans_thread.join(timeout=5)
+
+        self.assertEqual([s["text"] for s in client.transcript], [" first", " second"])
+        last_message = json.loads(ws.send.call_args[0][0])
+        self.assertEqual(
+            [(s["text"], s["completed"]) for s in last_message["segments"]],
+            [(" first", True), (" second", True)],
+        )
+
+    def test_pending_segment_is_completed_when_final_pass_finds_no_speech(self):
+        ws = MagicMock()
+        client = self.ScriptedServeClient([None], client_uid="uid", websocket=ws)
+        client.add_frames(np.zeros(16000 * 3, dtype=np.float32))
+        client.handle_transcription_output(
+            [self._segment(0.0, 1.0, " first"), self._segment(1.0, 2.0, " second")], 3.0
+        )
+
+        self._finish_without_worker(client)
+
+        self.assertEqual([s["text"] for s in client.transcript], [" first", " second"])
+        last_message = json.loads(ws.send.call_args[0][0])
+        self.assertEqual(
+            [(s["text"], s["completed"]) for s in last_message["segments"]],
+            [(" first", True), (" second", True)],
+        )
+
+    def test_pending_segment_is_completed_when_final_pass_is_above_no_speech_thresh(self):
+        ws = MagicMock()
+        silent_segment = MagicMock(start=0.0, end=1.0, text=" um", no_speech_prob=0.9)
+        client = self.ScriptedServeClient([[silent_segment]], client_uid="uid", websocket=ws)
+        client.add_frames(np.zeros(16000 * 3, dtype=np.float32))
+        client.handle_transcription_output(
+            [self._segment(0.0, 1.0, " first"), self._segment(1.0, 2.0, " second")], 3.0
+        )
+
+        self._finish_without_worker(client)
+
+        self.assertEqual([s["text"] for s in client.transcript], [" first", " second"])
+        last_message = json.loads(ws.send.call_args[0][0])
+        self.assertEqual(
+            [(s["text"], s["completed"]) for s in last_message["segments"]],
+            [(" first", True), (" second", True)],
+        )
+
+    def test_pending_segment_is_completed_when_final_pass_times_out(self):
+        ws = MagicMock()
+        client = self.ScriptedServeClient([None], client_uid="uid", websocket=ws)
+        client.add_frames(np.zeros(16000 * 3, dtype=np.float32))
+        client.handle_transcription_output(
+            [self._segment(0.0, 1.0, " first"), self._segment(1.0, 2.0, " second")], 3.0
+        )
+        client.transcribe_audio = MagicMock(side_effect=TimeoutError("batch inference gave no result"))
+
+        with self.assertRaises(TimeoutError):
+            self._finish_without_worker(client)
+
+        self.assertEqual([s["text"] for s in client.transcript], [" first", " second"])
+        last_message = json.loads(ws.send.call_args[0][0])
+        self.assertEqual(
+            [(s["text"], s["completed"]) for s in last_message["segments"]],
+            [(" first", True), (" second", True)],
+        )
+
+    def test_pending_segment_past_end_of_audio_is_not_added(self):
+        ws = MagicMock()
+        translation_queue = queue.Queue()
+        client = self.ScriptedServeClient(
+            [None], client_uid="uid", websocket=ws, translation_queue=translation_queue
+        )
+        client.add_frames(np.zeros(16000 * 3, dtype=np.float32))
+        client.handle_transcription_output(
+            [self._segment(0.0, 1.0, " first"), self._segment(3.0, 3.5, " tail")], 3.0
+        )
+
+        self._finish_without_worker(client)
+
+        self.assertEqual([s["text"] for s in client.transcript], [" first"])
+        self.assertEqual(translation_queue.qsize(), 1)
+        last_message = json.loads(ws.send.call_args[0][0])
+        self.assertEqual(
+            [(s["text"], s["completed"]) for s in last_message["segments"]],
+            [(" first", True)],
+        )
+
     def test_stream_without_audio_sends_nothing(self):
         ws = MagicMock()
         client = self.ScriptedServeClient([[]], client_uid="uid", websocket=ws)
