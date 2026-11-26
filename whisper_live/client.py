@@ -201,6 +201,9 @@ class Client:
                             self.transcript.append(seg)
         # update last received segment and last valid response time
         if not translated:
+            # no trailing partial means the old one was completed or dropped
+            if segments[-1].get("completed", False):
+                self.last_segment = None
             if self.last_received_segment is None or self.last_received_segment != segments[-1]["text"]:
                 self.last_response_received = time.time()
                 self.last_received_segment = segments[-1]["text"]

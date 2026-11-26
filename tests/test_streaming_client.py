@@ -135,6 +135,12 @@ class TestTranscriptDispatch(StreamingClientTestCase):
         self.assertIsNotNone(self.client.last_partial)
         self.assertIs(self.client.last_partial, self.client.last_segment)
 
+    def test_last_partial_cleared_once_completed(self):
+        self._server_ready()
+        self._send_segments([{"start": 0, "end": 1, "text": "pend", "completed": False}])
+        self._send_segments([{"start": 0, "end": 1, "text": "pending", "completed": True}])
+        self.assertIsNone(self.client.last_partial)
+
 
 class TestConnectLifecycle(StreamingClientTestCase):
     def test_connect_returns_after_ready(self):
