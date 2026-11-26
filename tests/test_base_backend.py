@@ -953,7 +953,7 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class TestSendTranscriptionToClient(unittest.TestCase):
+class TestSendTranscriptionToClientDisconnect(unittest.TestCase):
     """A client that hangs up mid-send is a normal disconnect, not an error."""
 
     def setUp(self):
