@@ -714,6 +714,18 @@ class TestFinishStream(unittest.TestCase):
             [(" first", True)],
         )
 
+    def test_only_pending_segment_past_end_of_audio_sends_no_empty_message(self):
+        ws = MagicMock()
+        client = self.ScriptedServeClient([None], client_uid="uid", websocket=ws)
+        client.add_frames(np.zeros(16000 * 3, dtype=np.float32))
+        client.handle_transcription_output([self._segment(3.0, 3.5, " tail")], 3.0)
+
+        self._finish_without_worker(client)
+
+        self.assertEqual(client.transcript, [])
+        sent_segments = [json.loads(call[0][0])["segments"] for call in ws.send.call_args_list]
+        self.assertNotIn([], sent_segments)
+
     def test_stream_without_audio_sends_nothing(self):
         ws = MagicMock()
         client = self.ScriptedServeClient([[]], client_uid="uid", websocket=ws)

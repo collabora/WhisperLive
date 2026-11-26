@@ -469,7 +469,9 @@ class ServeClientBase(object):
         self.prev_out = ""
         self.same_output_count = 0
         self.end_time_for_same_output = None
-        self.send_transcription_to_client(self.prepare_segments())
+        segments = self.prepare_segments()
+        if segments:
+            self.send_transcription_to_client(segments)
 
     def finish_stream(self):
         self.exit = True
