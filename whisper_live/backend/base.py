@@ -3,7 +3,6 @@ import logging
 import queue
 import threading
 import time
-from types import SimpleNamespace
 
 import numpy as np
 from websockets.exceptions import ConnectionClosed
@@ -586,27 +585,6 @@ class ServeClientBase(object):
             for w in words
         ]
 
-    def _split_last_segment_at_final_word(self, segments):
-        """Keep only the final word of the incomplete segment for reprocessing."""
-        last = segments[-1]
-        last_words = getattr(last, "words", None)
-        if not self.word_timestamps or not last_words or len(last_words) <= 1:
-            return segments
-
-        trailing_word = last_words[-1]
-        no_speech_prob = self.get_segment_no_speech_prob(last)
-        completed_prefix = SimpleNamespace(
-            start=self.get_segment_start(last), end=trailing_word.start,
-            text="".join(word.word for word in last_words[:-1]),
-            words=last_words[:-1], no_speech_prob=no_speech_prob,
-        )
-        incomplete_word = SimpleNamespace(
-            start=trailing_word.start, end=trailing_word.end,
-            text=trailing_word.word, words=[trailing_word],
-            no_speech_prob=no_speech_prob,
-        )
-        return [*segments[:-1], completed_prefix, incomplete_word]
-
     def update_segments(self, segments, duration):
         """
         Processes the segments from Whisper and updates the transcript.
@@ -622,7 +600,6 @@ class ServeClientBase(object):
         offset = None
         self.current_out = ''
         last_segment = None
-        segments = self._split_last_segment_at_final_word(segments)
 
         # whisper may still revise the last segment while audio keeps arriving
         if self.stream_ended:
