@@ -863,6 +863,22 @@ class TestWordTimestamps(unittest.TestCase):
         self.assertEqual(last["text"], " hello world")
         self.assertEqual(len(last["words"]), 2)
 
+    def test_repeated_output_completes_with_words(self):
+        client = ConcreteServeClient(
+            client_uid="wt-uid", websocket=MagicMock(), word_timestamps=True, same_output_threshold=1
+        )
+        words = [
+            self._make_word(" hello", 0.0, 0.5, 0.9),
+            self._make_word(" world", 0.6, 1.0, 0.85),
+        ]
+        segment = self._make_segment(" hello world", 0.0, 1.0, words=words)
+
+        for _ in range(client.same_output_threshold + 2):
+            client.update_segments([segment], 2.0)
+
+        self.assertEqual(client.transcript[-1]["text"], " hello world")
+        self.assertEqual([word["word"] for word in client.transcript[-1]["words"]], [" hello", " world"])
+
     def test_update_segments_no_words_when_disabled(self):
         client = self._make_client(word_timestamps=False)
         words1 = [self._make_word("hello", 0.0, 0.5, 0.9)]

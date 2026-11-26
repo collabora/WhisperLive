@@ -666,7 +666,8 @@ class ServeClientBase(object):
                         self.timestamp_offset,
                         self.timestamp_offset + min(duration, self.end_time_for_same_output),
                         self.current_out,
-                        completed=True
+                        completed=True,
+                        words=last_segment.get("words"),
                     )
                     self.transcript.append(completed_segment)
 
